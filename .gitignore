@@ -7,3 +7,6 @@ obj/
 *.user
 .vs/
 
+# Local dev secrets
+src/Server/appsettings.Development.json
+
