@@ -31,6 +31,7 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
     siteConfig: {
       alwaysOn: isProduction
       minTlsVersion: '1.2'
+      ftpsState: 'Disabled'
       netFrameworkVersion: 'v9.0'
       appSettings: [
         {

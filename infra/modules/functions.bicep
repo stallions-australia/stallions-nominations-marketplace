@@ -29,6 +29,8 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
     httpsOnly: true
     siteConfig: {
       minTlsVersion: '1.2'
+      ftpsState: 'Disabled'
+      netFrameworkVersion: 'v9.0'
       appSettings: [
         {
           name: 'AzureWebJobsStorage__accountName'
