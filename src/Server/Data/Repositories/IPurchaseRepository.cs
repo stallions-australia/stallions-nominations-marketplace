@@ -9,5 +9,4 @@ public interface IPurchaseRepository
     Task<IReadOnlyList<Purchase>> GetAllAsync();
     Task<Purchase> AddAsync(Purchase purchase);
     Task UpdateAsync(Purchase purchase);
-    Task DeleteAsync(Purchase purchase);
 }

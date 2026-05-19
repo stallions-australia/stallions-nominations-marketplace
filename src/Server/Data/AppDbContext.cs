@@ -226,7 +226,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Enquiry>(e =>
         {
             e.HasKey(eq => eq.Id);
-            e.Property(eq => eq.Status).HasMaxLength(20);
+            e.Property(eq => eq.Status).HasConversion<string>().HasMaxLength(20);
 
             e.HasOne(eq => eq.Listing)
                 .WithMany(l => l.Enquiries)

@@ -18,9 +18,11 @@ public class BidRepository : IBidRepository
             .OrderByDescending(b => b.AmountIncGst)
             .FirstOrDefaultAsync();
 
-    public async Task<Bid?> GetSecondHighestBidAsync(Guid auctionListingId) =>
+    public async Task<Bid?> GetSecondHighestBidAsync(Guid auctionListingId, Guid winnerBuyerUserId) =>
         await _db.Bids
-            .Where(b => b.AuctionListingId == auctionListingId && b.Status == BidStatus.Outbid)
+            .Where(b => b.AuctionListingId == auctionListingId
+                     && b.Status == BidStatus.Outbid
+                     && b.BuyerUserId != winnerBuyerUserId)
             .OrderByDescending(b => b.AmountIncGst)
             .FirstOrDefaultAsync();
 

@@ -25,19 +25,20 @@ public class BidRepositoryTests
     }
 
     [Fact]
-    public async Task GetSecondHighestBidAsync_ReturnsHighestOutbidBid()
+    public async Task GetSecondHighestBidAsync_ReturnsHighestOutbidBidExcludingWinner()
     {
-        using var db = DbContextFactory.Create(nameof(GetSecondHighestBidAsync_ReturnsHighestOutbidBid));
+        using var db = DbContextFactory.Create(nameof(GetSecondHighestBidAsync_ReturnsHighestOutbidBidExcludingWinner));
         var repo = new BidRepository(db);
         var listingId = Guid.NewGuid();
-        var buyerA = Guid.NewGuid();
-        var buyerB = Guid.NewGuid();
-        await repo.AddAsync(new Bid { AuctionListingId = listingId, BuyerUserId = buyerA, AmountIncGst = 5000m, Status = BidStatus.Outbid });
-        await repo.AddAsync(new Bid { AuctionListingId = listingId, BuyerUserId = buyerB, AmountIncGst = 7500m, Status = BidStatus.Active });
+        var winner = Guid.NewGuid();
+        var secondBidder = Guid.NewGuid();
+        await repo.AddAsync(new Bid { AuctionListingId = listingId, BuyerUserId = secondBidder, AmountIncGst = 5000m, Status = BidStatus.Outbid });
+        await repo.AddAsync(new Bid { AuctionListingId = listingId, BuyerUserId = winner, AmountIncGst = 7500m, Status = BidStatus.Active });
 
-        var second = await repo.GetSecondHighestBidAsync(listingId);
+        var second = await repo.GetSecondHighestBidAsync(listingId, winnerBuyerUserId: winner);
 
         second.Should().NotBeNull();
         second!.AmountIncGst.Should().Be(5000m);
+        second.BuyerUserId.Should().Be(secondBidder);
     }
 }

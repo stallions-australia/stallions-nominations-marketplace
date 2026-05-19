@@ -1,3 +1,5 @@
+using Stallions.Shared.Enums;
+
 namespace Stallions.Server.Data.Entities;
 
 public class Enquiry
@@ -6,7 +8,7 @@ public class Enquiry
     public Guid ListingId { get; set; }
     public Guid BuyerUserId { get; set; }
     public Guid StudFarmUserId { get; set; }
-    public string Status { get; set; } = "Open";
+    public EnquiryStatus Status { get; set; } = EnquiryStatus.Open;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ClosedAt { get; set; }
 

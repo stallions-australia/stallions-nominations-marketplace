@@ -6,7 +6,7 @@ public interface IBidRepository
 {
     Task<Bid?> GetByIdAsync(Guid id);
     Task<Bid?> GetHighestBidAsync(Guid auctionListingId);
-    Task<Bid?> GetSecondHighestBidAsync(Guid auctionListingId);
+    Task<Bid?> GetSecondHighestBidAsync(Guid auctionListingId, Guid winnerBuyerUserId);
     Task<IReadOnlyList<Bid>> GetByAuctionListingIdAsync(Guid auctionListingId);
     Task<IReadOnlyList<Bid>> GetByBuyerIdAsync(Guid buyerUserId);
     Task<Bid> AddAsync(Bid bid);

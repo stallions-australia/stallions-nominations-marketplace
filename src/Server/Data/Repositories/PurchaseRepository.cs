@@ -33,9 +33,4 @@ public class PurchaseRepository : IPurchaseRepository
         await _db.SaveChangesAsync();
     }
 
-    public async Task DeleteAsync(Purchase purchase)
-    {
-        _db.Purchases.Remove(purchase);
-        await _db.SaveChangesAsync();
-    }
 }

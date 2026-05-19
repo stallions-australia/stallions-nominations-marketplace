@@ -4,5 +4,6 @@ public enum PurchaseStatus
 {
     Pending,
     Completed,
-    Refunded
+    Refunded,
+    Voided
 }
