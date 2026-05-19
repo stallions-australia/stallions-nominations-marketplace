@@ -6,6 +6,13 @@ param environmentName string
 
 param location string = 'australiaeast'
 
+@secure()
+param sqlAdminPassword string
+
+param sqlAdminLogin string = 'sqladmin'
+
+param developerIpAddress string = ''
+
 var tags = {
   'azd-env-name': environmentName
   project: 'stallions-nominations-marketplace'
@@ -18,3 +25,92 @@ resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   location: location
   tags: tags
 }
+
+module monitoring './modules/monitoring.bicep' = {
+  name: 'monitoring'
+  scope: rg
+  params: {
+    environmentName: environmentName
+    location: location
+    tags: tags
+  }
+}
+
+module storage './modules/storage.bicep' = {
+  name: 'storage'
+  scope: rg
+  params: {
+    environmentName: environmentName
+    location: location
+    tags: tags
+  }
+}
+
+module sql './modules/sql.bicep' = {
+  name: 'sql'
+  scope: rg
+  params: {
+    environmentName: environmentName
+    location: location
+    tags: tags
+    sqlAdminLogin: sqlAdminLogin
+    sqlAdminPassword: sqlAdminPassword
+    developerIpAddress: developerIpAddress
+  }
+}
+
+module keyvault './modules/keyvault.bicep' = {
+  name: 'keyvault'
+  scope: rg
+  params: {
+    environmentName: environmentName
+    location: location
+    tags: tags
+  }
+}
+
+module appservice './modules/appservice.bicep' = {
+  name: 'appservice'
+  scope: rg
+  params: {
+    environmentName: environmentName
+    location: location
+    tags: tags
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    keyVaultUri: keyvault.outputs.keyVaultUri
+  }
+}
+
+module functions './modules/functions.bicep' = {
+  name: 'functions'
+  scope: rg
+  params: {
+    environmentName: environmentName
+    location: location
+    tags: tags
+    storageAccountName: storage.outputs.storageAccountName
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    keyVaultUri: keyvault.outputs.keyVaultUri
+  }
+}
+
+module rbac './modules/keyvault-rbac.bicep' = {
+  name: 'rbac'
+  scope: rg
+  params: {
+    keyVaultName: keyvault.outputs.keyVaultName
+    storageAccountName: storage.outputs.storageAccountName
+    appServicePrincipalId: appservice.outputs.principalId
+    functionAppPrincipalId: functions.outputs.principalId
+  }
+}
+
+output AZURE_RESOURCE_GROUP string = resourceGroupName
+output AZURE_APP_SERVICE_NAME string = appservice.outputs.appServiceName
+output AZURE_FUNCTION_APP_NAME string = functions.outputs.functionAppName
+output AZURE_KEY_VAULT_NAME string = keyvault.outputs.keyVaultName
+output AZURE_KEY_VAULT_URI string = keyvault.outputs.keyVaultUri
+output AZURE_SQL_SERVER_FQDN string = sql.outputs.sqlServerFqdn
+output AZURE_SQL_DATABASE_NAME string = sql.outputs.sqlDatabaseName
+output AZURE_STORAGE_ACCOUNT_NAME string = storage.outputs.storageAccountName
+output AZURE_APP_INSIGHTS_CONNECTION_STRING string = monitoring.outputs.appInsightsConnectionString
