@@ -2,7 +2,7 @@ param environmentName string
 param location string
 param tags object
 
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: 'log-stallions-noms-${environmentName}'
   location: location
   tags: tags
@@ -10,7 +10,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
     sku: {
       name: 'PerGB2018'
     }
-    retentionInDays: 30
+    retentionInDays: 90
   }
 }
 
