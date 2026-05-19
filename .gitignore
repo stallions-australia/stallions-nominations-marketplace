@@ -1,2 +1,9 @@
 .azure/**/.env
 .superpowers/
+
+# .NET build output
+bin/
+obj/
+*.user
+.vs/
+

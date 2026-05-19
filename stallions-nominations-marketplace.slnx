@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/functions/">
+    <Project Path="functions/Stallions.Functions.csproj" />
+  </Folder>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Client/">
+    <Project Path="src/Client/Stallions.Client.csproj" />
+  </Folder>
+  <Folder Name="/src/Server/">
+    <Project Path="src/Server/Stallions.Server.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/Stallions.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Server.Tests/">
+    <Project Path="tests/Server.Tests/Stallions.Server.Tests.csproj" />
+  </Folder>
+</Solution>
