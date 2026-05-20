@@ -5,6 +5,7 @@ using Stallions.Server.Auth;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
+using Stallions.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,7 +41,7 @@ builder.Services.AddScoped<IEnquiryRepository, EnquiryRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 
 // Services (will be uncommented as Tasks 3–11 are completed)
-// builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUserService, UserService>();
 // builder.Services.AddScoped<ISeasonService, SeasonService>();
 // builder.Services.AddScoped<IStallionService, StallionService>();
 // builder.Services.AddScoped<IListingService, ListingService>();
