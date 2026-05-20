@@ -15,7 +15,10 @@ public class SeasonsController : ControllerBase
     [HttpGet]
     [AllowAnonymous]
     public async Task<IActionResult> GetAll()
-        => Ok((await _seasons.GetAllAsync()).Value);
+    {
+        var r = await _seasons.GetAllAsync();
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
 
     [HttpGet("current")]
     [AllowAnonymous]

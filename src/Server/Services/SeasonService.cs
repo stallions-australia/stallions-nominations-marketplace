@@ -28,11 +28,14 @@ public class SeasonService : ISeasonService
 
     public async Task<ServiceResult<SeasonDto>> CreateAsync(CreateSeasonRequest request)
     {
+        var name = request.Name.Trim();
+        if (string.IsNullOrEmpty(name))
+            return ServiceResult<SeasonDto>.BadRequest("Season name cannot be empty.");
         if (request.EndDate <= request.StartDate)
             return ServiceResult<SeasonDto>.BadRequest("End date must be after start date.");
         var season = new Season
         {
-            Name = request.Name.Trim(),
+            Name = name,
             StartDate = request.StartDate,
             EndDate = request.EndDate
         };
@@ -42,11 +45,14 @@ public class SeasonService : ISeasonService
 
     public async Task<ServiceResult<SeasonDto>> UpdateAsync(Guid id, UpdateSeasonRequest request)
     {
+        var name = request.Name.Trim();
+        if (string.IsNullOrEmpty(name))
+            return ServiceResult<SeasonDto>.BadRequest("Season name cannot be empty.");
         var season = await _repo.GetByIdAsync(id);
         if (season == null) return ServiceResult<SeasonDto>.NotFound();
         if (request.EndDate <= request.StartDate)
             return ServiceResult<SeasonDto>.BadRequest("End date must be after start date.");
-        season.Name = request.Name.Trim();
+        season.Name = name;
         season.StartDate = request.StartDate;
         season.EndDate = request.EndDate;
         await _repo.UpdateAsync(season);
@@ -71,7 +77,8 @@ public class SeasonService : ISeasonService
 
     public async Task<ServiceResult> CloseSeasonAsync(Guid id)
     {
-        await _users.GetOrCreateCurrentUserAsync();
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null) return ServiceResult.Forbidden();
         var season = await _repo.GetByIdAsync(id);
         if (season == null) return ServiceResult.NotFound("Season not found.");
         season.IsOpen = false;
