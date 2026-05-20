@@ -42,7 +42,7 @@ builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 
 // Services (will be uncommented as Tasks 3–11 are completed)
 builder.Services.AddScoped<IUserService, UserService>();
-// builder.Services.AddScoped<ISeasonService, SeasonService>();
+builder.Services.AddScoped<ISeasonService, SeasonService>();
 // builder.Services.AddScoped<IStallionService, StallionService>();
 // builder.Services.AddScoped<IListingService, ListingService>();
 // builder.Services.AddScoped<IBidService, BidService>();
