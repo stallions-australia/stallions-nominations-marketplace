@@ -13,7 +13,12 @@ public class PurchaseDto
     public string MareName { get; set; } = string.Empty;
     public string? MareRegistration { get; set; }
     public string? MareBreed { get; set; }
+    public string? PaymentProvider { get; set; }
+    public string? PaymentReference { get; set; }
+    public DateTime? PaidAt { get; set; }
     public string Status { get; set; } = string.Empty;
+    public decimal? RefundAmount { get; set; }
+    public DateTime? RefundedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
