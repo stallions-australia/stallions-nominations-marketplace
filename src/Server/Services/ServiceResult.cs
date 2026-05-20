@@ -10,6 +10,7 @@ public sealed class ServiceResult
     { Succeeded = succeeded; Error = error; HttpStatusCode = status; }
 
     public static ServiceResult Ok() => new(true, null, 200);
+    public static ServiceResult Unauthorized(string error = "Authentication required") => new(false, error, 401);
     public static ServiceResult NotFound(string error = "Not found") => new(false, error, 404);
     public static ServiceResult Forbidden(string error = "Access denied") => new(false, error, 403);
     public static ServiceResult BadRequest(string error) => new(false, error, 400);
@@ -28,6 +29,7 @@ public sealed class ServiceResult<T>
 
     public static ServiceResult<T> Ok(T value) => new(true, value, null, 200);
     public static ServiceResult<T> Created(T value) => new(true, value, null, 201);
+    public static ServiceResult<T> Unauthorized(string error = "Authentication required") => new(false, default, error, 401);
     public static ServiceResult<T> NotFound(string error = "Not found") => new(false, default, error, 404);
     public static ServiceResult<T> Forbidden(string error = "Access denied") => new(false, default, error, 403);
     public static ServiceResult<T> BadRequest(string error) => new(false, default, error, 400);

@@ -5,6 +5,6 @@ public interface ICurrentUserService
     string? EntraObjectId { get; }
     string? Email { get; }
     string? DisplayName { get; }
-    string? EntraRole { get; }
+    IReadOnlyList<string> Roles { get; }
     bool IsAuthenticated { get; }
 }

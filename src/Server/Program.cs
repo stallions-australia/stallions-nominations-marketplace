@@ -5,7 +5,6 @@ using Stallions.Server.Auth;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
-using Stallions.Server.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 

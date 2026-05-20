@@ -24,7 +24,9 @@ public class CurrentUserService : ICurrentUserService
         User?.FindFirst("name")?.Value
         ?? User?.FindFirst(ClaimTypes.Name)?.Value;
 
-    public string? EntraRole => User?.FindFirst(ClaimTypes.Role)?.Value;
+    public IReadOnlyList<string> Roles =>
+        User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList().AsReadOnly()
+        ?? (IReadOnlyList<string>)[];
 
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated ?? false;
 }
