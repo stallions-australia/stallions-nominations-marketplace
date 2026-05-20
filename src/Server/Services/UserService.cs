@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Stallions.Server.Auth;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
@@ -10,11 +11,13 @@ public class UserService : IUserService
 {
     private readonly IUserRepository _repo;
     private readonly ICurrentUserService _currentUser;
+    private readonly IAuditLogRepository _auditRepo;
 
-    public UserService(IUserRepository repo, ICurrentUserService currentUser)
+    public UserService(IUserRepository repo, ICurrentUserService currentUser, IAuditLogRepository auditRepo)
     {
         _repo = repo;
         _currentUser = currentUser;
+        _auditRepo = auditRepo;
     }
 
     public async Task<User?> GetOrCreateCurrentUserAsync()
@@ -26,13 +29,10 @@ public class UserService : IUserService
         if (user != null) return user;
 
         // First login — provision user from Entra claims
-        var roleStr = _currentUser.Roles.FirstOrDefault() ?? "Buyer";
-        var role = roleStr switch
-        {
-            "Staff" => UserRole.Staff,
-            "StudFarmAdmin" => UserRole.StudFarmAdmin,
-            _ => UserRole.Buyer
-        };
+        // Priority-order role selection: Staff > StudFarmAdmin > Buyer
+        var role = _currentUser.Roles.Contains("Staff") ? UserRole.Staff
+                 : _currentUser.Roles.Contains("StudFarmAdmin") ? UserRole.StudFarmAdmin
+                 : UserRole.Buyer;
         var status = role == UserRole.Buyer ? UserStatus.PendingVerification : UserStatus.Active;
 
         user = new User
@@ -44,7 +44,16 @@ public class UserService : IUserService
             Status = status,
             VerifiedAt = role != UserRole.Buyer ? DateTime.UtcNow : null
         };
-        return await _repo.AddAsync(user);
+
+        try
+        {
+            return await _repo.AddAsync(user);
+        }
+        catch (DbUpdateException)
+        {
+            // Concurrent first-login: another request inserted the same user — fetch the row that won
+            return await _repo.GetByEntraObjectIdAsync(entraOid);
+        }
     }
 
     public async Task<ServiceResult<UserDto>> GetCurrentUserAsync()
@@ -61,6 +70,8 @@ public class UserService : IUserService
     {
         var user = await GetOrCreateCurrentUserAsync();
         if (user == null) return ServiceResult<UserDto>.Forbidden();
+        if (user.Status == UserStatus.Suspended)
+            return ServiceResult<UserDto>.Forbidden("Account is suspended.");
         if (string.IsNullOrWhiteSpace(request.DisplayName))
             return ServiceResult<UserDto>.BadRequest("Display name is required.");
         user.DisplayName = request.DisplayName.Trim();
@@ -91,10 +102,19 @@ public class UserService : IUserService
 
     public async Task<ServiceResult> SuspendUserAsync(Guid id)
     {
+        var caller = await GetOrCreateCurrentUserAsync();
+        if (caller == null) return ServiceResult.Forbidden();
         var target = await _repo.GetByIdAsync(id);
         if (target == null) return ServiceResult.NotFound("User not found.");
+        if (target.Id == caller.Id) return ServiceResult.BadRequest("Cannot suspend your own account.");
         target.Status = UserStatus.Suspended;
         await _repo.UpdateAsync(target);
+        await _auditRepo.LogAsync(
+            entityType: "User",
+            entityId: id,
+            action: "Suspend",
+            userId: caller.Id,
+            details: $"User {target.Email} suspended by {caller.Email}");
         return ServiceResult.Ok();
     }
 

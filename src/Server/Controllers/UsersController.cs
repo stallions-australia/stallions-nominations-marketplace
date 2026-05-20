@@ -34,7 +34,7 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> GetAll([FromQuery] UserRole? role, [FromQuery] UserStatus? status)
     {
         var r = await _users.GetAllAsync(role, status);
-        return Ok(r.Value);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
     [HttpPost("{id:guid}/verify")]

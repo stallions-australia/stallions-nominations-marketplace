@@ -13,7 +13,8 @@ public class UserServiceTests
 {
     private readonly Mock<IUserRepository> _repoMock = new();
     private readonly Mock<ICurrentUserService> _currentUserMock = new();
-    private UserService CreateSut() => new(_repoMock.Object, _currentUserMock.Object);
+    private readonly Mock<IAuditLogRepository> _auditRepoMock = new();
+    private UserService CreateSut() => new(_repoMock.Object, _currentUserMock.Object, _auditRepoMock.Object);
 
     [Fact]
     public async Task GetCurrentUser_WhenUserExists_ReturnsDto()
@@ -67,7 +68,10 @@ public class UserServiceTests
 
         result.Succeeded.Should().BeTrue();
         _repoMock.Verify(r => r.UpdateAsync(It.Is<User>(u =>
-            u.Id == buyer.Id && u.Status == UserStatus.Active && u.VerifiedAt.HasValue)), Times.Once);
+            u.Id == buyer.Id &&
+            u.Status == UserStatus.Active &&
+            u.VerifiedAt.HasValue &&
+            u.VerifiedByUserId == staff.Id)), Times.Once);
     }
 
     [Fact]
@@ -80,6 +84,9 @@ public class UserServiceTests
         _currentUserMock.Setup(s => s.IsAuthenticated).Returns(true);
         _repoMock.Setup(r => r.GetByEntraObjectIdAsync(staffId)).ReturnsAsync(staff);
         _repoMock.Setup(r => r.GetByIdAsync(buyer.Id)).ReturnsAsync(buyer);
+        _auditRepoMock.Setup(a => a.LogAsync(
+            It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
 
         var result = await CreateSut().SuspendUserAsync(buyer.Id);
 
