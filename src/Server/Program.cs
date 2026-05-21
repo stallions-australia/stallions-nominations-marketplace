@@ -48,7 +48,7 @@ builder.Services.AddScoped<IListingService, ListingService>();
 builder.Services.AddScoped<IBidService, BidService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 builder.Services.AddScoped<INominationBindingService, NominationBindingService>();
-// builder.Services.AddScoped<IEnquiryService, EnquiryService>();
+builder.Services.AddScoped<IEnquiryService, EnquiryService>();
 // builder.Services.AddScoped<IAdminService, AdminService>();
 
 var app = builder.Build();
