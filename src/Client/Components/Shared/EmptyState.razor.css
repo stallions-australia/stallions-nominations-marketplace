@@ -1,0 +1,8 @@
+.empty-state {
+    text-align: center;
+    padding: var(--space-16) var(--space-8);
+    color: var(--text-muted);
+}
+.empty-state-icon    { font-size: 3rem; margin-bottom: var(--space-4); }
+.empty-state-message { font-size: var(--font-size-lg); margin-bottom: var(--space-6); }
+.empty-state-action  { margin-top: var(--space-4); }

@@ -1,0 +1,31 @@
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="error-message" role="alert">
+        <span class="error-icon">&#9888;</span>
+        <span>@Message</span>
+        @if (OnRetry.HasDelegate)
+        {
+            <button class="btn btn-sm btn-outline" type="button" @onclick="OnRetry">Try again</button>
+        }
+    </div>
+}
+
+<style>
+    .error-message {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: var(--radius-md);
+        padding: var(--space-4);
+        font-size: var(--font-size-sm);
+        color: var(--danger);
+    }
+    .error-icon { font-size: 1.1em; }
+</style>
+
+@code {
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+}
