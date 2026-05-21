@@ -38,4 +38,16 @@ public class NavBarTests : TestContext
 
         cut.Find(".navbar-drawer").Should().NotBeNull();
     }
+
+    [Fact]
+    public void NavBar_BackdropClick_ClosesDrawer()
+    {
+        this.AddTestAuthorization();
+        var cut = RenderComponent<NavBar>();
+        cut.Find("button.navbar-hamburger").Click();  // open drawer
+
+        cut.Find(".navbar-backdrop").Click();          // click backdrop
+
+        cut.FindAll(".navbar-drawer").Should().BeEmpty();
+    }
 }

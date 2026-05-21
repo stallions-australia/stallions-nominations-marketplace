@@ -1,3 +1,14 @@
+.page-wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+}
+
+.content-area {
+    flex: 1;
+    padding-top: var(--nav-height);
+}
+
 .error-boundary {
     background: var(--white);
     border: 1px solid var(--border);

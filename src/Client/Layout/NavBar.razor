@@ -25,7 +25,7 @@
             </AuthorizeView>
         </div>
 
-        <button class="navbar-hamburger mobile-only" @onclick="ToggleDrawer" aria-label="Menu">
+        <button class="navbar-hamburger mobile-only" type="button" @onclick="ToggleDrawer" aria-label="Menu" aria-expanded="@_drawerOpen">
             <span></span>
             <span></span>
             <span></span>
@@ -57,5 +57,9 @@
     private bool _drawerOpen;
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
     private void CloseDrawer()  => _drawerOpen = false;
-    private void SignOut()      => Nav.NavigateToLogout("authentication/logout");
+    private void SignOut()
+    {
+        CloseDrawer();
+        Nav.NavigateToLogout("authentication/logout");
+    }
 }

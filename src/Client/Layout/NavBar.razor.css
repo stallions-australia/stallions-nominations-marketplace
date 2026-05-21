@@ -34,7 +34,7 @@
 .navbar-hamburger {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: var(--space-1);
     background: none;
     border: none;
     cursor: pointer;
