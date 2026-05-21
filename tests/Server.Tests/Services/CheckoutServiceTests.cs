@@ -1,6 +1,9 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Moq;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Services;
@@ -25,9 +28,19 @@ public class CheckoutServiceTests
         RefundPolicy = "90% refund policy."
     });
 
+    private static AppDbContext CreateInMemoryDb()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        return new AppDbContext(options);
+    }
+
     private CheckoutService CreateSut() => new(
         _listingRepoMock.Object, _bidRepoMock.Object, _purchaseRepoMock.Object,
-        _bindingRepoMock.Object, _auditRepoMock.Object, _usersMock.Object, _options);
+        _bindingRepoMock.Object, _auditRepoMock.Object, _usersMock.Object, _options,
+        CreateInMemoryDb());
 
     private static User VerifiedBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };

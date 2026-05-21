@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
@@ -16,6 +19,7 @@ public class CheckoutService : ICheckoutService
     private readonly IAuditLogRepository _auditRepo;
     private readonly IUserService _users;
     private readonly IOptions<CheckoutOptions> _options;
+    private readonly AppDbContext _db;
 
     public CheckoutService(
         IListingRepository listingRepo,
@@ -24,7 +28,8 @@ public class CheckoutService : ICheckoutService
         INominationBindingRepository bindingRepo,
         IAuditLogRepository auditRepo,
         IUserService users,
-        IOptions<CheckoutOptions> options)
+        IOptions<CheckoutOptions> options,
+        AppDbContext db)
     {
         _listingRepo = listingRepo;
         _bidRepo = bidRepo;
@@ -33,6 +38,7 @@ public class CheckoutService : ICheckoutService
         _auditRepo = auditRepo;
         _users = users;
         _options = options;
+        _db = db;
     }
 
     public async Task<ServiceResult<CheckoutResponse>> InitiateCheckoutAsync(Guid listingId, CheckoutRequest request)
@@ -70,6 +76,9 @@ public class CheckoutService : ICheckoutService
         else if (listing is AuctionListing auction)
         {
             var winningBid = await _bidRepo.GetHighestBidAsync(auction.Id);
+            if (listing is AuctionListing auctionListing && auctionListing.EndDateTime > DateTime.UtcNow)
+                return ServiceResult<CheckoutResponse>.BadRequest("This auction has not ended yet. You cannot checkout until the auction closes.");
+
             if (winningBid == null || winningBid.BuyerUserId != caller.Id)
                 return ServiceResult<CheckoutResponse>.Forbidden("You are not the winning bidder on this auction.");
 
@@ -121,7 +130,10 @@ public class CheckoutService : ICheckoutService
 
     public async Task<ServiceResult> CompleteCheckoutAsync(Guid purchaseId, string? webhookSecret)
     {
-        if (webhookSecret != _options.Value.WebhookSecret)
+        if (string.IsNullOrEmpty(webhookSecret) ||
+            !CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(webhookSecret),
+                Encoding.UTF8.GetBytes(_options.Value.WebhookSecret)))
             return ServiceResult.Forbidden("Invalid webhook secret.");
 
         var purchase = await _purchaseRepo.GetByIdAsync(purchaseId);
@@ -131,40 +143,46 @@ public class CheckoutService : ICheckoutService
         if (purchase.Status != PurchaseStatus.Pending)
             return ServiceResult.BadRequest("Purchase is not in Pending status.");
 
-        purchase.Status = PurchaseStatus.Completed;
-        purchase.PaidAt = DateTime.UtcNow;
-        await _purchaseRepo.UpdateAsync(purchase);
-
-        var binding = new NominationBinding
+        using var tx = await _db.Database.BeginTransactionAsync();
+        try
         {
-            PurchaseId = purchase.Id,
-            Status = BindingStatus.PendingAcknowledgement
-        };
-        await _bindingRepo.AddAsync(binding);
+            purchase.Status = PurchaseStatus.Completed;
+            purchase.PaidAt = DateTime.UtcNow;
+            await _purchaseRepo.UpdateAsync(purchase);
 
-        var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
-        if (listing is FixedPriceListing fpl)
-        {
-            fpl.QuantityRemaining--;
-            if (fpl.QuantityRemaining <= 0)
+            var binding = new NominationBinding
             {
-                fpl.Status = ListingStatus.Sold;
-                fpl.ClosedAt = DateTime.UtcNow;
+                PurchaseId = purchase.Id,
+                Status = BindingStatus.PendingAcknowledgement
+            };
+            await _bindingRepo.AddAsync(binding);
+
+            var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
+            if (listing is FixedPriceListing fpl)
+            {
+                fpl.QuantityRemaining--;
+                if (fpl.QuantityRemaining <= 0) { fpl.Status = ListingStatus.Sold; fpl.ClosedAt = DateTime.UtcNow; }
+                await _listingRepo.UpdateAsync(fpl);
             }
-            await _listingRepo.UpdateAsync(fpl);
+            else if (listing is AuctionListing al)
+            {
+                al.WinningBidId = purchase.BidId;
+                al.Status = ListingStatus.Sold;
+                al.ClosedAt = DateTime.UtcNow;
+                await _listingRepo.UpdateAsync(al);
+            }
+
+            await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseCompleted", null,
+                $"{{\"PlatformFeeIncGst\":{purchase.PlatformFeeIncGst}}}");
+
+            await tx.CommitAsync();
+            return ServiceResult.Ok();
         }
-        else if (listing is AuctionListing auction)
+        catch
         {
-            auction.WinningBidId = purchase.BidId;
-            auction.Status = ListingStatus.Sold;
-            auction.ClosedAt = DateTime.UtcNow;
-            await _listingRepo.UpdateAsync(auction);
+            await tx.RollbackAsync();
+            throw;
         }
-
-        await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseCompleted",
-            null, $"{{\"PlatformFeeIncGst\":{purchase.PlatformFeeIncGst}}}");
-
-        return ServiceResult.Ok();
     }
 
     public async Task<ServiceResult<IReadOnlyList<PurchaseDto>>> GetPurchasesAsync()
@@ -198,6 +216,8 @@ public class CheckoutService : ICheckoutService
 
     public async Task<ServiceResult> RefundAsync(Guid id)
     {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+
         var purchase = await _purchaseRepo.GetByIdAsync(id);
         if (purchase == null)
             return ServiceResult.NotFound("Purchase not found.");
@@ -212,7 +232,7 @@ public class CheckoutService : ICheckoutService
         await _purchaseRepo.UpdateAsync(purchase);
 
         await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseRefunded",
-            null, $"{{\"RefundAmount\":{purchase.RefundAmount}}}");
+            caller?.Id, $"{{\"RefundAmount\":{purchase.RefundAmount}}}");
 
         return ServiceResult.Ok();
     }
