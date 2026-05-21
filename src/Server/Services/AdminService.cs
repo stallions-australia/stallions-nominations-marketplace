@@ -1,0 +1,123 @@
+using Stallions.Server.Auth;
+using Stallions.Server.Data.Repositories;
+using Stallions.Shared.DTOs.Admin;
+using Stallions.Shared.Enums;
+
+namespace Stallions.Server.Services;
+
+public class AdminService : IAdminService
+{
+    private readonly IListingRepository _listingRepo;
+    private readonly IPurchaseRepository _purchaseRepo;
+    private readonly IUserRepository _userRepo;
+    private readonly IAuditLogRepository _auditRepo;
+    private readonly ICurrentUserService _currentUser;
+
+    public AdminService(
+        IListingRepository listingRepo,
+        IPurchaseRepository purchaseRepo,
+        IUserRepository userRepo,
+        IAuditLogRepository auditRepo,
+        ICurrentUserService currentUser)
+    {
+        _listingRepo = listingRepo;
+        _purchaseRepo = purchaseRepo;
+        _userRepo = userRepo;
+        _auditRepo = auditRepo;
+        _currentUser = currentUser;
+    }
+
+    public async Task<ServiceResult<DashboardDto>> GetDashboardAsync()
+    {
+        var activeListings = await _listingRepo.GetActiveAsync();
+        var allPurchases = await _purchaseRepo.GetAllAsync();
+        var pendingUsers = await _userRepo.GetAllAsync(status: UserStatus.PendingVerification);
+
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+        var recentCompleted = allPurchases
+            .Where(p => p.Status == PurchaseStatus.Completed && p.PaidAt >= cutoff)
+            .ToList();
+
+        var dto = new DashboardDto
+        {
+            ActiveListingCount = activeListings.Count,
+            AuctionListingCount = activeListings.Count(l => l.ListingType == ListingType.Auction),
+            FixedPriceListingCount = activeListings.Count(l => l.ListingType == ListingType.FixedPrice),
+            RecentPurchaseCount = recentCompleted.Count,
+            RecentFeeRevenueIncGst = recentCompleted.Sum(p => p.PlatformFeeIncGst),
+            PendingVerificationCount = pendingUsers.Count
+        };
+        return ServiceResult<DashboardDto>.Ok(dto);
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<TransactionDto>>> GetTransactionsAsync()
+    {
+        var purchases = await _purchaseRepo.GetAllAsync();
+        var dtos = purchases.Select(p => new TransactionDto
+        {
+            PurchaseId = p.Id,
+            StallionName = string.Empty,     // Stallion not loaded by GetAllAsync; future enhancement
+            BuyerDisplayName = p.Buyer?.DisplayName ?? string.Empty,
+            StudFarmName = string.Empty,     // StudFarm not loaded by GetAllAsync; future enhancement
+            TotalPriceIncGst = p.TotalPriceIncGst,
+            PlatformFeeIncGst = p.PlatformFeeIncGst,
+            PlatformFeeExGst = p.PlatformFeeExGst,
+            PlatformFeeGst = p.PlatformFeeGst,
+            PaidAt = p.PaidAt,
+            Status = p.Status.ToString()
+        }).ToList();
+        return ServiceResult<IReadOnlyList<TransactionDto>>.Ok(dtos);
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<InvoiceDto>>> GetInvoicesAsync()
+    {
+        var purchases = await _purchaseRepo.GetAllAsync();
+        var completed = purchases
+            .Where(p => p.Status == PurchaseStatus.Completed && p.PaidAt.HasValue)
+            .ToList();
+
+        var invoices = completed
+            .GroupBy(p => p.Listing?.StudFarmId ?? Guid.Empty)
+            .Select(g => new InvoiceDto
+            {
+                StudFarmId = g.Key,
+                StudFarmName = string.Empty,    // StudFarm.Name not loaded; future enhancement
+                Lines = g.Select(p => new InvoiceLineDto
+                {
+                    PurchaseId = p.Id,
+                    StallionName = string.Empty, // Stallion not loaded; future enhancement
+                    SalePriceIncGst = p.TotalPriceIncGst,
+                    PlatformFeeIncGst = p.PlatformFeeIncGst,
+                    RemittanceAmount = p.TotalPriceIncGst - p.PlatformFeeIncGst,
+                    PaidAt = p.PaidAt!.Value
+                }).ToList(),
+                TotalSalesIncGst = g.Sum(p => p.TotalPriceIncGst),
+                TotalPlatformFeesIncGst = g.Sum(p => p.PlatformFeeIncGst),
+                TotalRemittance = g.Sum(p => p.TotalPriceIncGst - p.PlatformFeeIncGst)
+            }).ToList();
+
+        return ServiceResult<IReadOnlyList<InvoiceDto>>.Ok(invoices);
+    }
+
+    public async Task<ServiceResult> SetListingFeeAsync(Guid listingId, SetListingFeeRequest request)
+    {
+        if (request.PlatformFeePercent < 0 || request.PlatformFeePercent > 100)
+            return ServiceResult.BadRequest("Fee percent must be between 0 and 100.");
+
+        var listing = await _listingRepo.GetByIdAsync(listingId);
+        if (listing == null) return ServiceResult.NotFound("Listing not found.");
+
+        var previousFee = listing.PlatformFeePercent;
+        listing.PlatformFeePercent = request.PlatformFeePercent;
+        await _listingRepo.UpdateAsync(listing);
+
+        await _auditRepo.LogAsync(
+            "Listing",
+            listingId,
+            "SetListingFee",
+            null,   // Guid UserId not available from ICurrentUserService; OID stored in details
+            $"Fee changed from {previousFee?.ToString() ?? "unset"} to {request.PlatformFeePercent} by {_currentUser.EntraObjectId ?? "unknown"}");
+
+        return ServiceResult.Ok();
+    }
+}
