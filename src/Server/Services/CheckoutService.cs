@@ -217,6 +217,8 @@ public class CheckoutService : ICheckoutService
     public async Task<ServiceResult> RefundAsync(Guid id)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null) return ServiceResult.Forbidden();
+        if (caller.Role != UserRole.Staff) return ServiceResult.Forbidden("Only Staff can process refunds.");
 
         var purchase = await _purchaseRepo.GetByIdAsync(id);
         if (purchase == null)

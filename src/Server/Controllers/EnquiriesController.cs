@@ -42,7 +42,7 @@ public class EnquiriesController : ControllerBase
     }
 
     [HttpPost("api/enquiries/{id:guid}/close")]
-    [Authorize(Roles = "Buyer,Staff")]
+    [Authorize]
     public async Task<IActionResult> Close(Guid id)
     {
         var r = await _enquiries.CloseAsync(id);
