@@ -94,11 +94,11 @@ public class EnquiryService : IEnquiryService
         var enquiry = await _enquiryRepo.GetByIdAsync(enquiryId);
         if (enquiry == null) return ServiceResult<EnquiryMessageDto>.NotFound("Enquiry not found.");
 
-        if (enquiry.Status == EnquiryStatus.Closed)
-            return ServiceResult<EnquiryMessageDto>.BadRequest("This enquiry is closed.");
-
         if (!CanAccess(caller, enquiry))
             return ServiceResult<EnquiryMessageDto>.Forbidden("You are not a participant in this enquiry.");
+
+        if (enquiry.Status == EnquiryStatus.Closed)
+            return ServiceResult<EnquiryMessageDto>.BadRequest("This enquiry is closed.");
 
         var message = new EnquiryMessage
         {
