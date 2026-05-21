@@ -16,13 +16,15 @@ public class AdminServiceTests
     private readonly Mock<IUserRepository> _userRepoMock = new();
     private readonly Mock<IAuditLogRepository> _auditRepoMock = new();
     private readonly Mock<ICurrentUserService> _currentUserMock = new();
+    private readonly Mock<IUserService> _userServiceMock = new();
 
     private AdminService CreateSut() => new(
         _listingRepoMock.Object,
         _purchaseRepoMock.Object,
         _userRepoMock.Object,
         _auditRepoMock.Object,
-        _currentUserMock.Object);
+        _currentUserMock.Object,
+        _userServiceMock.Object);
 
     [Fact]
     public async Task SetListingFee_WhenListingExists_UpdatesFeeAndWritesAuditLog()
@@ -33,6 +35,7 @@ public class AdminServiceTests
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
         _currentUserMock.Setup(u => u.EntraObjectId).Returns("staff-oid");
+        _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
 
         var result = await CreateSut().SetListingFeeAsync(listing.Id, new SetListingFeeRequest { PlatformFeePercent = 2.5m });
 
@@ -51,6 +54,7 @@ public class AdminServiceTests
     {
         var id = Guid.NewGuid();
         _listingRepoMock.Setup(r => r.GetByIdAsync(id)).ReturnsAsync((Listing?)null);
+        _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
 
         var result = await CreateSut().SetListingFeeAsync(id, new SetListingFeeRequest { PlatformFeePercent = 2m });
 
@@ -63,6 +67,7 @@ public class AdminServiceTests
     {
         var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.Draft };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
 
         var result = await CreateSut().SetListingFeeAsync(listing.Id, new SetListingFeeRequest { PlatformFeePercent = 101m });
 

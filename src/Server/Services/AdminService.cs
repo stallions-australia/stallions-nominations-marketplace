@@ -12,19 +12,22 @@ public class AdminService : IAdminService
     private readonly IUserRepository _userRepo;
     private readonly IAuditLogRepository _auditRepo;
     private readonly ICurrentUserService _currentUser;
+    private readonly IUserService _users;
 
     public AdminService(
         IListingRepository listingRepo,
         IPurchaseRepository purchaseRepo,
         IUserRepository userRepo,
         IAuditLogRepository auditRepo,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        IUserService users)
     {
         _listingRepo = listingRepo;
         _purchaseRepo = purchaseRepo;
         _userRepo = userRepo;
         _auditRepo = auditRepo;
         _currentUser = currentUser;
+        _users = users;
     }
 
     public async Task<ServiceResult<DashboardDto>> GetDashboardAsync()
@@ -56,9 +59,9 @@ public class AdminService : IAdminService
         var dtos = purchases.Select(p => new TransactionDto
         {
             PurchaseId = p.Id,
-            StallionName = string.Empty,     // Stallion not loaded by GetAllAsync; future enhancement
+            StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
             BuyerDisplayName = p.Buyer?.DisplayName ?? string.Empty,
-            StudFarmName = string.Empty,     // StudFarm not loaded by GetAllAsync; future enhancement
+            StudFarmName = p.Listing?.StudFarm?.Name ?? string.Empty,
             TotalPriceIncGst = p.TotalPriceIncGst,
             PlatformFeeIncGst = p.PlatformFeeIncGst,
             PlatformFeeExGst = p.PlatformFeeExGst,
@@ -81,11 +84,11 @@ public class AdminService : IAdminService
             .Select(g => new InvoiceDto
             {
                 StudFarmId = g.Key,
-                StudFarmName = string.Empty,    // StudFarm.Name not loaded; future enhancement
+                StudFarmName = g.First().Listing?.StudFarm?.Name ?? string.Empty,
                 Lines = g.Select(p => new InvoiceLineDto
                 {
                     PurchaseId = p.Id,
-                    StallionName = string.Empty, // Stallion not loaded; future enhancement
+                    StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
                     SalePriceIncGst = p.TotalPriceIncGst,
                     PlatformFeeIncGst = p.PlatformFeeIncGst,
                     RemittanceAmount = p.TotalPriceIncGst - p.PlatformFeeIncGst,
@@ -101,6 +104,9 @@ public class AdminService : IAdminService
 
     public async Task<ServiceResult> SetListingFeeAsync(Guid listingId, SetListingFeeRequest request)
     {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null) return ServiceResult.Forbidden();
+
         if (request.PlatformFeePercent < 0 || request.PlatformFeePercent > 100)
             return ServiceResult.BadRequest("Fee percent must be between 0 and 100.");
 
@@ -115,8 +121,8 @@ public class AdminService : IAdminService
             "Listing",
             listingId,
             "SetListingFee",
-            null,   // Guid UserId not available from ICurrentUserService; OID stored in details
-            $"Fee changed from {previousFee?.ToString() ?? "unset"} to {request.PlatformFeePercent} by {_currentUser.EntraObjectId ?? "unknown"}");
+            caller.Id,
+            $"Fee changed from {previousFee?.ToString() ?? "unset"} to {request.PlatformFeePercent}");
 
         return ServiceResult.Ok();
     }

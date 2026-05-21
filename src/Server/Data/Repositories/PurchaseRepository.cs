@@ -17,8 +17,14 @@ public class PurchaseRepository : IPurchaseRepository
             .OrderByDescending(p => p.CreatedAt).ToListAsync();
 
     public async Task<IReadOnlyList<Purchase>> GetAllAsync() =>
-        await _db.Purchases.Include(p => p.Buyer).Include(p => p.Listing)
-            .OrderByDescending(p => p.CreatedAt).ToListAsync();
+        await _db.Purchases
+            .Include(p => p.Buyer)
+            .Include(p => p.Listing)
+                .ThenInclude(l => l.Stallion)
+            .Include(p => p.Listing)
+                .ThenInclude(l => l.StudFarm)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
 
     public async Task<Purchase> AddAsync(Purchase purchase)
     {
