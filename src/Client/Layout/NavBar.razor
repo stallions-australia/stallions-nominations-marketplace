@@ -1,0 +1,61 @@
+@inject NavigationManager Nav
+
+<nav class="navbar">
+    <div class="container navbar-inner">
+        <a href="/" class="navbar-brand">
+            <img src="images/logo.png" alt="Stallions Nominations Marketplace" class="navbar-logo" />
+        </a>
+
+        <div class="navbar-links desktop-only">
+            <NavLink href="/" Match="NavLinkMatch.All" class="nav-link">Browse</NavLink>
+        </div>
+
+        <div class="navbar-auth desktop-only">
+            <AuthorizeView>
+                <Authorized>
+                    <NavLink href="/my-bids"      class="nav-link">My Bids</NavLink>
+                    <NavLink href="/my-purchases" class="nav-link">My Purchases</NavLink>
+                    <NavLink href="/enquiries"    class="nav-link">Messages</NavLink>
+                    <button class="btn btn-outline btn-sm" @onclick="SignOut">Sign out</button>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="authentication/login"    class="btn btn-outline btn-sm">Sign in</a>
+                    <a href="authentication/register" class="btn btn-primary btn-sm">Register</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+
+        <button class="navbar-hamburger mobile-only" @onclick="ToggleDrawer" aria-label="Menu">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+    </div>
+
+    @if (_drawerOpen)
+    {
+        <div class="navbar-backdrop" @onclick="CloseDrawer"></div>
+        <div class="navbar-drawer">
+            <NavLink href="/" Match="NavLinkMatch.All" class="drawer-link" @onclick="CloseDrawer">Browse</NavLink>
+            <AuthorizeView>
+                <Authorized>
+                    <NavLink href="/my-bids"      class="drawer-link" @onclick="CloseDrawer">My Bids</NavLink>
+                    <NavLink href="/my-purchases" class="drawer-link" @onclick="CloseDrawer">My Purchases</NavLink>
+                    <NavLink href="/enquiries"    class="drawer-link" @onclick="CloseDrawer">Messages</NavLink>
+                    <button class="btn btn-outline btn-full" @onclick="SignOut">Sign out</button>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="authentication/login"    class="btn btn-outline btn-full" @onclick="CloseDrawer">Sign in</a>
+                    <a href="authentication/register" class="btn btn-primary btn-full"  @onclick="CloseDrawer">Register</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    }
+</nav>
+
+@code {
+    private bool _drawerOpen;
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void CloseDrawer()  => _drawerOpen = false;
+    private void SignOut()      => Nav.NavigateToLogout("authentication/logout");
+}

@@ -1,16 +1,21 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inherits LayoutComponentBase
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
-            @Body
-        </article>
+<div class="page-wrapper">
+    <NavBar />
+    <main class="content-area">
+        <ErrorBoundary>
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <div class="container" style="padding-top: var(--space-12)">
+                    <div class="error-boundary">
+                        <h2>Something went wrong</h2>
+                        <p>An unexpected error occurred. Please <a href="/">return to listings</a> or try again.</p>
+                    </div>
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
     </main>
+    <Footer />
 </div>

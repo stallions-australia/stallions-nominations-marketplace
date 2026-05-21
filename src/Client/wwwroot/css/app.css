@@ -313,3 +313,9 @@ h1:focus { outline: none; }
 @media (min-width: 1280px) {
   .container { padding-inline: var(--space-12); }
 }
+
+/* NavBar responsive — cannot use ::deep inside @media so these live in app.css */
+@media (min-width: 768px) {
+    .desktop-only { display: flex; }
+    .mobile-only  { display: none !important; }
+}

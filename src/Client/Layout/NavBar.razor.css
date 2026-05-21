@@ -1,0 +1,84 @@
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--nav-height);
+    background: var(--navy-dark);
+    z-index: 100;
+    box-shadow: 0 1px 0 rgba(255,255,255,.08);
+}
+
+.navbar-inner {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.navbar-logo    { height: 36px; width: auto; }
+.navbar-brand   { flex-shrink: 0; }
+.navbar-links   { display: flex; align-items: center; gap: var(--space-6); margin-left: auto; }
+.navbar-auth    { display: flex; align-items: center; gap: var(--space-3); }
+
+.nav-link {
+    color: rgba(255,255,255,.8);
+    text-decoration: none;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    transition: color .15s;
+}
+.nav-link:hover, .nav-link.active { color: var(--white); }
+
+/* Hamburger */
+.navbar-hamburger {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-2);
+    margin-left: auto;
+}
+.navbar-hamburger span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: var(--white);
+    border-radius: 2px;
+}
+
+/* Mobile drawer */
+.navbar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.4);
+    z-index: 101;
+}
+.navbar-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(280px, 85vw);
+    background: var(--white);
+    z-index: 102;
+    padding: var(--space-8) var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.drawer-link {
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-medium);
+    padding-block: var(--space-2);
+    border-bottom: 1px solid var(--border);
+}
+.drawer-link:hover { color: var(--navy); }
+
+/* Visibility helpers — media queries here because ::deep doesn't work in @media */
+.desktop-only { display: none; }
+.mobile-only  { display: flex; }
