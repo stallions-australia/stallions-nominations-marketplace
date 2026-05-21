@@ -86,6 +86,9 @@ public class ListingService : IListingService
         if (request.EndDateTime <= DateTime.UtcNow)
             return ServiceResult<ListingDto>.BadRequest("End date/time must be in the future.");
 
+        if (request.MinimumBidIncrement <= 0)
+            return ServiceResult<ListingDto>.BadRequest("Minimum bid increment must be greater than zero.");
+
         var listing = new AuctionListing
         {
             StallionId = request.StallionId,
@@ -213,6 +216,9 @@ public class ListingService : IListingService
         if (!listing.PlatformFeePercent.HasValue)
             return ServiceResult.BadRequest("A platform fee must be set by a Stallions Australia staff member before this listing can be published.");
 
+        if (listing is AuctionListing al && al.EndDateTime <= DateTime.UtcNow)
+            return ServiceResult.BadRequest("Auction end date must be in the future.");
+
         listing.Status = ListingStatus.Active;
         listing.PublishedAt = DateTime.UtcNow;
         await _listingRepo.UpdateAsync(listing);
@@ -221,12 +227,14 @@ public class ListingService : IListingService
 
     public async Task<ServiceResult> CancelListingAsync(Guid id)
     {
+        // Staff-only: authorization enforced at controller level via [Authorize(Roles = "Staff")]
+        // No ownership check required — staff may cancel any listing
         var listing = await _listingRepo.GetByIdAsync(id);
         if (listing == null)
             return ServiceResult.NotFound("Listing not found.");
 
-        if (listing.Status == ListingStatus.Cancelled)
-            return ServiceResult.BadRequest("Listing is already cancelled.");
+        if (listing.Status == ListingStatus.Cancelled || listing.Status == ListingStatus.Sold)
+            return ServiceResult.BadRequest($"Listing cannot be cancelled: status is {listing.Status}.");
 
         listing.Status = ListingStatus.Cancelled;
         listing.ClosedAt = DateTime.UtcNow;
@@ -271,7 +279,7 @@ public class ListingService : IListingService
                 ReservePrice = al.ReservePrice,
                 IsNoReserve = al.IsNoReserve,
                 MinimumBidIncrement = al.MinimumBidIncrement,
-                EndDateTime = al.EndDateTime
+                EndDateTime = DateTime.UtcNow.AddDays(7) // Stale end date not carried over — admin must update before publishing
             };
         }
         else if (listing is FixedPriceListing fpl)
