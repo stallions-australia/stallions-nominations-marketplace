@@ -356,7 +356,9 @@ public class ListingService : IListingService
                 AuctionClosesAt  = al.EndDateTime,
                 ReserveMet       = al.IsNoReserve
                     ? null
-                    : al.ReservePrice.HasValue && bidData.Highest >= al.ReservePrice
+                    : bidData.Highest.HasValue
+                        ? al.ReservePrice.HasValue && bidData.Highest >= al.ReservePrice
+                        : (bool?)null   // no bids yet — unknown, avoid showing "Reserve not met" on day 1
             };
         }
 

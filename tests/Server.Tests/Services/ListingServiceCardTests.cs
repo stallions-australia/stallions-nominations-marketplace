@@ -99,4 +99,45 @@ public class ListingServiceCardTests
         card.ReserveMet.Should().BeFalse(); // 7500 < 8000 reserve
         card.AuctionClosesAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(3), TimeSpan.FromSeconds(5));
     }
+
+    [Fact]
+    public async Task GetListingCardsAsync_Auction_ZeroBids_ReserveMetIsNull()
+    {
+        var studFarm = new StudFarm { Id = Guid.NewGuid(), Name = "Darley Australia" };
+        var stallion = new Stallion
+        {
+            Id = Guid.NewGuid(), Name = "Exceed And Excel",
+            Images = new List<StallionImage>()
+        };
+        var auctionId = Guid.NewGuid();
+        var listing = new AuctionListing
+        {
+            Id = auctionId,
+            StudFarm = studFarm, StudFarmId = studFarm.Id,
+            Stallion = stallion, StallionId = stallion.Id,
+            Season = new Season { Name = "2025 Season" },
+            StartingPrice = 5000m, ReservePrice = 10000m, IsNoReserve = false,
+            MinimumBidIncrement = 25m,
+            EndDateTime = DateTime.UtcNow.AddDays(5),
+            Status = ListingStatus.Active, ListingType = ListingType.Auction
+        };
+
+        _mockListingRepo
+            .Setup(r => r.GetActiveAsync(null, null, null))
+            .ReturnsAsync(new List<Listing> { listing });
+
+        // No entry for this auction ID — simulates zero bids
+        _mockListingRepo
+            .Setup(r => r.GetBidAggregatesAsync(It.Is<IEnumerable<Guid>>(ids => ids.Contains(auctionId))))
+            .ReturnsAsync(new Dictionary<Guid, (int Count, decimal? Highest)>());
+
+        var result = await CreateSut().GetListingCardsAsync(null, null, null);
+
+        result.Succeeded.Should().BeTrue();
+        var card = result.Value![0];
+        card.BidCount.Should().Be(0);
+        card.CurrentHighestBidIncGst.Should().BeNull();
+        // No bids yet — reserve status is unknown, must not show "Reserve not met"
+        card.ReserveMet.Should().BeNull();
+    }
 }
