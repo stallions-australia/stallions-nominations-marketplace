@@ -32,7 +32,7 @@ public class StallionsController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var r = await _stallions.GetByIdAsync(id);
+        var r = await _stallions.GetByIdAsync(id, User.IsInRole("Staff") || User.IsInRole("StudFarmAdmin"));
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 

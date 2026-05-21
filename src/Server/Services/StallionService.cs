@@ -28,7 +28,7 @@ public class StallionService : IStallionService
     public async Task<ServiceResult<IReadOnlyList<StallionSummaryDto>>> GetByStudFarmAsync()
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult<IReadOnlyList<StallionSummaryDto>>.Unauthorized();
+        if (caller == null) return ServiceResult<IReadOnlyList<StallionSummaryDto>>.Forbidden("Caller identity could not be resolved.");
 
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
         if (farm == null)
@@ -39,18 +39,18 @@ public class StallionService : IStallionService
         return ServiceResult<IReadOnlyList<StallionSummaryDto>>.Ok(dtos);
     }
 
-    public async Task<ServiceResult<StallionDto>> GetByIdAsync(Guid id)
+    public async Task<ServiceResult<StallionDto>> GetByIdAsync(Guid id, bool isStaff)
     {
         var stallion = await _repo.GetByIdAsync(id);
-        if (stallion == null || !stallion.IsActive)
-            return ServiceResult<StallionDto>.NotFound("Stallion not found.");
+        if (stallion == null) return ServiceResult<StallionDto>.NotFound("Stallion not found.");
+        if (!stallion.IsActive && !isStaff) return ServiceResult<StallionDto>.NotFound("Stallion not found.");
         return ServiceResult<StallionDto>.Ok(MapToDto(stallion));
     }
 
     public async Task<ServiceResult<StallionDto>> CreateAsync(CreateStallionRequest request)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult<StallionDto>.Unauthorized();
+        if (caller == null) return ServiceResult<StallionDto>.Forbidden("Caller identity could not be resolved.");
 
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
         if (farm == null)
@@ -79,7 +79,7 @@ public class StallionService : IStallionService
     public async Task<ServiceResult<StallionDto>> UpdateAsync(Guid id, UpdateStallionRequest request)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult<StallionDto>.Unauthorized();
+        if (caller == null) return ServiceResult<StallionDto>.Forbidden("Caller identity could not be resolved.");
 
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
         if (farm == null)
@@ -111,7 +111,7 @@ public class StallionService : IStallionService
     public async Task<ServiceResult<StallionDto>> SetPrimaryImageAsync(Guid stallionId, Guid imageId)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult<StallionDto>.Unauthorized();
+        if (caller == null) return ServiceResult<StallionDto>.Forbidden("Caller identity could not be resolved.");
 
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
         if (farm == null)
@@ -139,7 +139,7 @@ public class StallionService : IStallionService
     public async Task<ServiceResult> DeleteImageAsync(Guid stallionId, Guid imageId)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult.Unauthorized();
+        if (caller == null) return ServiceResult.Forbidden("Caller identity could not be resolved.");
 
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
         if (farm == null)
