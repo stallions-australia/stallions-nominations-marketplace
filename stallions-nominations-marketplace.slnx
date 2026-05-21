@@ -13,6 +13,9 @@
     <Project Path="src/Shared/Stallions.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/" />
+  <Folder Name="/tests/Client.Tests/">
+    <Project Path="tests/Client.Tests/Stallions.Client.Tests.csproj" />
+  </Folder>
   <Folder Name="/tests/Server.Tests/">
     <Project Path="tests/Server.Tests/Stallions.Server.Tests.csproj" />
   </Folder>
