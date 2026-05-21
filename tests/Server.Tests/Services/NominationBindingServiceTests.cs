@@ -111,4 +111,83 @@ public class NominationBindingServiceTests
         result.Succeeded.Should().BeFalse();
         result.HttpStatusCode.Should().Be(403);
     }
+
+    [Fact]
+    public async Task Acknowledge_WhenFarmAdminAcknowledges_TransitionsToAwaitingSignatures()
+    {
+        var farmId = Guid.NewGuid();
+        var farm = new StudFarm { Id = farmId };
+        var admin = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = farmId };
+        var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = Guid.NewGuid(), ListingId = listing.Id };
+        var binding = new NominationBinding
+        {
+            Id = Guid.NewGuid(), PurchaseId = purchase.Id,
+            Status = BindingStatus.PendingAcknowledgement
+        };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(admin);
+        _bindingRepoMock.Setup(r => r.GetByIdAsync(binding.Id)).ReturnsAsync(binding);
+        _purchaseRepoMock.Setup(r => r.GetByIdAsync(purchase.Id)).ReturnsAsync(purchase);
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(admin.Id)).ReturnsAsync(farm);
+
+        var result = await CreateSut().AcknowledgeAsync(binding.Id);
+
+        result.Succeeded.Should().BeTrue();
+        binding.Status.Should().Be(BindingStatus.AwaitingSignatures);
+        binding.AcknowledgedAt.Should().NotBeNull();
+        binding.AcknowledgedByUserId.Should().Be(admin.Id);
+    }
+
+    [Fact]
+    public async Task Acknowledge_WhenBuyerTries_ReturnsForbidden()
+    {
+        var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
+        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
+        var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = buyer.Id, ListingId = listing.Id };
+        var binding = new NominationBinding
+        {
+            Id = Guid.NewGuid(), PurchaseId = purchase.Id,
+            Status = BindingStatus.PendingAcknowledgement
+        };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        _bindingRepoMock.Setup(r => r.GetByIdAsync(binding.Id)).ReturnsAsync(binding);
+        _purchaseRepoMock.Setup(r => r.GetByIdAsync(purchase.Id)).ReturnsAsync(purchase);
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(buyer.Id)).ReturnsAsync((StudFarm?)null);
+
+        var result = await CreateSut().AcknowledgeAsync(binding.Id);
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Dispute_WhenCallerIsNull_ReturnsForbidden()
+    {
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync((User?)null);
+
+        var result = await CreateSut().DisputeAsync(Guid.NewGuid());
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Dispute_WhenStaffDisputes_SetsStatusDisputed()
+    {
+        var staff = new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active };
+        var binding = new NominationBinding
+        {
+            Id = Guid.NewGuid(), PurchaseId = Guid.NewGuid(),
+            Status = BindingStatus.AwaitingSignatures
+        };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(staff);
+        _bindingRepoMock.Setup(r => r.GetByIdAsync(binding.Id)).ReturnsAsync(binding);
+
+        var result = await CreateSut().DisputeAsync(binding.Id);
+
+        result.Succeeded.Should().BeTrue();
+        binding.Status.Should().Be(BindingStatus.Disputed);
+    }
 }

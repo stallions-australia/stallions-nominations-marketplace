@@ -62,18 +62,17 @@ public class NominationBindingService : INominationBindingService
             return ServiceResult<NominationBindingDto>.NotFound("Purchase not found.");
 
         var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
+        if (listing == null)
+            return ServiceResult<NominationBindingDto>.NotFound("Listing not found.");
+
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
 
-        if (farm == null || listing?.StudFarmId != farm.Id)
+        if (farm == null || listing.StudFarmId != farm.Id)
             return ServiceResult<NominationBindingDto>.Forbidden("Only the stud farm can acknowledge this binding.");
 
-        binding.Status = BindingStatus.Acknowledged;
+        binding.Status = BindingStatus.AwaitingSignatures;
         binding.AcknowledgedAt = DateTime.UtcNow;
         binding.AcknowledgedByUserId = caller.Id;
-        await _bindingRepo.UpdateAsync(binding);
-
-        // Transition to AwaitingSignatures — PDF generation triggered by Azure Function
-        binding.Status = BindingStatus.AwaitingSignatures;
         await _bindingRepo.UpdateAsync(binding);
 
         return ServiceResult<NominationBindingDto>.Ok(MapToDto(binding));
@@ -94,13 +93,15 @@ public class NominationBindingService : INominationBindingService
             return ServiceResult<NominationBindingDto>.NotFound("Purchase not found.");
 
         var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
+        if (listing == null)
+            return ServiceResult<NominationBindingDto>.NotFound("Listing not found.");
+
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
 
         var isBuyer = purchase.BuyerUserId == caller.Id;
-        var isFarm = farm != null && listing?.StudFarmId == farm.Id;
-        var isStaff = caller.Role == UserRole.Staff;
+        var isFarm = farm != null && listing.StudFarmId == farm.Id;
 
-        if (!isBuyer && !isFarm && !isStaff)
+        if (!isBuyer && !isFarm)
             return ServiceResult<NominationBindingDto>.Forbidden();
 
         var signingStatuses = new[]
@@ -141,6 +142,10 @@ public class NominationBindingService : INominationBindingService
 
     public async Task<ServiceResult<NominationBindingDto>> DisputeAsync(Guid id)
     {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null)
+            return ServiceResult<NominationBindingDto>.Forbidden("User account not found.");
+
         var binding = await _bindingRepo.GetByIdAsync(id);
         if (binding == null)
             return ServiceResult<NominationBindingDto>.NotFound("Binding not found.");
