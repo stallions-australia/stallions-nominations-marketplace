@@ -44,7 +44,7 @@ builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ISeasonService, SeasonService>();
 builder.Services.AddScoped<IStallionService, StallionService>();
-// builder.Services.AddScoped<IListingService, ListingService>();
+builder.Services.AddScoped<IListingService, ListingService>();
 // builder.Services.AddScoped<IBidService, BidService>();
 // builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 // builder.Services.AddScoped<INominationBindingService, NominationBindingService>();
