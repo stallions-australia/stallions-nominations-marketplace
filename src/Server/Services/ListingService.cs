@@ -29,7 +29,7 @@ public class ListingService : IListingService
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff)
     {
-        var listings = await _listingRepo.GetActiveAsync(seasonId, type);
+        var listings = await _listingRepo.GetActiveAsync(seasonId, null, type);
         var dtos = listings.Select(l => MapToDto(l, isStaff)).ToList();
         return ServiceResult<IReadOnlyList<ListingDto>>.Ok(dtos);
     }
@@ -305,6 +305,80 @@ public class ListingService : IListingService
 
         var created = await _listingRepo.AddAsync(newListing);
         return ServiceResult<ListingDto>.Created(MapToDto(created, true));
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<ListingCardDto>>> GetListingCardsAsync(
+        Guid? seasonId, Guid? studFarmId, string? type)
+    {
+        ListingType? listingType = type switch
+        {
+            "Auction"    => ListingType.Auction,
+            "FixedPrice" => ListingType.FixedPrice,
+            _            => null
+        };
+
+        var listings = await _listingRepo.GetActiveAsync(seasonId, studFarmId, listingType);
+
+        var auctionIds = listings.OfType<AuctionListing>().Select(l => l.Id).ToList();
+        var bidAggregates = auctionIds.Count > 0
+            ? await _listingRepo.GetBidAggregatesAsync(auctionIds)
+            : new Dictionary<Guid, (int Count, decimal? Highest)>();
+
+        var dtos = listings.Select(l => MapToCardDto(l, bidAggregates)).ToList();
+        return ServiceResult<IReadOnlyList<ListingCardDto>>.Ok(dtos);
+    }
+
+    private static ListingCardDto MapToCardDto(
+        Listing l,
+        Dictionary<Guid, (int Count, decimal? Highest)> bidAggregates)
+    {
+        var primaryImage = l.Stallion?.Images
+            .OrderByDescending(i => i.IsPrimary)
+            .ThenBy(i => i.DisplayOrder)
+            .FirstOrDefault()?.BlobPath;
+
+        if (l is AuctionListing al)
+        {
+            bidAggregates.TryGetValue(al.Id, out var bidData);
+            return new ListingCardDto
+            {
+                Id               = al.Id,
+                ListingType      = "Auction",
+                StallionId       = al.StallionId,
+                StallionName     = al.Stallion?.Name ?? string.Empty,
+                PrimaryImagePath = primaryImage,
+                StudFarmId       = al.StudFarmId,
+                StudFarmName     = al.StudFarm?.Name ?? string.Empty,
+                SeasonName       = al.Season?.Name,
+                PriceIncGst      = al.StartingPrice,
+                CurrentHighestBidIncGst = bidData.Highest,
+                BidCount         = bidData.Count,
+                AuctionClosesAt  = al.EndDateTime,
+                ReserveMet       = al.IsNoReserve
+                    ? null
+                    : al.ReservePrice.HasValue && bidData.Highest >= al.ReservePrice
+            };
+        }
+
+        if (l is FixedPriceListing fpl)
+        {
+            return new ListingCardDto
+            {
+                Id               = fpl.Id,
+                ListingType      = "FixedPrice",
+                StallionId       = fpl.StallionId,
+                StallionName     = fpl.Stallion?.Name ?? string.Empty,
+                PrimaryImagePath = primaryImage,
+                StudFarmId       = fpl.StudFarmId,
+                StudFarmName     = fpl.StudFarm?.Name ?? string.Empty,
+                SeasonName       = fpl.Season?.Name,
+                PriceIncGst      = fpl.PriceIncGst,
+                QuantityRemaining = fpl.QuantityRemaining,
+                TotalQuantity    = fpl.Quantity
+            };
+        }
+
+        throw new InvalidOperationException($"Unknown listing type: {l.GetType().Name}");
     }
 
     private static ListingDto MapToDto(Listing l, bool isStaff) => l switch

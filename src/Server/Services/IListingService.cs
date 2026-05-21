@@ -6,6 +6,7 @@ namespace Stallions.Server.Services;
 public interface IListingService
 {
     Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff);
+    Task<ServiceResult<IReadOnlyList<ListingCardDto>>> GetListingCardsAsync(Guid? seasonId, Guid? studFarmId, string? type);
     Task<ServiceResult<ListingDto>> GetByIdAsync(Guid id, bool isStaff);
     Task<ServiceResult<IReadOnlyList<ListingDto>>> GetMineAsync();
     Task<ServiceResult<ListingDto>> CreateAuctionListingAsync(CreateAuctionListingRequest request);

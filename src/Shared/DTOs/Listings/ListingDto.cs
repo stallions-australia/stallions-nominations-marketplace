@@ -1,5 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace Stallions.Shared.DTOs.Listings;
 
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "listingType")]
+[JsonDerivedType(typeof(AuctionListingDto), "Auction")]
+[JsonDerivedType(typeof(FixedPriceListingDto), "FixedPrice")]
 public class ListingDto
 {
     public Guid Id { get; set; }

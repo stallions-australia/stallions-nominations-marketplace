@@ -21,14 +21,36 @@ public class ListingRepository : IListingRepository
         await _db.FixedPriceListings.Include(l => l.Stallion).ThenInclude(s => s.Images)
             .FirstOrDefaultAsync(l => l.Id == id);
 
-    public async Task<IReadOnlyList<Listing>> GetActiveAsync(Guid? seasonId = null, ListingType? type = null)
+    public async Task<IReadOnlyList<Listing>> GetActiveAsync(
+        Guid? seasonId = null, Guid? studFarmId = null, ListingType? type = null)
     {
-        var query = _db.Listings.Where(l => l.Status == ListingStatus.Active)
+        var query = _db.Listings
+            .Where(l => l.Status == ListingStatus.Active)
             .Include(l => l.Stallion).ThenInclude(s => s.Images)
-            .Include(l => l.Season).AsQueryable();
-        if (seasonId.HasValue) query = query.Where(l => l.SeasonId == seasonId.Value);
-        if (type.HasValue) query = query.Where(l => l.ListingType == type.Value);
+            .Include(l => l.Season)
+            .Include(l => l.StudFarm)   // Fix: was missing, caused empty StudFarmName
+            .AsQueryable();
+        if (seasonId.HasValue)   query = query.Where(l => l.SeasonId == seasonId.Value);
+        if (studFarmId.HasValue) query = query.Where(l => l.StudFarmId == studFarmId.Value);
+        if (type.HasValue)       query = query.Where(l => l.ListingType == type.Value);
         return await query.OrderByDescending(l => l.PublishedAt).ToListAsync();
+    }
+
+    public async Task<Dictionary<Guid, (int Count, decimal? Highest)>> GetBidAggregatesAsync(
+        IEnumerable<Guid> auctionIds)
+    {
+        var ids = auctionIds.ToList();
+        var rows = await _db.Bids
+            .Where(b => ids.Contains(b.AuctionListingId))
+            .GroupBy(b => b.AuctionListingId)
+            .Select(g => new
+            {
+                AuctionListingId = g.Key,
+                Count = g.Count(),
+                Highest = (decimal?)g.Max(b => b.AmountIncGst)
+            })
+            .ToListAsync();
+        return rows.ToDictionary(x => x.AuctionListingId, x => (x.Count, x.Highest));
     }
 
     public async Task<IReadOnlyList<Listing>> GetByStudFarmIdAsync(Guid studFarmId) =>

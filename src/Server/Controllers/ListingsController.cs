@@ -17,9 +17,12 @@ public class ListingsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> GetActive([FromQuery] Guid? seasonId, [FromQuery] ListingType? type)
+    public async Task<IActionResult> GetActive(
+        [FromQuery] Guid? seasonId,
+        [FromQuery] Guid? studFarmId,
+        [FromQuery] string? type)
     {
-        var r = await _listings.GetActiveAsync(seasonId, type, IsStaff);
+        var r = await _listings.GetListingCardsAsync(seasonId, studFarmId, type);
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
