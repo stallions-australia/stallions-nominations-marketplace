@@ -6,6 +6,7 @@ using Stallions.Shared.DTOs.Bids;
 namespace Stallions.Server.Controllers;
 
 [ApiController]
+[Route("api")]
 public class BidsController : ControllerBase
 {
     private readonly IBidService _bids;
@@ -13,7 +14,7 @@ public class BidsController : ControllerBase
     public BidsController(IBidService bids) => _bids = bids;
 
     // Public — amount only, no buyer identity
-    [HttpGet("api/listings/{id:guid}/bids/current")]
+    [HttpGet("listings/{id:guid}/bids/current")]
     [AllowAnonymous]
     public async Task<IActionResult> GetCurrent(Guid id)
     {
@@ -21,7 +22,7 @@ public class BidsController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
-    [HttpPost("api/listings/{id:guid}/bids")]
+    [HttpPost("listings/{id:guid}/bids")]
     [Authorize(Roles = "Buyer")]
     public async Task<IActionResult> PlaceBid(Guid id, [FromBody] PlaceBidRequest request)
     {
@@ -30,7 +31,7 @@ public class BidsController : ControllerBase
     }
 
     // Full history with buyer IDs — Staff only
-    [HttpGet("api/listings/{id:guid}/bids")]
+    [HttpGet("listings/{id:guid}/bids")]
     [Authorize(Roles = "Staff")]
     public async Task<IActionResult> GetHistory(Guid id)
     {
@@ -38,7 +39,7 @@ public class BidsController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
-    [HttpGet("api/bids/mine")]
+    [HttpGet("bids/mine")]
     [Authorize(Roles = "Buyer")]
     public async Task<IActionResult> GetMine()
     {

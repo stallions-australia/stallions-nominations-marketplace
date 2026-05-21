@@ -1,5 +1,7 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Moq;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Services;
@@ -13,7 +15,17 @@ public class BidServiceTests
     private readonly Mock<IBidRepository> _bidRepoMock = new();
     private readonly Mock<IListingRepository> _listingRepoMock = new();
     private readonly Mock<IUserService> _usersMock = new();
-    private BidService CreateSut() => new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object);
+
+    private static AppDbContext CreateInMemoryDb()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        return new AppDbContext(options);
+    }
+
+    private BidService CreateSut() => new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, CreateInMemoryDb());
 
     private static User ActiveBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
