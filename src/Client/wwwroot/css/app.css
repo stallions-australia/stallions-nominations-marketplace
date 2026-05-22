@@ -319,3 +319,11 @@ h1:focus { outline: none; }
     .desktop-only { display: flex; }
     .mobile-only  { display: none !important; }
 }
+
+/* ListingGrid breakpoints — ::deep doesn't work inside @media so these live here */
+@media (min-width: 640px) {
+    .listing-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1024px) {
+    .listing-grid { grid-template-columns: repeat(3, 1fr); }
+}

@@ -1,0 +1,9 @@
+<span class="price-display @(Large ? "price-display--large" : "")">@Amount.ToString("C0", AustralianCulture)</span>
+
+@code {
+    [Parameter, EditorRequired] public decimal Amount { get; set; }
+    [Parameter] public bool Large { get; set; }
+
+    private static readonly System.Globalization.CultureInfo AustralianCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+}

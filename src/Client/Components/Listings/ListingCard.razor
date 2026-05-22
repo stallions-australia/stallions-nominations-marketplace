@@ -1,0 +1,113 @@
+@inject NavigationManager Nav
+
+<article class="listing-card" @onclick="NavigateToListing" tabindex="0" role="button"
+         aria-label="@Listing.StallionName nomination">
+
+    <div class="card-image">
+        @if (!string.IsNullOrEmpty(Listing.PrimaryImagePath))
+        {
+            <img src="@Listing.PrimaryImagePath" alt="@Listing.StallionName" loading="lazy" />
+        }
+        else
+        {
+            <div class="card-image-placeholder"></div>
+        }
+        <div class="card-image-overlay"></div>
+
+        <span class="badge @GetBadgeClass()">@GetBadgeText()</span>
+
+        <div class="card-title-overlay">
+            <div class="card-stallion-name">@Listing.StallionName</div>
+            <div class="card-farm-name">@Listing.StudFarmName</div>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div class="card-price-row">
+            <div>
+                <PriceDisplay Amount="@GetDisplayPrice()" />
+                <span class="card-gst-label">inc. GST</span>
+            </div>
+            @if (Listing.ListingType == "Auction" && Listing.BidCount.HasValue)
+            {
+                <span class="card-meta">@Listing.BidCount bid@(Listing.BidCount != 1 ? "s" : "")</span>
+            }
+            @if (Listing.ListingType == "FixedPrice" && Listing.QuantityRemaining.HasValue)
+            {
+                <span class="card-meta @(Listing.QuantityRemaining <= 3 ? "card-meta--urgent" : "")">
+                    @Listing.QuantityRemaining remaining
+                </span>
+            }
+        </div>
+
+        <div class="progress-bar-track">
+            <div class="progress-bar-fill @GetProgressClass()" style="width: @(GetProgressWidthPct().ToString("F0"))%"></div>
+        </div>
+
+        @if (Listing.ListingType == "Auction" && Listing.AuctionClosesAt.HasValue)
+        {
+            <AuctionTimer ClosesAt="@Listing.AuctionClosesAt.Value" />
+        }
+
+        <div class="card-actions">
+            <button class="btn btn-primary btn-sm"
+                    @onclick:stopPropagation="true"
+                    @onclick="NavigateToListing">
+                @(Listing.ListingType == "Auction" ? "Place a bid" : "Purchase nomination")
+            </button>
+            <button class="btn btn-outline btn-sm"
+                    @onclick:stopPropagation="true"
+                    @onclick="HandleEnquire">
+                Enquire
+            </button>
+        </div>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public ListingCardDto Listing { get; set; } = null!;
+
+    private void NavigateToListing() => Nav.NavigateTo($"/listings/{Listing.Id}");
+    private void HandleEnquire()     => Nav.NavigateTo($"/listings/{Listing.Id}?enquire=1");
+
+    private bool IsEndingSoon() =>
+        Listing.AuctionClosesAt.HasValue &&
+        (Listing.AuctionClosesAt.Value - DateTime.UtcNow).TotalHours < 6;
+
+    private string GetBadgeClass() => Listing.ListingType == "Auction"
+        ? (IsEndingSoon() ? "badge-ending" : "badge-auction")
+        : "badge-buynow";
+
+    private string GetBadgeText() => Listing.ListingType == "Auction"
+        ? (IsEndingSoon() ? "Ending soon" : "Auction")
+        : "Buy Now";
+
+    private decimal GetDisplayPrice() =>
+        Listing.ListingType == "Auction" && Listing.CurrentHighestBidIncGst.HasValue
+            ? Listing.CurrentHighestBidIncGst.Value
+            : Listing.PriceIncGst;
+
+    private string GetProgressClass()
+    {
+        if (Listing.ListingType == "Auction")
+            return IsEndingSoon() ? "progress-bar-fill--urgent" : "progress-bar-fill--gold";
+        return Listing.QuantityRemaining <= 3 ? "progress-bar-fill--urgent" : "progress-bar-fill--navy";
+    }
+
+    private double GetProgressWidthPct()
+    {
+        if (Listing.ListingType == "Auction" && Listing.AuctionClosesAt.HasValue)
+        {
+            var remaining = Listing.AuctionClosesAt.Value - DateTime.UtcNow;
+            if (remaining.TotalSeconds <= 0) return 100;
+            var elapsed = TimeSpan.FromDays(7) - remaining;
+            return Math.Clamp(elapsed.TotalSeconds / TimeSpan.FromDays(7).TotalSeconds * 100, 5, 99);
+        }
+        if (Listing.TotalQuantity is > 0 && Listing.QuantityRemaining.HasValue)
+        {
+            var sold = Listing.TotalQuantity.Value - Listing.QuantityRemaining.Value;
+            return Math.Clamp((double)sold / Listing.TotalQuantity.Value * 100, 0, 100);
+        }
+        return 50;
+    }
+}

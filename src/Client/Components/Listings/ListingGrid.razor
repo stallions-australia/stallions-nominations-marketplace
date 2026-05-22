@@ -1,0 +1,23 @@
+@if (Listings is null)
+{
+    <LoadingSpinner Large="true" />
+}
+else if (!Listings.Any())
+{
+    <EmptyState Message="No nominations found" Icon="🐎">
+        <a href="/" class="btn btn-outline">Clear filters</a>
+    </EmptyState>
+}
+else
+{
+    <div class="listing-grid">
+        @foreach (var listing in Listings)
+        {
+            <ListingCard Listing="@listing" />
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ListingCardDto>? Listings { get; set; }
+}

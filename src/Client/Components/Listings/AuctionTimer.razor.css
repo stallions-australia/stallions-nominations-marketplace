@@ -1,0 +1,5 @@
+.auction-timer { display: flex; align-items: center; gap: var(--space-2); font-size: var(--font-size-sm); color: var(--text-secondary); }
+.timer-segment { font-weight: var(--font-weight-semibold); }
+.timer-segment small { font-weight: var(--font-weight-normal); margin-left: 1px; }
+.timer-sep { color: var(--border); }
+.auction-timer--urgent { color: var(--danger); }

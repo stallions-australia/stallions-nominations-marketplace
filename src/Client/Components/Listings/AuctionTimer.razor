@@ -1,0 +1,44 @@
+@implements IDisposable
+
+<div class="auction-timer @(IsUrgent ? "auction-timer--urgent" : "")">
+    @if (Days > 0)
+    {
+        <span class="timer-segment">@Days<small>d</small></span>
+        <span class="timer-sep">·</span>
+    }
+    <span class="timer-segment">@Hours<small>h</small></span>
+    <span class="timer-sep">·</span>
+    <span class="timer-segment">@Minutes<small>m</small></span>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DateTime ClosesAt { get; set; }
+
+    private int Days;
+    private int Hours;
+    private int Minutes;
+    private bool IsUrgent;
+    private System.Threading.Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        UpdateCountdown();
+        _timer = new System.Threading.Timer(
+            _ => InvokeAsync(() => { UpdateCountdown(); StateHasChanged(); }),
+            null,
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(30));
+    }
+
+    private void UpdateCountdown()
+    {
+        var remaining = ClosesAt - DateTime.UtcNow;
+        if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
+        IsUrgent = remaining.TotalHours < 6;
+        Days    = (int)remaining.TotalDays;
+        Hours   = remaining.Hours;
+        Minutes = remaining.Minutes;
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

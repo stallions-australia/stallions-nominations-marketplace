@@ -1,0 +1,17 @@
+<div class="filter-bar">
+    <div class="filter-pills">
+        <button class="filter-pill @(ActiveFilter == null ? "active" : "")"
+                @onclick="() => SetFilter(null)">All</button>
+        <button class="filter-pill @(ActiveFilter == "Auction" ? "active" : "")"
+                @onclick="@(() => SetFilter("Auction"))">Auctions</button>
+        <button class="filter-pill @(ActiveFilter == "FixedPrice" ? "active" : "")"
+                @onclick="@(() => SetFilter("FixedPrice"))">Buy Now</button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? ActiveFilter { get; set; }
+    [Parameter] public EventCallback<string?> OnFilterChanged { get; set; }
+
+    private Task SetFilter(string? filter) => OnFilterChanged.InvokeAsync(filter);
+}
