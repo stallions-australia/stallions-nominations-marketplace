@@ -13,10 +13,10 @@ BEGIN TRANSACTION;
 -- ── Seasons ──────────────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM Seasons WHERE Name = '2025 Season')
 BEGIN
-    INSERT INTO Seasons (Id, Name, Year, StartDate, EndDate, IsOpen, CreatedAt)
+    INSERT INTO Seasons (Id, Name, StartDate, EndDate, IsOpen, CreatedAt)
     VALUES (
         '11111111-0000-0000-0000-000000000001',
-        '2025 Season', 2025,
+        '2025 Season',
         '2025-08-01', '2026-01-31',
         1, GETUTCDATE()
     );
