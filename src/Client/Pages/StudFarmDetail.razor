@@ -1,0 +1,66 @@
+@page "/studfarms/{Id:guid}"
+@inject StudFarmApiService StudFarmApi
+@inject ListingApiService ListingApi
+
+<PageTitle>@(_farm?.Name ?? "Stud Farm") — Stallions Australia</PageTitle>
+
+@if (_farm is null && _error is null)
+{
+    <LoadingSpinner Large="true" />
+}
+else if (_error is not null)
+{
+    <div class="container" style="padding-top: var(--space-12)">
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    </div>
+}
+else if (_farm is not null)
+{
+    <div class="container" style="padding-block: var(--space-12)">
+        <h1 class="page-title">@_farm.Name</h1>
+        @if (!string.IsNullOrEmpty(_farm.Address))
+        {
+            <p class="text-secondary" style="margin-top: var(--space-2)">📍 @_farm.Address</p>
+        }
+        @if (!string.IsNullOrEmpty(_farm.ContactEmail))
+        {
+            <p class="text-secondary" style="margin-top: var(--space-2)">
+                <a href="mailto:@_farm.ContactEmail">@_farm.ContactEmail</a>
+            </p>
+        }
+        @if (!string.IsNullOrEmpty(_farm.ContactPhone))
+        {
+            <p class="text-secondary" style="margin-top: var(--space-2)">📞 @_farm.ContactPhone</p>
+        }
+
+        <h2 class="section-heading" style="margin-top: var(--space-10)">Available Nominations</h2>
+        <ListingGrid Listings="@_listings" />
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private StudFarmDto? _farm;
+    private IReadOnlyList<ListingCardDto>? _listings;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        try
+        {
+            _farm = await StudFarmApi.GetByIdAsync(Id);
+            _listings = await ListingApi.GetListingsAsync(studFarmId: Id);
+        }
+        catch (ApiException ex) when (ex.StatusCode == 404)
+        {
+            _error = "Stud farm not found.";
+        }
+        catch (ApiException)
+        {
+            _error = "Failed to load stud farm. Please try again.";
+        }
+    }
+}

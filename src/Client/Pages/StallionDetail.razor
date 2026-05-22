@@ -1,0 +1,82 @@
+@page "/stallions/{Id:guid}"
+@inject StallionApiService StallionApi
+@inject ListingApiService ListingApi
+
+<PageTitle>@(_stallion?.Name ?? "Stallion") — Stallions Australia</PageTitle>
+
+@if (_stallion is null && _error is null)
+{
+    <LoadingSpinner Large="true" />
+}
+else if (_error is not null)
+{
+    <div class="container" style="padding-top: var(--space-12)">
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    </div>
+}
+else if (_stallion is not null)
+{
+    <div class="profile-hero">
+        @if (!string.IsNullOrEmpty(_primaryImage))
+        {
+            <img src="@_primaryImage" alt="@_stallion.Name" class="profile-hero-img" loading="lazy" />
+        }
+        <div class="profile-hero-overlay"></div>
+        <div class="container profile-hero-text">
+            <h1>@_stallion.Name</h1>
+            @if (_stallion.YearOfBirth.HasValue)
+            {
+                <p>@_stallion.YearOfBirth — @(_stallion.Colour ?? "") Thoroughbred</p>
+            }
+        </div>
+    </div>
+
+    <div class="container" style="padding-block: var(--space-8)">
+        @if (!string.IsNullOrEmpty(_stallion.Description))
+        {
+            <p class="stallion-description">@_stallion.Description</p>
+        }
+
+        @if (_stallion.Sire is not null || _stallion.Dam is not null)
+        {
+            <div class="stallion-pedigree">
+                @if (_stallion.Sire is not null) { <span><strong>Sire:</strong> @_stallion.Sire</span> }
+                @if (_stallion.Dam is not null)  { <span><strong>Dam:</strong> @_stallion.Dam</span> }
+            </div>
+        }
+
+        <h2 class="section-heading" style="margin-top: var(--space-8)">Available Nominations</h2>
+        <ListingGrid Listings="@_listings" />
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private StallionDto? _stallion;
+    private string? _primaryImage;
+    private IReadOnlyList<ListingCardDto>? _listings;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        try
+        {
+            _stallion = await StallionApi.GetByIdAsync(Id);
+            _primaryImage = _stallion.Images.FirstOrDefault(i => i.IsPrimary)?.BlobPath
+                         ?? _stallion.Images.FirstOrDefault()?.BlobPath;
+            var all = await ListingApi.GetListingsAsync();
+            _listings = all.Where(l => l.StallionId == Id).ToList();
+        }
+        catch (ApiException ex) when (ex.StatusCode == 404)
+        {
+            _error = "Stallion not found.";
+        }
+        catch (ApiException)
+        {
+            _error = "Failed to load stallion. Please try again.";
+        }
+    }
+}

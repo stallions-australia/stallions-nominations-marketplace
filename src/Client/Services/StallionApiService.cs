@@ -9,7 +9,7 @@ public class StallionApiService
     private readonly HttpClient _http;
     public StallionApiService(HttpClient http) => _http = http;
 
-    public async Task<StallionDto> GetByIdAsync(Guid id)
+    public virtual async Task<StallionDto> GetByIdAsync(Guid id)
     {
         var response = await _http.GetAsync($"api/stallions/{id}");
         if (response.StatusCode == HttpStatusCode.NotFound)
