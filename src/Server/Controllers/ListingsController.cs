@@ -74,6 +74,22 @@ public class ListingsController : ControllerBase
         return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpPost("{id:guid}/unpublish")]
+    [Authorize(Roles = "StudFarmAdmin")]
+    public async Task<IActionResult> Unpublish(Guid id)
+    {
+        var r = await _listings.UnpublishListingAsync(id);
+        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPost("{id:guid}/close")]
+    [Authorize(Roles = "StudFarmAdmin")]
+    public async Task<IActionResult> Close(Guid id)
+    {
+        var r = await _listings.CloseByStudFarmAsync(id);
+        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = "Staff")]
     public async Task<IActionResult> Cancel(Guid id)

@@ -86,7 +86,9 @@ public class StallionService : IStallionService
             return ServiceResult<StallionDto>.NotFound("No stud farm found for the current user.");
 
         var stallion = await _repo.GetByIdAsync(id);
-        if (stallion == null || !stallion.IsActive)
+        // Allow editing inactive stallions (needed for reactivation).
+        // Only reject if the stallion doesn't exist at all.
+        if (stallion == null)
             return ServiceResult<StallionDto>.NotFound("Stallion not found.");
 
         if (stallion.StudFarmId != farm.Id)
@@ -103,6 +105,9 @@ public class StallionService : IStallionService
         stallion.Dam = request.Dam;
         stallion.RegistrationNumber = request.RegistrationNumber;
         stallion.Description = request.Description;
+
+        if (request.IsActive.HasValue)
+            stallion.IsActive = request.IsActive.Value;
 
         await _repo.UpdateAsync(stallion);
         return ServiceResult<StallionDto>.Ok(MapToDto(stallion));
@@ -169,7 +174,9 @@ public class StallionService : IStallionService
         YearOfBirth = s.YearOfBirth,
         Colour = s.Colour,
         PrimaryImagePath = s.Images.FirstOrDefault(img => img.IsPrimary)?.BlobPath,
-        ActiveListingCount = s.Listings.Count(l => l.Status == ListingStatus.Active)
+        ActiveListingCount = s.Listings.Count(l => l.Status == ListingStatus.Active),
+        TotalListingCount = s.Listings.Count,
+        IsActive = s.IsActive
     };
 
     private static StallionDto MapToDto(Stallion s) => new()

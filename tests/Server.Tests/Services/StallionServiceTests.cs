@@ -50,6 +50,66 @@ public class StallionServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_AllowsReactivation_OfInactiveStallion()
+    {
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = Guid.NewGuid(), UserId = caller.Id };
+        var stallion = new Stallion
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Name = "Test", IsActive = false,
+            Images = new List<StallionImage>(), Listings = new List<Listing>()
+        };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+
+        var result = await CreateSut().UpdateAsync(stallion.Id, new UpdateStallionRequest { Name = "Test", IsActive = true });
+
+        result.Succeeded.Should().BeTrue();
+        result.Value!.IsActive.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AllowsDeactivation_OfActiveStallion()
+    {
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = Guid.NewGuid(), UserId = caller.Id };
+        var stallion = new Stallion
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Name = "Test", IsActive = true,
+            Images = new List<StallionImage>(), Listings = new List<Listing>()
+        };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+
+        var result = await CreateSut().UpdateAsync(stallion.Id, new UpdateStallionRequest { Name = "Test", IsActive = false });
+
+        result.Succeeded.Should().BeTrue();
+        result.Value!.IsActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenIsActiveIsNull_DoesNotChangeIsActive()
+    {
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = Guid.NewGuid(), UserId = caller.Id };
+        var stallion = new Stallion
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Name = "Test", IsActive = true,
+            Images = new List<StallionImage>(), Listings = new List<Listing>()
+        };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+
+        var result = await CreateSut().UpdateAsync(stallion.Id, new UpdateStallionRequest { Name = "Test", IsActive = null });
+
+        result.Succeeded.Should().BeTrue();
+        result.Value!.IsActive.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task SetPrimaryImage_WhenImageBelongsToStallion_ClearsPreviousPrimaryAndSetsNew()
     {
         var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
