@@ -70,6 +70,11 @@
     private void NavigateToListing() => Nav.NavigateTo($"/listings/{Listing.Id}");
     private void HandleEnquire()     => Nav.NavigateTo($"/listings/{Listing.Id}?enquire=1");
 
+    // Approximate window for progress fill — the DTO doesn't carry AuctionStartsAt,
+    // so we use a fixed visual window. Listings longer than this will show near-empty
+    // until within 7 days of close.
+    private const double AuctionProgressWindowDays = 7.0;
+
     private bool IsEndingSoon() =>
         Listing.AuctionClosesAt.HasValue &&
         (Listing.AuctionClosesAt.Value - DateTime.UtcNow).TotalHours < 6;
@@ -91,7 +96,7 @@
     {
         if (Listing.ListingType == "Auction")
             return IsEndingSoon() ? "progress-bar-fill--urgent" : "progress-bar-fill--gold";
-        return Listing.QuantityRemaining <= 3 ? "progress-bar-fill--urgent" : "progress-bar-fill--navy";
+        return Listing.QuantityRemaining is <= 3 ? "progress-bar-fill--urgent" : "progress-bar-fill--navy";
     }
 
     private double GetProgressWidthPct()
@@ -100,8 +105,9 @@
         {
             var remaining = Listing.AuctionClosesAt.Value - DateTime.UtcNow;
             if (remaining.TotalSeconds <= 0) return 100;
-            var elapsed = TimeSpan.FromDays(7) - remaining;
-            return Math.Clamp(elapsed.TotalSeconds / TimeSpan.FromDays(7).TotalSeconds * 100, 5, 99);
+            var window = TimeSpan.FromDays(AuctionProgressWindowDays);
+            var elapsed = window - remaining;
+            return Math.Clamp(elapsed.TotalSeconds / window.TotalSeconds * 100, 5, 99);
         }
         if (Listing.TotalQuantity is > 0 && Listing.QuantityRemaining.HasValue)
         {
