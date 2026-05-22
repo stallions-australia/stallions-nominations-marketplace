@@ -1,0 +1,4 @@
+.enquiry-detail-container { max-width: 760px; padding-block: var(--space-10); }
+.enquiry-detail-header { margin-bottom: var(--space-8); }
+.enquiry-thread { background: var(--warm-grey); border-radius: var(--radius-lg); padding: var(--space-6); min-height: 200px; margin-bottom: var(--space-6); }
+.enquiry-composer { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-4); }

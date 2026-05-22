@@ -9,7 +9,7 @@ public class EnquiryApiService
     private readonly HttpClient _http;
     public EnquiryApiService(HttpClient http) => _http = http;
 
-    public async Task<List<EnquirySummaryDto>> GetAllAsync()
+    public virtual async Task<List<EnquirySummaryDto>> GetAllAsync()
     {
         var response = await _http.GetAsync("api/enquiries");
         if (!response.IsSuccessStatusCode)
@@ -18,7 +18,7 @@ public class EnquiryApiService
                ?? new List<EnquirySummaryDto>();
     }
 
-    public async Task<EnquiryDto> GetByIdAsync(Guid id)
+    public virtual async Task<EnquiryDto> GetByIdAsync(Guid id)
     {
         var response = await _http.GetAsync($"api/enquiries/{id}");
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -29,14 +29,14 @@ public class EnquiryApiService
                ?? throw new ApiException(500, "Empty response.");
     }
 
-    public async Task PostMessageAsync(Guid enquiryId, SendMessageRequest request)
+    public virtual async Task PostMessageAsync(Guid enquiryId, SendMessageRequest request)
     {
         var response = await _http.PostAsJsonAsync($"api/enquiries/{enquiryId}/messages", request);
         if (!response.IsSuccessStatusCode)
             throw new ApiException((int)response.StatusCode, "Failed to send message.");
     }
 
-    public async Task<EnquiryDto> CreateAsync(Guid listingId, OpenEnquiryRequest request)
+    public virtual async Task<EnquiryDto> CreateAsync(Guid listingId, OpenEnquiryRequest request)
     {
         var response = await _http.PostAsJsonAsync($"api/listings/{listingId}/enquiries", request);
         if (!response.IsSuccessStatusCode)

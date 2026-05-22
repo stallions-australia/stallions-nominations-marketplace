@@ -1,0 +1,14 @@
+.enquiry-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.enquiry-row {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4) var(--space-6);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: border-color .15s;
+}
+.enquiry-row:hover { border-color: var(--navy); }
+.enquiry-subject { font-weight: var(--font-weight-medium); }

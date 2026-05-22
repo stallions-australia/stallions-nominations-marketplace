@@ -1,0 +1,22 @@
+<form class="composer" @onsubmit="HandleSend" @onsubmit:preventDefault="true">
+    <textarea class="form-textarea composer-input"
+              placeholder="Type your message…"
+              @bind="_text" @bind:event="oninput"
+              rows="3"></textarea>
+    <button type="submit" class="btn btn-primary composer-send"
+            disabled="@string.IsNullOrWhiteSpace(_text)">
+        Send
+    </button>
+</form>
+
+@code {
+    [Parameter, EditorRequired] public EventCallback<string> OnSend { get; set; }
+    private string _text = string.Empty;
+
+    private async Task HandleSend()
+    {
+        if (string.IsNullOrWhiteSpace(_text)) return;
+        await OnSend.InvokeAsync(_text.Trim());
+        _text = string.Empty;
+    }
+}

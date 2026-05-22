@@ -1,0 +1,79 @@
+@page "/enquiries/{Id:guid}"
+@attribute [Authorize]
+@inject EnquiryApiService EnquiryApi
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Message Thread — Stallions Australia</PageTitle>
+
+<div class="container enquiry-detail-container">
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else if (_enquiry is null)
+    {
+        <LoadingSpinner />
+    }
+    else
+    {
+        <div class="enquiry-detail-header">
+            <h1 class="page-title">Message Thread</h1>
+            <a href="/enquiries" class="text-muted text-sm">← All messages</a>
+        </div>
+
+        <div class="enquiry-thread">
+            <MessageThread Messages="@_enquiry.Messages" CurrentUserId="@_currentUserId" />
+        </div>
+
+        @if (_sendError is not null)
+        {
+            <ErrorMessage Message="@_sendError" />
+        }
+
+        <div class="enquiry-composer">
+            <MessageComposer OnSend="HandleSend" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private Stallions.Shared.DTOs.Enquiries.EnquiryDto? _enquiry;
+    private string? _error;
+    private string? _sendError;
+    private Guid? _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        var oidClaim = authState.User.FindFirst(
+            "http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value;
+        if (Guid.TryParse(oidClaim, out var uid))
+            _currentUserId = uid;
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _error = null;
+        try { _enquiry = await EnquiryApi.GetByIdAsync(Id); }
+        catch (ApiException ex) when (ex.StatusCode == 404) { _error = "Enquiry not found."; }
+        catch (ApiException) { _error = "Failed to load enquiry. Please try again."; }
+    }
+
+    private async Task HandleSend(string text)
+    {
+        _sendError = null;
+        try
+        {
+            await EnquiryApi.PostMessageAsync(Id,
+                new Stallions.Shared.DTOs.Enquiries.SendMessageRequest { Body = text });
+            await Load();
+        }
+        catch (ApiException)
+        {
+            _sendError = "Failed to send message. Please try again.";
+        }
+    }
+}

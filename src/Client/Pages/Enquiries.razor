@@ -1,0 +1,62 @@
+@page "/enquiries"
+@attribute [Authorize]
+@inject EnquiryApiService EnquiryApi
+@inject NavigationManager Nav
+
+<PageTitle>Messages — Stallions Australia</PageTitle>
+
+<div class="container" style="padding-block: var(--space-10)">
+    <h1 class="page-title">Messages</h1>
+
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else if (_enquiries is null)
+    {
+        <LoadingSpinner />
+    }
+    else if (!_enquiries.Any())
+    {
+        <EmptyState Message="No enquiries yet" Icon="💬">
+            <a href="/" class="btn btn-primary">Browse listings</a>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="enquiry-list">
+            @foreach (var e in _enquiries)
+            {
+                var url = $"/enquiries/{e.Id}";
+                <div class="enquiry-row" @onclick="@(() => Nav.NavigateTo(url))"  style="cursor:pointer">
+                    <div class="enquiry-info">
+                        <div class="enquiry-subject">@e.Subject</div>
+                        <div class="enquiry-meta text-muted text-sm">
+                            @e.MessageCount message@(e.MessageCount != 1 ? "s" : "")
+                            @if (e.LastMessageAt.HasValue)
+                            {
+                                <span> · @e.LastMessageAt.Value.ToString("d MMM")</span>
+                            }
+                        </div>
+                    </div>
+                    <span class="badge @(e.Status == "Open" ? "badge-leading" : "")">@e.Status</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Stallions.Shared.DTOs.Enquiries.EnquirySummaryDto>? _enquiries;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _enquiries = null;
+        try { _enquiries = await EnquiryApi.GetAllAsync(); }
+        catch (ApiException) { _error = "Failed to load enquiries. Please try again."; }
+    }
+}

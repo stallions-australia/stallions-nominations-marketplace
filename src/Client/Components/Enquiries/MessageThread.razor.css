@@ -1,0 +1,9 @@
+.message-thread { display: flex; flex-direction: column; gap: var(--space-4); }
+.message { display: flex; flex-direction: column; max-width: 80%; }
+.message--buyer { align-self: flex-end; align-items: flex-end; }
+.message--farm  { align-self: flex-start; }
+.message-sender { font-size: var(--font-size-xs); color: var(--text-muted); margin-bottom: var(--space-1); }
+.message-bubble { padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); font-size: var(--font-size-sm); line-height: 1.5; }
+.message--buyer .message-bubble { background: var(--navy); color: var(--white); border-bottom-right-radius: var(--radius-sm); }
+.message--farm  .message-bubble { background: var(--white); border: 1px solid var(--border); border-bottom-left-radius: var(--radius-sm); }
+.message-time { margin-top: var(--space-1); }
