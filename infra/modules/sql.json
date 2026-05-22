@@ -1,0 +1,102 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.43.8.12551",
+      "templateHash": "13866235459715681670"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "object"
+    },
+    "sqlAdminPassword": {
+      "type": "securestring"
+    },
+    "sqlAdminLogin": {
+      "type": "string",
+      "defaultValue": "sqladmin"
+    },
+    "developerIpAddress": {
+      "type": "string",
+      "defaultValue": ""
+    }
+  },
+  "variables": {
+    "isDev": "[equals(parameters('environmentName'), 'dev')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Sql/servers",
+      "apiVersion": "2023-05-01-preview",
+      "name": "[format('sql-stallions-noms-{0}', parameters('environmentName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "properties": {
+        "administratorLogin": "[parameters('sqlAdminLogin')]",
+        "administratorLoginPassword": "[parameters('sqlAdminPassword')]",
+        "minimalTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.Sql/servers/firewallRules",
+      "apiVersion": "2023-05-01-preview",
+      "name": "[format('{0}/{1}', format('sql-stallions-noms-{0}', parameters('environmentName')), 'AllowAllWindowsAzureIps')]",
+      "properties": {
+        "startIpAddress": "0.0.0.0",
+        "endIpAddress": "0.0.0.0"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Sql/servers', format('sql-stallions-noms-{0}', parameters('environmentName')))]"
+      ]
+    },
+    {
+      "condition": "[and(variables('isDev'), not(empty(parameters('developerIpAddress'))))]",
+      "type": "Microsoft.Sql/servers/firewallRules",
+      "apiVersion": "2023-05-01-preview",
+      "name": "[format('{0}/{1}', format('sql-stallions-noms-{0}', parameters('environmentName')), 'DeveloperIp')]",
+      "properties": {
+        "startIpAddress": "[parameters('developerIpAddress')]",
+        "endIpAddress": "[parameters('developerIpAddress')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Sql/servers', format('sql-stallions-noms-{0}', parameters('environmentName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Sql/servers/databases",
+      "apiVersion": "2023-05-01-preview",
+      "name": "[format('{0}/{1}', format('sql-stallions-noms-{0}', parameters('environmentName')), format('sqldb-stallions-noms-{0}', parameters('environmentName')))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": "[if(variables('isDev'), createObject('name', 'GP_S_Gen5_1', 'tier', 'GeneralPurpose', 'family', 'Gen5', 'capacity', 1), createObject('name', 'GP_Gen5_2', 'tier', 'GeneralPurpose', 'family', 'Gen5', 'capacity', 2))]",
+      "properties": "[if(variables('isDev'), createObject('autoPauseDelay', 60, 'minCapacity', '0.5', 'requestedBackupStorageRedundancy', 'Local'), createObject('requestedBackupStorageRedundancy', 'Geo'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Sql/servers', format('sql-stallions-noms-{0}', parameters('environmentName')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "sqlServerFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Sql/servers', format('sql-stallions-noms-{0}', parameters('environmentName'))), '2023-05-01-preview').fullyQualifiedDomainName]"
+    },
+    "sqlServerName": {
+      "type": "string",
+      "value": "[format('sql-stallions-noms-{0}', parameters('environmentName'))]"
+    },
+    "sqlDatabaseName": {
+      "type": "string",
+      "value": "[format('sqldb-stallions-noms-{0}', parameters('environmentName'))]"
+    }
+  }
+}

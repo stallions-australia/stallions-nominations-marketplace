@@ -2,6 +2,9 @@ param environmentName string
 param location string
 param tags object
 
+@secure()
+param sqlConnectionString string = ''
+
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: 'kv-stallions-noms-${environmentName}'
   location: location
@@ -16,6 +19,14 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
     publicNetworkAccess: 'Enabled'
+  }
+}
+
+resource sqlConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(sqlConnectionString)) {
+  parent: keyVault
+  name: 'SqlConnectionString'
+  properties: {
+    value: sqlConnectionString
   }
 }
 

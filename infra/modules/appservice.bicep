@@ -50,6 +50,10 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: isProduction ? 'Production' : 'Development'
         }
+        {
+          name: 'ConnectionStrings__DefaultConnection'
+          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/SqlConnectionString/)'
+        }
       ]
     }
   }

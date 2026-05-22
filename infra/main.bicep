@@ -20,6 +20,8 @@ var tags = {
 
 var resourceGroupName = 'rg-stallions-noms-${environmentName}'
 
+var sqlConnectionString = 'Server=tcp:sql-stallions-noms-${environmentName}.database.windows.net,1433;Database=sqldb-stallions-noms-${environmentName};User Id=${sqlAdminLogin};Password=${sqlAdminPassword};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   name: resourceGroupName
   location: location
@@ -66,6 +68,7 @@ module keyvault './modules/keyvault.bicep' = {
     environmentName: environmentName
     location: location
     tags: tags
+    sqlConnectionString: sqlConnectionString
   }
 }
 

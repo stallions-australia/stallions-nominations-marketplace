@@ -1,0 +1,101 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.43.8.12551",
+      "templateHash": "17925426722666390955"
+    }
+  },
+  "parameters": {
+    "environmentName": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "object"
+    },
+    "appInsightsConnectionString": {
+      "type": "string"
+    },
+    "keyVaultUri": {
+      "type": "string"
+    }
+  },
+  "variables": {
+    "isProduction": "[equals(parameters('environmentName'), 'prod')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2023-01-01",
+      "name": "[format('plan-stallions-noms-{0}', parameters('environmentName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "sku": {
+        "name": "B2",
+        "tier": "Basic"
+      },
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-01-01",
+      "name": "[format('app-stallions-noms-{0}', parameters('environmentName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', format('plan-stallions-noms-{0}', parameters('environmentName')))]",
+        "httpsOnly": true,
+        "clientAffinityEnabled": false,
+        "siteConfig": {
+          "alwaysOn": "[variables('isProduction')]",
+          "minTlsVersion": "1.2",
+          "ftpsState": "Disabled",
+          "netFrameworkVersion": "v9.0",
+          "appSettings": [
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[parameters('appInsightsConnectionString')]"
+            },
+            {
+              "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
+              "value": "~3"
+            },
+            {
+              "name": "KeyVaultUri",
+              "value": "[parameters('keyVaultUri')]"
+            },
+            {
+              "name": "ASPNETCORE_ENVIRONMENT",
+              "value": "[if(variables('isProduction'), 'Production', 'Development')]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', format('plan-stallions-noms-{0}', parameters('environmentName')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "principalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', format('app-stallions-noms-{0}', parameters('environmentName'))), '2023-01-01', 'full').identity.principalId]"
+    },
+    "appServiceName": {
+      "type": "string",
+      "value": "[format('app-stallions-noms-{0}', parameters('environmentName'))]"
+    },
+    "appServiceHostname": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', format('app-stallions-noms-{0}', parameters('environmentName'))), '2023-01-01').defaultHostName]"
+    }
+  }
+}
