@@ -17,7 +17,12 @@ builder.Services.AddMsalAuthentication(options =>
 
 // Typed API services — BaseAddressAuthorizationMessageHandler attaches the Entra ID access
 // token when the user is signed in; unauthenticated requests to public endpoints pass through.
-var apiBase = new Uri(builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.BaseAddress);
+// When hosted on the same App Service, ApiBaseUrl is intentionally blank in
+// appsettings.Production.json so we fall back to the host's base address.
+var apiBaseUrl = builder.Configuration["ApiBaseUrl"];
+var apiBase = string.IsNullOrWhiteSpace(apiBaseUrl)
+    ? new Uri(builder.HostEnvironment.BaseAddress)
+    : new Uri(apiBaseUrl);
 
 builder.Services.AddHttpClient<ListingApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();

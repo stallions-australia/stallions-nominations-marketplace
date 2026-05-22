@@ -5,3 +5,12 @@ name: stallions-nominations-marketplace
 infra:
   provider: bicep
   path: infra
+
+services:
+  api:
+    # The Server project hosts both the ASP.NET Core API and the Blazor WASM
+    # client static files (hosted Blazor model). azd locates the target App Service
+    # via the 'azd-service-name: api' tag added to the resource in Bicep.
+    project: ./src/Server
+    language: dotnet
+    host: appservice

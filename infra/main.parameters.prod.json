@@ -10,6 +10,9 @@
     },
     "sqlAdminPassword": {
       "value": "${SQL_ADMIN_PASSWORD}"
+    },
+    "entraClientId": {
+      "value": "2c38d79f-30e4-4c94-9eb1-580200eb0b6e"
     }
   }
 }

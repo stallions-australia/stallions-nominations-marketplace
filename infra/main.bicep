@@ -13,6 +13,10 @@ param sqlAdminLogin string = 'sqladmin'
 
 param developerIpAddress string = ''
 
+// Entra ID — TenantId is shared; ClientId differs per environment (API app registration)
+param entraTenantId string = 'ce5db765-3fd3-4452-93c7-dd2dc14b3627'
+param entraClientId string
+
 var tags = {
   'azd-env-name': environmentName
   project: 'stallions-nominations-marketplace'
@@ -81,6 +85,8 @@ module appservice './modules/appservice.bicep' = {
     tags: tags
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     keyVaultUri: keyvault.outputs.keyVaultUri
+    entraTenantId: entraTenantId
+    entraClientId: entraClientId
   }
 }
 

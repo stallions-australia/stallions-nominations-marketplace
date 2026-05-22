@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Shared\Stallions.Shared.csproj" />
+    <ProjectReference Include="..\Client\Stallions.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>

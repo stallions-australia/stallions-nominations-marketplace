@@ -96,11 +96,18 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Serve Blazor WASM client static files (wwwroot of Client project)
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles();
+
 app.UseHttpsRedirection();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapControllers();
+
+// All non-API routes fall back to the Blazor app's index.html
+app.MapFallbackToFile("index.html");
 
 app.Run();
