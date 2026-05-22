@@ -33,4 +33,16 @@ public class ListingEntityTests
         var listing = new FixedPriceListing { Quantity = 5, QuantityRemaining = 5 };
         listing.QuantityRemaining.Should().Be(listing.Quantity);
     }
+
+    [Fact]
+    public void FixedPriceListing_HasDescriptionAndTerms()
+    {
+        var listing = new FixedPriceListing
+        {
+            Description = "Bay stallion, excellent fertility.",
+            TermsAndConditions = "Live foal guarantee, 45-day payment."
+        };
+        listing.Description.Should().Be("Bay stallion, excellent fertility.");
+        listing.TermsAndConditions.Should().Be("Live foal guarantee, 45-day payment.");
+    }
 }

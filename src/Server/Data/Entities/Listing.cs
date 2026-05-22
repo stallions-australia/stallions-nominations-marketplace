@@ -11,6 +11,8 @@ public class Listing
     public ListingType ListingType { get; set; }
     public ListingStatus Status { get; set; } = ListingStatus.Draft;
     public decimal? PlatformFeePercent { get; set; }
+    public string? Description { get; set; }
+    public string? TermsAndConditions { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? PublishedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
