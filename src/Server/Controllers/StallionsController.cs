@@ -54,9 +54,10 @@ public class StallionsController : ControllerBase
 
     [HttpPost("{id:guid}/images")]
     [Authorize(Roles = "StudFarmAdmin")]
-    public IActionResult UploadImage(Guid id)
+    public async Task<IActionResult> UploadImage(Guid id, [FromForm] IFormFile file)
     {
-        return StatusCode(501, "Image upload requires Azure Blob Storage — not yet implemented.");
+        var r = await _stallions.UploadImageAsync(id, file);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
     [HttpPut("{id:guid}/images/{imageId:guid}/primary")]

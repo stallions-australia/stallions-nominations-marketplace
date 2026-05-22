@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Stallions.Shared.DTOs.Stallions;
 
 namespace Stallions.Server.Services;
@@ -9,6 +10,7 @@ public interface IStallionService
     Task<ServiceResult<StallionDto>> GetByIdAsync(Guid id, bool isStaff);
     Task<ServiceResult<StallionDto>> CreateAsync(CreateStallionRequest request);
     Task<ServiceResult<StallionDto>> UpdateAsync(Guid id, UpdateStallionRequest request);
+    Task<ServiceResult<StallionDto>> UploadImageAsync(Guid stallionId, IFormFile file);
     Task<ServiceResult<StallionDto>> SetPrimaryImageAsync(Guid stallionId, Guid imageId);
     Task<ServiceResult> DeleteImageAsync(Guid stallionId, Guid imageId);
 }

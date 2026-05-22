@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Shared.DTOs.Stallions;
@@ -10,12 +11,18 @@ public class StallionService : IStallionService
     private readonly IStallionRepository _repo;
     private readonly IStudFarmRepository _farmRepo;
     private readonly IUserService _users;
+    private readonly IBlobStorageService _blobs;
 
-    public StallionService(IStallionRepository repo, IStudFarmRepository farmRepo, IUserService users)
+    public StallionService(
+        IStallionRepository repo,
+        IStudFarmRepository farmRepo,
+        IUserService users,
+        IBlobStorageService blobs)
     {
         _repo = repo;
         _farmRepo = farmRepo;
         _users = users;
+        _blobs = blobs;
     }
 
     public async Task<ServiceResult<IReadOnlyList<StallionSummaryDto>>> GetAllWithActiveListingsAsync()
@@ -110,6 +117,49 @@ public class StallionService : IStallionService
             stallion.IsActive = request.IsActive.Value;
 
         await _repo.UpdateAsync(stallion);
+        return ServiceResult<StallionDto>.Ok(MapToDto(stallion));
+    }
+
+    public async Task<ServiceResult<StallionDto>> UploadImageAsync(Guid stallionId, IFormFile file)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null) return ServiceResult<StallionDto>.Forbidden("Caller identity could not be resolved.");
+
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        if (farm == null)
+            return ServiceResult<StallionDto>.NotFound("No stud farm found for the current user.");
+
+        var stallion = await _repo.GetByIdAsync(stallionId);
+        if (stallion == null)
+            return ServiceResult<StallionDto>.NotFound("Stallion not found.");
+
+        if (stallion.StudFarmId != farm.Id)
+            return ServiceResult<StallionDto>.Forbidden("You do not have permission to upload images for this stallion.");
+
+        var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp" };
+        if (!allowedTypes.Contains(file.ContentType.ToLowerInvariant()))
+            return ServiceResult<StallionDto>.BadRequest("Only JPEG, PNG and WebP images are accepted.");
+
+        if (file.Length > 10 * 1024 * 1024)
+            return ServiceResult<StallionDto>.BadRequest("Image must be smaller than 10 MB.");
+
+        await using var stream = file.OpenReadStream();
+        var blobUrl = await _blobs.UploadStallionImageAsync(
+            stallionId, file.FileName, stream, file.ContentType);
+
+        // If this is the first image, mark it primary automatically.
+        var isPrimary = !stallion.Images.Any();
+
+        var image = new StallionImage
+        {
+            StallionId = stallionId,
+            BlobPath = blobUrl,
+            IsPrimary = isPrimary,
+            DisplayOrder = stallion.Images.Count
+        };
+        stallion.Images.Add(image);
+        await _repo.UpdateAsync(stallion);
+
         return ServiceResult<StallionDto>.Ok(MapToDto(stallion));
     }
 

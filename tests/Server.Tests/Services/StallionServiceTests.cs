@@ -13,7 +13,8 @@ public class StallionServiceTests
     private readonly Mock<IStallionRepository> _stallionRepoMock = new();
     private readonly Mock<IStudFarmRepository> _farmRepoMock = new();
     private readonly Mock<IUserService> _usersMock = new();
-    private StallionService CreateSut() => new(_stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object);
+    private readonly Mock<IBlobStorageService> _blobsMock = new();
+    private StallionService CreateSut() => new(_stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object, _blobsMock.Object);
 
     [Fact]
     public async Task UpdateStallion_WhenCallerDoesNotOwnStallion_ReturnsForbidden()

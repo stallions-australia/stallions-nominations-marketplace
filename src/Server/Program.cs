@@ -42,6 +42,9 @@ builder.Services.AddScoped<INominationBindingRepository, NominationBindingReposi
 builder.Services.AddScoped<IEnquiryRepository, EnquiryRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 
+// Blob Storage (uses DefaultAzureCredential; requires AZURE_STORAGE_ACCOUNT_NAME in appsettings.Development.json)
+builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
+
 // Services (will be uncommented as Tasks 3–11 are completed)
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ISeasonService, SeasonService>();
