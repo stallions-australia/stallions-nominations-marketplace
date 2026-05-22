@@ -11,4 +11,6 @@ public class UpdateListingRequest
     public DateTime? EndDateTime { get; set; }
     public decimal? PriceIncGst { get; set; }
     public int? Quantity { get; set; }
+    public string? Description { get; set; }
+    public string? TermsAndConditions { get; set; }
 }

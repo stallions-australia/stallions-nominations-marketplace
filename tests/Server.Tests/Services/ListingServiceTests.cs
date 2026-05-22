@@ -37,7 +37,8 @@ public class ListingServiceTests
         var result = await CreateSut().CreateAuctionListingAsync(new CreateAuctionListingRequest
         {
             StallionId = stallion.Id, SeasonId = closedSeason.Id,
-            StartingPrice = 5000m, EndDateTime = DateTime.UtcNow.AddDays(7)
+            StartingPrice = 5000m, EndDateTime = DateTime.UtcNow.AddDays(7),
+            TermsAndConditions = "Standard terms."
         });
 
         result.Succeeded.Should().BeFalse();

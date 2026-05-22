@@ -4,6 +4,9 @@ using Stallions.Shared.DTOs.Listings;
 
 namespace Stallions.Server.Tests.Shared;
 
+// Note: the task spec uses Assert.IsType / Assert.Equal (xUnit style) — kept consistent
+// with the existing file's FluentAssertions style instead.
+
 /// <summary>
 /// Verifies that the JsonPolymorphic discriminator property name ("listingType") matching
 /// the existing ListingDto.ListingType property does not cause STJ to throw, and that
@@ -76,5 +79,26 @@ public class ListingDtoSerializationTests
         result.StallionName.Should().Be("Fastnet Rock");
         result.PriceIncGst.Should().Be(8000m);
         result.ListingType.Should().Be("FixedPrice");
+    }
+
+    [Fact]
+    public void FixedPriceListingDto_RoundTrips_DescriptionAndTerms()
+    {
+        var dto = new FixedPriceListingDto
+        {
+            Id = Guid.NewGuid(),
+            ListingType = "FixedPrice",
+            Description = "Premium service, live foal guarantee.",
+            TermsAndConditions = "45-day payment required on live foal.",
+            PriceIncGst = 10000m,
+            Quantity = 20,
+            QuantityRemaining = 20
+        };
+        // Serialize via the base type so the polymorphic discriminator is written (same pattern as existing tests)
+        var json = JsonSerializer.Serialize<ListingDto>(dto, new JsonSerializerOptions { WriteIndented = false });
+        var back = JsonSerializer.Deserialize<ListingDto>(json);
+        var fp = back.Should().BeOfType<FixedPriceListingDto>().Subject;
+        fp.Description.Should().Be("Premium service, live foal guarantee.");
+        fp.TermsAndConditions.Should().Be("45-day payment required on live foal.");
     }
 }

@@ -9,4 +9,6 @@ public class CreateAuctionListingRequest
     public bool IsNoReserve { get; set; }
     public decimal MinimumBidIncrement { get; set; } = 25m;
     public required DateTime EndDateTime { get; set; }
+    public required string TermsAndConditions { get; set; }
+    public string? Description { get; set; }
 }

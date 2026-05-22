@@ -9,4 +9,6 @@ public class StallionSummaryDto
     public string? Colour { get; set; }
     public string? PrimaryImagePath { get; set; }
     public int ActiveListingCount { get; set; }
+    public int TotalListingCount { get; set; }
+    public bool IsActive { get; set; }
 }
