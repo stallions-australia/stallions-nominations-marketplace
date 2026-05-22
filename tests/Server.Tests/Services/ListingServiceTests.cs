@@ -64,7 +64,115 @@ public class ListingServiceTests
     }
 
     [Fact]
-    public async Task UpdateListing_WhenNotDraft_ReturnsBadRequest()
+    public async Task UpdateListing_WhenCancelled_ReturnsBadRequest()
+    {
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        var listing = new FixedPriceListing
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Cancelled,
+            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { Description = "Updated" });
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task UpdateListingAsync_AllowsDescriptionEdit_OnActiveFixedPriceListing()
+    {
+        // Active listing (PublishedAt set) — description should be editable
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        var listing = new FixedPriceListing
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            PublishedAt = DateTime.UtcNow.AddDays(-1),
+            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10,
+            Description = "Old description"
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { Description = "New description" });
+
+        result.Succeeded.Should().BeTrue();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l => l.Description == "New description")), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateListingAsync_BlocksTermsEdit_AfterPublish()
+    {
+        // Draft listing but PublishedAt is set (was previously published, then unpublished)
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        var listing = new FixedPriceListing
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Draft,
+            PublishedAt = DateTime.UtcNow.AddDays(-1),   // was published — T&C now locked
+            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10,
+            TermsAndConditions = "Original T&C"
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { TermsAndConditions = "New T&C" });
+
+        // Call succeeds (not an error) but T&C is silently ignored
+        result.Succeeded.Should().BeTrue();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l => l.TermsAndConditions == "Original T&C")), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateListingAsync_AllowsQuantityEdit_OnActiveFixedPriceListing()
+    {
+        // Active listing, Quantity=20, QuantityRemaining=18 (2 sold)
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        var listing = new FixedPriceListing
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            PublishedAt = DateTime.UtcNow.AddDays(-1),
+            PriceIncGst = 8000m, Quantity = 20, QuantityRemaining = 18
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { Quantity = 25 });
+
+        result.Succeeded.Should().BeTrue();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<FixedPriceListing>(l =>
+            l.Quantity == 25 && l.QuantityRemaining == 23)), Times.Once);
+    }
+
+    [Fact]
+    public async Task UnpublishListingAsync_SetsStatusToDraft_DoesNotClearPublishedAt()
+    {
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        var publishedAt = DateTime.UtcNow.AddDays(-1);
+        var listing = new FixedPriceListing
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            PublishedAt = publishedAt,
+            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().UnpublishListingAsync(listing.Id);
+
+        result.Succeeded.Should().BeTrue();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l =>
+            l.Status == ListingStatus.Draft && l.PublishedAt == publishedAt)), Times.Once);
+    }
+
+    [Fact]
+    public async Task CloseByStudFarmAsync_SetsCancelledAndClosedAt()
     {
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
@@ -76,10 +184,11 @@ public class ListingServiceTests
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
-        var result = await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { PriceIncGst = 9000m });
+        var result = await CreateSut().CloseByStudFarmAsync(listing.Id);
 
-        result.Succeeded.Should().BeFalse();
-        result.HttpStatusCode.Should().Be(400);
+        result.Succeeded.Should().BeTrue();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l =>
+            l.Status == ListingStatus.Cancelled && l.ClosedAt != null)), Times.Once);
     }
 
     [Fact]

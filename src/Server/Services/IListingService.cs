@@ -13,6 +13,8 @@ public interface IListingService
     Task<ServiceResult<ListingDto>> CreateFixedPriceListingAsync(CreateFixedPriceListingRequest request);
     Task<ServiceResult<ListingDto>> UpdateListingAsync(Guid id, UpdateListingRequest request);
     Task<ServiceResult> PublishListingAsync(Guid id);
+    Task<ServiceResult> UnpublishListingAsync(Guid id);
+    Task<ServiceResult> CloseByStudFarmAsync(Guid id);
     Task<ServiceResult> CancelListingAsync(Guid id);
     Task<ServiceResult<ListingDto>> RelistAsync(Guid id);
 }

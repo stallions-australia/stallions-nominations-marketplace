@@ -96,6 +96,8 @@ public class ListingService : IListingService
             StudFarmId = farm.Id,
             ListingType = ListingType.Auction,
             Status = ListingStatus.Draft,
+            Description = request.Description,
+            TermsAndConditions = request.TermsAndConditions,
             StartingPrice = request.StartingPrice,
             ReservePrice = request.ReservePrice,
             IsNoReserve = request.IsNoReserve,
@@ -141,6 +143,8 @@ public class ListingService : IListingService
             StudFarmId = farm.Id,
             ListingType = ListingType.FixedPrice,
             Status = ListingStatus.Draft,
+            Description = request.Description,
+            TermsAndConditions = request.TermsAndConditions,
             PriceIncGst = request.PriceIncGst,
             Quantity = request.Quantity,
             QuantityRemaining = request.Quantity
@@ -167,26 +171,56 @@ public class ListingService : IListingService
         if (listing.StudFarmId != farm.Id)
             return ServiceResult<ListingDto>.Forbidden("You do not have permission to update this listing.");
 
-        if (listing.Status != ListingStatus.Draft)
-            return ServiceResult<ListingDto>.BadRequest("Only Draft listings can be edited.");
+        // Cancelled and Sold listings are permanently read-only.
+        if (listing.Status == ListingStatus.Cancelled || listing.Status == ListingStatus.Sold)
+            return ServiceResult<ListingDto>.BadRequest("This listing can no longer be edited.");
 
         // CRITICAL: PlatformFeePercent is never touched here — only AdminService.SetListingFeeAsync can set it.
-        if (listing is AuctionListing al)
+
+        // Safe edits: description is always editable (Draft or Active).
+        if (request.Description is not null)
+            listing.Description = request.Description;
+
+        // Fields that are locked once the listing has ever been published.
+        // PublishedAt is set on first publish and intentionally NOT cleared on unpublish,
+        // so this sentinel permanently locks price, T&C, type, and auction dates.
+        var neverPublished = listing.PublishedAt == null;
+
+        if (neverPublished)
         {
-            if (request.StartingPrice.HasValue) al.StartingPrice = request.StartingPrice.Value;
-            if (request.ReservePrice.HasValue) al.ReservePrice = request.ReservePrice;
-            if (request.IsNoReserve.HasValue) al.IsNoReserve = request.IsNoReserve.Value;
-            if (request.MinimumBidIncrement.HasValue) al.MinimumBidIncrement = request.MinimumBidIncrement.Value;
-            if (request.EndDateTime.HasValue) al.EndDateTime = request.EndDateTime.Value;
-        }
-        else if (listing is FixedPriceListing fpl)
-        {
-            if (request.PriceIncGst.HasValue) fpl.PriceIncGst = request.PriceIncGst.Value;
-            if (request.Quantity.HasValue)
+            // Full edit allowed — listing has never gone live.
+            if (request.TermsAndConditions is not null)
+                listing.TermsAndConditions = request.TermsAndConditions;
+
+            if (listing is AuctionListing al)
             {
-                fpl.Quantity = request.Quantity.Value;
-                fpl.QuantityRemaining = request.Quantity.Value;
+                if (request.StartingPrice.HasValue) al.StartingPrice = request.StartingPrice.Value;
+                if (request.ReservePrice.HasValue) al.ReservePrice = request.ReservePrice;
+                if (request.IsNoReserve.HasValue) al.IsNoReserve = request.IsNoReserve.Value;
+                if (request.MinimumBidIncrement.HasValue) al.MinimumBidIncrement = request.MinimumBidIncrement.Value;
+                if (request.EndDateTime.HasValue) al.EndDateTime = request.EndDateTime.Value;
             }
+            else if (listing is FixedPriceListing fpl)
+            {
+                if (request.PriceIncGst.HasValue) fpl.PriceIncGst = request.PriceIncGst.Value;
+                if (request.Quantity.HasValue)
+                {
+                    fpl.Quantity = request.Quantity.Value;
+                    fpl.QuantityRemaining = request.Quantity.Value;
+                }
+            }
+        }
+        else
+        {
+            // Only safe edits — listing has been published at least once.
+            // For fixed price: quantity can be adjusted (preserving sold count).
+            if (listing is FixedPriceListing fpl && request.Quantity.HasValue)
+            {
+                var soldCount = fpl.Quantity - fpl.QuantityRemaining;
+                fpl.Quantity = request.Quantity.Value;
+                fpl.QuantityRemaining = Math.Max(0, request.Quantity.Value - soldCount);
+            }
+            // Auction listings: description only (already handled above).
         }
 
         await _listingRepo.UpdateAsync(listing);
@@ -221,6 +255,59 @@ public class ListingService : IListingService
 
         listing.Status = ListingStatus.Active;
         listing.PublishedAt = DateTime.UtcNow;
+        await _listingRepo.UpdateAsync(listing);
+        return ServiceResult.Ok();
+    }
+
+    public async Task<ServiceResult> UnpublishListingAsync(Guid id)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null)
+            return ServiceResult.Forbidden("Caller identity could not be resolved.");
+
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        if (farm == null)
+            return ServiceResult.Forbidden("No stud farm found for the current user.");
+
+        var listing = await _listingRepo.GetByIdAsync(id);
+        if (listing == null)
+            return ServiceResult.NotFound("Listing not found.");
+
+        if (listing.StudFarmId != farm.Id)
+            return ServiceResult.Forbidden("You do not have permission to unpublish this listing.");
+
+        if (listing.Status != ListingStatus.Active)
+            return ServiceResult.BadRequest("Only Active listings can be unpublished.");
+
+        listing.Status = ListingStatus.Draft;
+        // PublishedAt is intentionally NOT cleared — it permanently locks price/T&C
+        // even after the listing returns to Draft state.
+        await _listingRepo.UpdateAsync(listing);
+        return ServiceResult.Ok();
+    }
+
+    public async Task<ServiceResult> CloseByStudFarmAsync(Guid id)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null)
+            return ServiceResult.Forbidden("Caller identity could not be resolved.");
+
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        if (farm == null)
+            return ServiceResult.Forbidden("No stud farm found for the current user.");
+
+        var listing = await _listingRepo.GetByIdAsync(id);
+        if (listing == null)
+            return ServiceResult.NotFound("Listing not found.");
+
+        if (listing.StudFarmId != farm.Id)
+            return ServiceResult.Forbidden("You do not have permission to close this listing.");
+
+        if (listing.Status == ListingStatus.Cancelled || listing.Status == ListingStatus.Sold)
+            return ServiceResult.BadRequest($"Listing is already closed (status: {listing.Status}).");
+
+        listing.Status = ListingStatus.Cancelled;
+        listing.ClosedAt = DateTime.UtcNow;
         await _listingRepo.UpdateAsync(listing);
         return ServiceResult.Ok();
     }
@@ -267,6 +354,7 @@ public class ListingService : IListingService
         if (listing is AuctionListing al)
         {
             // PlatformFeePercent is NOT carried over — must be set again by staff before publishing.
+            // TermsAndConditions is NOT carried over — new listing requires fresh T&C acceptance.
             newListing = new AuctionListing
             {
                 StallionId = al.StallionId,
@@ -275,6 +363,7 @@ public class ListingService : IListingService
                 ListingType = ListingType.Auction,
                 Status = ListingStatus.Draft,
                 PlatformFeePercent = null,
+                Description = al.Description,
                 StartingPrice = al.StartingPrice,
                 ReservePrice = al.ReservePrice,
                 IsNoReserve = al.IsNoReserve,
@@ -285,6 +374,7 @@ public class ListingService : IListingService
         else if (listing is FixedPriceListing fpl)
         {
             // PlatformFeePercent is NOT carried over — must be set again by staff before publishing.
+            // TermsAndConditions is NOT carried over — new listing requires fresh T&C acceptance.
             newListing = new FixedPriceListing
             {
                 StallionId = fpl.StallionId,
@@ -293,6 +383,7 @@ public class ListingService : IListingService
                 ListingType = ListingType.FixedPrice,
                 Status = ListingStatus.Draft,
                 PlatformFeePercent = null,
+                Description = fpl.Description,
                 PriceIncGst = fpl.PriceIncGst,
                 Quantity = fpl.Quantity,
                 QuantityRemaining = fpl.Quantity
@@ -400,6 +491,8 @@ public class ListingService : IListingService
             CreatedAt = al.CreatedAt,
             PublishedAt = al.PublishedAt,
             ClosedAt = al.ClosedAt,
+            Description = al.Description,
+            TermsAndConditions = al.TermsAndConditions,
             StartingPrice = al.StartingPrice,
             ReservePrice = isStaff ? al.ReservePrice : null,
             IsNoReserve = al.IsNoReserve,
@@ -421,6 +514,8 @@ public class ListingService : IListingService
             CreatedAt = fpl.CreatedAt,
             PublishedAt = fpl.PublishedAt,
             ClosedAt = fpl.ClosedAt,
+            Description = fpl.Description,
+            TermsAndConditions = fpl.TermsAndConditions,
             PriceIncGst = fpl.PriceIncGst,
             Quantity = fpl.Quantity,
             QuantityRemaining = fpl.QuantityRemaining
