@@ -13,9 +13,12 @@ param sqlAdminLogin string = 'sqladmin'
 
 param developerIpAddress string = ''
 
-// Entra ID — TenantId is shared; ClientId differs per environment (API app registration)
-param entraTenantId string = 'ce5db765-3fd3-4452-93c7-dd2dc14b3627'
-param entraClientId string
+// Entra ID — TenantId is shared across environments.
+// ClientId maps to the API app registration for each environment (not a secret — public client IDs).
+var entraTenantId = 'ce5db765-3fd3-4452-93c7-dd2dc14b3627'
+var entraClientId = environmentName == 'prod'
+  ? '2c38d79f-30e4-4c94-9eb1-580200eb0b6e'
+  : 'e168521b-e3b2-4220-912b-00affbacc4d9'
 
 var tags = {
   'azd-env-name': environmentName
