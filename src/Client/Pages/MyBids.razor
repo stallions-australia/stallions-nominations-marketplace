@@ -1,0 +1,78 @@
+@page "/my-bids"
+@attribute [Authorize]
+@inject BidApiService BidApi
+
+<PageTitle>My Bids — Stallions Australia</PageTitle>
+
+<div class="container" style="padding-block: var(--space-10)">
+    <h1 class="page-title">My Bids</h1>
+
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else if (_bids is null)
+    {
+        <LoadingSpinner />
+    }
+    else if (!_bids.Any())
+    {
+        <EmptyState Message="No bids yet" Icon="🔨">
+            <a href="/" class="btn btn-primary">Browse auctions</a>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="bids-list">
+            @foreach (var bid in _bids)
+            {
+                <div class="bid-row">
+                    <div class="bid-info">
+                        <a href="/listings/@bid.AuctionListingId" class="bid-listing-link">View listing</a>
+                        <div class="bid-date text-muted text-sm">@bid.PlacedAt.ToString("d MMM yyyy, h:mm tt")</div>
+                    </div>
+                    <div class="bid-amount">@bid.AmountIncGst.ToString("C0", AuCulture)</div>
+                    <div class="bid-status">
+                        <span class="badge @GetStatusBadge(bid.Status)">@GetStatusLabel(bid.Status)</span>
+                        @if (bid.Status == "Outbid")
+                        {
+                            <a href="/listings/@bid.AuctionListingId" class="btn btn-sm btn-outline" style="margin-top: var(--space-2)">Bid again</a>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Stallions.Shared.DTOs.Bids.BidDto>? _bids;
+    private string? _error;
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _bids = null;
+        try { _bids = await BidApi.GetMyBidsAsync(); }
+        catch (ApiException) { _error = "Failed to load bids. Please try again."; }
+    }
+
+    private static string GetStatusBadge(string status) => status switch
+    {
+        "Leading"       => "badge-leading",
+        "Outbid"        => "badge-outbid",
+        "Won"           => "badge-leading",
+        "AuctionClosed" => "",
+        _               => ""
+    };
+
+    private static string GetStatusLabel(string status) => status switch
+    {
+        "AuctionClosed" => "Auction closed",
+        _               => status
+    };
+}

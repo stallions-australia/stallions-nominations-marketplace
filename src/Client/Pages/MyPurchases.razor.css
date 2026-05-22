@@ -1,0 +1,14 @@
+.purchases-list { display: flex; flex-direction: column; gap: var(--space-4); }
+.purchase-row {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4) var(--space-6);
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: var(--space-4);
+    align-items: center;
+}
+.purchase-stallion { font-weight: var(--font-weight-semibold); }
+.purchase-price    { font-weight: var(--font-weight-semibold); font-size: var(--font-size-lg); }
+.purchase-status   { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }

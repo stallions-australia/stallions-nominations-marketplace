@@ -1,0 +1,72 @@
+@page "/my-purchases"
+@attribute [Authorize]
+@inject CheckoutApiService CheckoutApi
+
+<PageTitle>My Purchases — Stallions Australia</PageTitle>
+
+<div class="container" style="padding-block: var(--space-10)">
+    <h1 class="page-title">My Purchases</h1>
+
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else if (_purchases is null)
+    {
+        <LoadingSpinner />
+    }
+    else if (!_purchases.Any())
+    {
+        <EmptyState Message="No purchases yet" Icon="🐎">
+            <a href="/" class="btn btn-primary">Browse nominations</a>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="purchases-list">
+            @foreach (var p in _purchases)
+            {
+                <div class="purchase-row">
+                    <div class="purchase-info">
+                        <div class="purchase-stallion">@p.StallionName</div>
+                        <div class="purchase-mare text-muted text-sm">Mare: @p.MareName</div>
+                    </div>
+                    <div class="purchase-amounts">
+                        <div class="purchase-price">@p.TotalPriceIncGst.ToString("C0", AuCulture)</div>
+                        <div class="purchase-fee text-muted text-sm">Fee: @p.PlatformFeeIncGst.ToString("C0", AuCulture)</div>
+                    </div>
+                    <div class="purchase-status">
+                        <span class="badge @GetStatusBadge(p.Status)">@p.Status</span>
+                        <div class="purchase-date text-muted text-xs">@p.CreatedAt.ToString("d MMM yyyy")</div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Stallions.Shared.DTOs.Checkout.PurchaseDto>? _purchases;
+    private string? _error;
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _purchases = null;
+        try { _purchases = await CheckoutApi.GetMyPurchasesAsync(); }
+        catch (ApiException) { _error = "Failed to load purchases. Please try again."; }
+    }
+
+    private static string GetStatusBadge(string status) => status switch
+    {
+        "Completed" => "badge-leading",
+        "Pending"   => "badge-auction",
+        "Cancelled" => "badge-ending",
+        "Refunded"  => "badge-ending",
+        _           => ""
+    };
+}
