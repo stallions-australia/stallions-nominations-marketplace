@@ -26,7 +26,7 @@ public class StallionDetailTests : TestContext
 
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
-        listingMock.Setup(s => s.GetListingsAsync(null, null, null))
+        listingMock.Setup(s => s.GetListingsAsync(It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<string?>()))
             .ReturnsAsync(new List<ListingCardDto>());
         Services.AddSingleton(listingMock.Object);
 
