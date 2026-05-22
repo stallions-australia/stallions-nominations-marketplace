@@ -24,10 +24,14 @@ var apiBase = string.IsNullOrWhiteSpace(apiBaseUrl)
     ? new Uri(builder.HostEnvironment.BaseAddress)
     : new Uri(apiBaseUrl);
 
-builder.Services.AddHttpClient<ListingApiService>(c => c.BaseAddress = apiBase)
-    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
-builder.Services.AddHttpClient<StallionApiService>(c => c.BaseAddress = apiBase)
-    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
+// Public browse services — no auth token. These call [AllowAnonymous] endpoints and
+// must NOT use BaseAddressAuthorizationMessageHandler, which throws when there is no
+// token (i.e. the user hasn't signed in yet).
+builder.Services.AddHttpClient<ListingApiService>(c => c.BaseAddress = apiBase);
+builder.Services.AddHttpClient<StallionApiService>(c => c.BaseAddress = apiBase);
+builder.Services.AddHttpClient<StudFarmApiService>(c => c.BaseAddress = apiBase);
+
+// Authenticated services — always require a Bearer token.
 builder.Services.AddHttpClient<BidApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 builder.Services.AddHttpClient<CheckoutApiService>(c => c.BaseAddress = apiBase)
@@ -35,8 +39,6 @@ builder.Services.AddHttpClient<CheckoutApiService>(c => c.BaseAddress = apiBase)
 builder.Services.AddHttpClient<EnquiryApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 builder.Services.AddHttpClient<UserApiService>(c => c.BaseAddress = apiBase)
-    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
-builder.Services.AddHttpClient<StudFarmApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 
 await builder.Build().RunAsync();
