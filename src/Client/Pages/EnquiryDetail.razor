@@ -8,7 +8,7 @@
 <div class="container enquiry-detail-container">
     @if (_error is not null)
     {
-        <ErrorMessage Message="@_error" OnRetry="Load" />
+        <ErrorMessage Message="@_error" OnRetry="@(() => Load())" />
     }
     else if (_enquiry is null)
     {
@@ -22,7 +22,10 @@
         </div>
 
         <div class="enquiry-thread">
-            <MessageThread Messages="@_enquiry.Messages" CurrentUserId="@_currentUserId" />
+            <MessageThread Messages="@_enquiry.Messages"
+                           CurrentUserId="@_currentUserId"
+                           BuyerUserId="@_enquiry.BuyerUserId"
+                           StudFarmUserId="@_enquiry.StudFarmUserId" />
         </div>
 
         @if (_sendError is not null)
@@ -30,9 +33,16 @@
             <ErrorMessage Message="@_sendError" />
         }
 
-        <div class="enquiry-composer">
-            <MessageComposer OnSend="HandleSend" />
-        </div>
+        @if (_enquiry.Status != "Closed")
+        {
+            <div class="enquiry-composer">
+                <MessageComposer OnSend="HandleSend" />
+            </div>
+        }
+        else
+        {
+            <p class="text-muted text-sm" style="margin-top: var(--space-4)">This enquiry is closed.</p>
+        }
     }
 </div>
 
@@ -54,9 +64,10 @@
         await Load();
     }
 
-    private async Task Load()
+    private async Task Load(bool preserveState = false)
     {
         _error = null;
+        if (!preserveState) _enquiry = null;
         try { _enquiry = await EnquiryApi.GetByIdAsync(Id); }
         catch (ApiException ex) when (ex.StatusCode == 404) { _error = "Enquiry not found."; }
         catch (ApiException) { _error = "Failed to load enquiry. Please try again."; }
@@ -69,7 +80,7 @@
         {
             await EnquiryApi.PostMessageAsync(Id,
                 new Stallions.Shared.DTOs.Enquiries.SendMessageRequest { Body = text });
-            await Load();
+            await Load(preserveState: true);
         }
         catch (ApiException)
         {

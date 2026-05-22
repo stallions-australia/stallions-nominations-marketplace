@@ -28,7 +28,7 @@
             @foreach (var e in _enquiries)
             {
                 var url = $"/enquiries/{e.Id}";
-                <div class="enquiry-row" @onclick="@(() => Nav.NavigateTo(url))"  style="cursor:pointer">
+                <div class="enquiry-row" @onclick="@(() => Nav.NavigateTo(url))">
                     <div class="enquiry-info">
                         <div class="enquiry-subject">@e.Subject</div>
                         <div class="enquiry-meta text-muted text-sm">

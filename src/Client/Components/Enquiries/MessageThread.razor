@@ -8,8 +8,9 @@ else
         @foreach (var msg in Messages)
         {
             var isMine = CurrentUserId.HasValue && msg.SenderUserId == CurrentUserId.Value;
+            var otherLabel = CurrentUserId == BuyerUserId ? "Stud Farm" : "Buyer";
             <div class="message @(isMine ? "message--buyer" : "message--farm")">
-                <div class="message-sender">@(isMine ? "You" : "Stud Farm")</div>
+                <div class="message-sender">@(isMine ? "You" : otherLabel)</div>
                 <div class="message-bubble">@msg.Body</div>
                 <div class="message-time text-muted text-xs">@msg.SentAt.ToString("d MMM, h:mm tt")</div>
             </div>
@@ -20,4 +21,6 @@ else
 @code {
     [Parameter] public IReadOnlyList<Stallions.Shared.DTOs.Enquiries.EnquiryMessageDto>? Messages { get; set; }
     [Parameter] public Guid? CurrentUserId { get; set; }
+    [Parameter] public Guid? BuyerUserId { get; set; }
+    [Parameter] public Guid? StudFarmUserId { get; set; }
 }
