@@ -54,6 +54,8 @@ public class StallionsController : ControllerBase
 
     [HttpPost("{id:guid}/images")]
     [Authorize(Roles = "StudFarmAdmin")]
+    [RequestSizeLimit(10_485_760)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 10_485_760)]
     public async Task<IActionResult> UploadImage(Guid id, [FromForm] IFormFile file)
     {
         var r = await _stallions.UploadImageAsync(id, file);
