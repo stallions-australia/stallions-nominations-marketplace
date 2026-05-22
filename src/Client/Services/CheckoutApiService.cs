@@ -25,7 +25,7 @@ public class CheckoutApiService
                ?? throw new ApiException(500, "Empty response from server.");
     }
 
-    public async Task<List<PurchaseDto>> GetMyPurchasesAsync()
+    public virtual async Task<List<PurchaseDto>> GetMyPurchasesAsync()
     {
         var response = await _http.GetAsync("api/purchases");
         if (!response.IsSuccessStatusCode)

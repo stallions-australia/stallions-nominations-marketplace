@@ -54,13 +54,20 @@
         {
             <MareDetailsForm Model="@_request" OnSubmit="AdvanceToDisclosure" />
         }
-        else if (_step == CheckoutStep.Disclosure && _disclosure is not null)
+        else if (_step == CheckoutStep.Disclosure)
         {
-            <BuyerDisclosure TotalPriceIncGst="@_disclosure.TotalPriceIncGst"
-                             PlatformFeeIncGst="@_disclosure.PlatformFeeIncGst"
-                             BalanceArrangementText="@_disclosure.StudFarmBalanceArrangement"
-                             RefundPolicyText="@_disclosure.RefundPolicy"
-                             OnConfirmed="Confirm" />
+            @if (_disclosure is null)
+            {
+                <ErrorMessage Message="Something went wrong loading your purchase details. Please go back and try again." />
+            }
+            else
+            {
+                <BuyerDisclosure TotalPriceIncGst="@_disclosure.TotalPriceIncGst"
+                                 PlatformFeeIncGst="@_disclosure.PlatformFeeIncGst"
+                                 BalanceArrangementText="@_disclosure.StudFarmBalanceArrangement"
+                                 RefundPolicyText="@_disclosure.RefundPolicy"
+                                 OnConfirmed="Confirm" />
+            }
         }
     }
 </div>
@@ -73,6 +80,7 @@
 
     private ListingDto? _listing;
     private CheckoutDisclosureDto? _disclosure;
+    private Guid _purchaseId;
     private CheckoutRequest _request = new() { MareName = string.Empty };
     private string? _error;
     private string? _initiateError;
@@ -82,6 +90,8 @@
         try
         {
             _listing = await ListingApi.GetByIdAsync(ListingId);
+            if (_listing.Status is not "Active")
+                _error = "This listing is no longer available for purchase.";
         }
         catch (ApiException ex) when (ex.StatusCode == 404)
         {
@@ -99,6 +109,7 @@
         try
         {
             var response = await CheckoutApi.InitiateAsync(ListingId, _request);
+            _purchaseId = response.PurchaseId;   // stored for payment redirect (no provider yet)
             _disclosure = response.Disclosure;
             _step = CheckoutStep.Disclosure;
         }
@@ -108,9 +119,17 @@
         }
     }
 
+    private bool _confirmBusy;
+
     private void Confirm()
     {
-        // InitiateAsync created the purchase; showing success screen confirms it to the user
+        if (_confirmBusy) return;
+        _confirmBusy = true;
+        // The server created the Purchase (Status=Pending) during InitiateAsync.
+        // Once a payment provider is integrated, this method will redirect to the
+        // provider with _purchaseId so they can complete the payment and trigger
+        // the server-side CompleteCheckoutAsync via webhook. For now we advance
+        // directly to the success screen as there is no payment step in Plan 3c scope.
         _step = CheckoutStep.Success;
     }
 }
