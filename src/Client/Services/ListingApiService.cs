@@ -25,7 +25,7 @@ public class ListingApiService
                ?? new List<ListingCardDto>();
     }
 
-    public async Task<ListingDto> GetByIdAsync(Guid id)
+    public virtual async Task<ListingDto> GetByIdAsync(Guid id)
     {
         var response = await _http.GetAsync($"api/listings/{id}");
         if (response.StatusCode == HttpStatusCode.NotFound)

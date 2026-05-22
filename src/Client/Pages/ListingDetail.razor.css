@@ -1,0 +1,129 @@
+.listing-hero {
+    position: relative;
+    height: 300px;
+    overflow: hidden;
+    background: var(--navy-dark);
+}
+
+.listing-hero-placeholder {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
+}
+
+.listing-hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,.6), transparent 50%);
+}
+
+.listing-hero-text {
+    position: absolute;
+    bottom: var(--space-6);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+}
+
+.listing-hero-name {
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--white);
+    margin-top: var(--space-2);
+}
+
+.listing-hero-farm a {
+    color: rgba(255,255,255,.8);
+    text-decoration: none;
+}
+
+.listing-body {
+    display: grid;
+    gap: var(--space-8);
+    padding-block: var(--space-8);
+}
+
+.listing-main {
+    min-width: 0;
+}
+
+.listing-price-block {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4);
+}
+
+.listing-gst-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+}
+
+.listing-auction-block,
+.listing-fp-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.auction-meta {
+    display: flex;
+    gap: var(--space-6);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.bid-form {
+    background: var(--warm-grey);
+    border-radius: var(--radius-md);
+    padding: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.bid-form-hint {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.bid-form-row {
+    display: flex;
+    gap: var(--space-3);
+}
+
+.bid-form-row .form-input {
+    flex: 1;
+}
+
+.listing-qty-label {
+    margin-bottom: var(--space-2);
+}
+
+.listing-enquire {
+    margin-top: var(--space-4);
+}
+
+.listing-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.listing-sidebar h3 {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+.text-success {
+    color: var(--success);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.text-muted {
+    color: var(--text-muted);
+}

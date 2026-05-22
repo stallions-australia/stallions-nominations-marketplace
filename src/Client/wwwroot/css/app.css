@@ -327,3 +327,9 @@ h1:focus { outline: none; }
 @media (min-width: 1024px) {
     .listing-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ListingDetail breakpoints */
+@media (min-width: 768px) {
+    .listing-hero { height: 500px; }
+    .listing-body { grid-template-columns: 1fr 300px; }
+}

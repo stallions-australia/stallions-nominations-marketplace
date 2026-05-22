@@ -1,0 +1,197 @@
+@page "/listings/{Id:guid}"
+@inject ListingApiService ListingApi
+@inject BidApiService BidApi
+@inject NavigationManager Nav
+
+<PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
+
+@if (_error is not null)
+{
+    <div class="container" style="padding-top: var(--space-12)">
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    </div>
+}
+else if (_listing is null)
+{
+    <LoadingSpinner Large="true" />
+}
+else
+{
+    <div class="listing-hero">
+        <div class="listing-hero-placeholder"></div>
+        <div class="listing-hero-overlay"></div>
+        <div class="listing-hero-text container">
+            <span class="badge @(_listing.ListingType == "Auction" ? "badge-auction" : "badge-buynow")">
+                @(_listing.ListingType == "Auction" ? "Auction" : "Buy Now")
+            </span>
+            <h1 class="listing-hero-name">@_listing.StallionName</h1>
+            <p class="listing-hero-farm">
+                <a href="/studfarms/@_listing.StudFarmId">@_listing.StudFarmName</a>
+            </p>
+        </div>
+    </div>
+
+    <div class="container listing-body">
+        <div class="listing-main">
+
+            <div class="listing-price-block">
+                <PriceDisplay Amount="@GetDisplayPrice()" Large="true" />
+                <span class="listing-gst-label">inc. GST</span>
+                @if (_listing is AuctionListingDto { IsNoReserve: true })
+                {
+                    <span class="badge" style="margin-left: var(--space-3)">No reserve</span>
+                }
+            </div>
+
+            @if (_listing is AuctionListingDto auction)
+            {
+                <div class="listing-auction-block">
+                    <div class="auction-meta">
+                        <span class="text-secondary text-sm">Live auction</span>
+                        <AuctionTimer ClosesAt="@auction.EndDateTime" />
+                        @if (!auction.IsNoReserve)
+                        {
+                            <span class="@(IsReserveMet(auction) ? "text-success" : "text-muted") text-sm">
+                                @(IsReserveMet(auction) ? "Reserve met" : "Reserve not met")
+                            </span>
+                        }
+                    </div>
+
+                    <AuthorizeView>
+                        <Authorized>
+                            <div class="bid-form">
+                                <p class="bid-form-hint">
+                                    Current: <strong>@FormatPrice(GetDisplayPrice())</strong>
+                                    &middot; Min next bid: <strong>@FormatPrice(GetDisplayPrice() + auction.MinimumBidIncrement)</strong>
+                                </p>
+                                <div class="bid-form-row">
+                                    <input class="form-input" type="number" step="25"
+                                           min="@(GetDisplayPrice() + auction.MinimumBidIncrement)"
+                                           @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
+                                    <button class="btn btn-gold" @onclick="PlaceBid" disabled="@_bidBusy">
+                                        @(_bidBusy ? "Placing…" : "Place bid")
+                                    </button>
+                                </div>
+                                @if (_bidError is not null) { <ErrorMessage Message="@_bidError" /> }
+                                @if (_bidSuccess)           { <p class="text-success">&#10003; Bid placed!</p> }
+                            </div>
+                        </Authorized>
+                        <NotAuthorized>
+                            <a href="authentication/login" class="btn btn-gold btn-full">Sign in to bid</a>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                </div>
+            }
+
+            @if (_listing is FixedPriceListingDto fp)
+            {
+                <div class="listing-fp-block">
+                    <p class="listing-qty-label text-secondary text-sm">@fp.QuantityRemaining nominations remaining</p>
+                    <AuthorizeView Roles="Buyer">
+                        <Authorized>
+                            <a href="/checkout/@_listing.Id" class="btn btn-gold btn-full">Purchase nomination</a>
+                        </Authorized>
+                        <NotAuthorized>
+                            <a href="authentication/login" class="btn btn-gold btn-full">Sign in to purchase</a>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                </div>
+            }
+
+            <div class="listing-enquire">
+                <AuthorizeView>
+                    <Authorized>
+                        <button class="btn btn-outline btn-full" @onclick="OpenEnquiry">
+                            Enquire about this listing
+                        </button>
+                    </Authorized>
+                    <NotAuthorized>
+                        <a href="authentication/login" class="btn btn-outline btn-full">Sign in to enquire</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </div>
+
+        <aside class="listing-sidebar">
+            <h3>Stallion</h3>
+            <a href="/stallions/@_listing.StallionId">View @_listing.StallionName profile &rarr;</a>
+        </aside>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ListingDto? _listing;
+    private string? _error;
+    private decimal _bidAmount;
+    private bool _bidBusy;
+    private string? _bidError;
+    private bool _bidSuccess;
+    // Updated price after a successful bid
+    private decimal? _refreshedHighestBid;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _listing = null;
+        try
+        {
+            _listing = await ListingApi.GetByIdAsync(Id);
+        }
+        catch (ApiException ex) when (ex.StatusCode == 404)
+        {
+            _error = "This listing could not be found. It may have been removed.";
+        }
+        catch (ApiException)
+        {
+            _error = "Failed to load listing. Please try again.";
+        }
+    }
+
+    private decimal GetDisplayPrice()
+    {
+        if (_refreshedHighestBid.HasValue) return _refreshedHighestBid.Value;
+        return _listing switch
+        {
+            AuctionListingDto al when al.CurrentHighestBidIncGst.HasValue => al.CurrentHighestBidIncGst.Value,
+            AuctionListingDto al => al.StartingPrice,
+            FixedPriceListingDto fp => fp.PriceIncGst,
+            _ => 0m
+        };
+    }
+
+    private static bool IsReserveMet(AuctionListingDto auction) =>
+        !auction.IsNoReserve &&
+        auction.ReservePrice.HasValue &&
+        auction.CurrentHighestBidIncGst >= auction.ReservePrice;
+
+    private static string FormatPrice(decimal amount) =>
+        amount.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("en-AU"));
+
+    private async Task PlaceBid()
+    {
+        _bidError = null;
+        _bidSuccess = false;
+        _bidBusy = true;
+        try
+        {
+            await BidApi.PlaceBidAsync(Id, new PlaceBidRequest { AmountIncGst = _bidAmount });
+            _bidSuccess = true;
+            var refreshed = await BidApi.GetCurrentBidAsync(Id);
+            _refreshedHighestBid = refreshed?.HighestBidIncGst;
+        }
+        catch (ApiException ex)
+        {
+            _bidError = ex.Message;
+        }
+        finally
+        {
+            _bidBusy = false;
+        }
+    }
+
+    private void OpenEnquiry() => Nav.NavigateTo($"/listings/{Id}?enquire=1");
+}

@@ -9,7 +9,7 @@ public class BidApiService
     private readonly HttpClient _http;
     public BidApiService(HttpClient http) => _http = http;
 
-    public async Task PlaceBidAsync(Guid listingId, PlaceBidRequest request)
+    public virtual async Task PlaceBidAsync(Guid listingId, PlaceBidRequest request)
     {
         var response = await _http.PostAsJsonAsync($"api/listings/{listingId}/bids", request);
         if (!response.IsSuccessStatusCode)
@@ -19,7 +19,16 @@ public class BidApiService
         }
     }
 
-    public async Task<List<BidDto>> GetMyBidsAsync()
+    public virtual async Task<CurrentBidDto?> GetCurrentBidAsync(Guid listingId)
+    {
+        var response = await _http.GetAsync($"api/listings/{listingId}/bids/current");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        if (!response.IsSuccessStatusCode)
+            throw new ApiException((int)response.StatusCode, "Failed to load current bid.");
+        return await response.Content.ReadFromJsonAsync<CurrentBidDto?>();
+    }
+
+    public virtual async Task<List<BidDto>> GetMyBidsAsync()
     {
         var response = await _http.GetAsync("api/bids/mine");
         if (!response.IsSuccessStatusCode)
