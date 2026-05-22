@@ -1,14 +1,32 @@
 -- ============================================================
 -- Development seed data for Stallions Nominations Marketplace
--- Run against the local dev database (stallions_dev)
+-- Run against the local dev database (StallionsNomsDev)
 -- Safe to re-run: uses IF NOT EXISTS / MERGE patterns
 --
--- Enum values (stored as int in DB):
---   ListingType:   FixedPrice=0, Auction=1
---   ListingStatus: Draft=0, Active=1, Sold=2, Expired=3, Cancelled=4
+-- IMPORTANT: EF Core stores all enums as strings in this project.
+--   ListingType:   'FixedPrice', 'Auction'
+--   ListingStatus: 'Draft', 'Active', 'Sold', 'Expired', 'Cancelled'
+--   UserRole:      'Buyer', 'StudFarmAdmin', 'Staff'
+--   UserStatus:    'PendingVerification', 'Active', 'Suspended'
 -- ============================================================
 
 BEGIN TRANSACTION;
+
+-- ── Fix any previously inserted rows that used integer values ────
+-- (Safe no-op if rows don't exist or already have string values)
+UPDATE Listings SET ListingType = 'FixedPrice' WHERE ListingType = '0';
+UPDATE Listings SET ListingType = 'Auction'    WHERE ListingType = '1';
+UPDATE Listings SET Status = 'Draft'     WHERE Status = '0';
+UPDATE Listings SET Status = 'Active'    WHERE Status = '1';
+UPDATE Listings SET Status = 'Sold'      WHERE Status = '2';
+UPDATE Listings SET Status = 'Expired'   WHERE Status = '3';
+UPDATE Listings SET Status = 'Cancelled' WHERE Status = '4';
+UPDATE Users SET Role = 'Buyer'         WHERE Role = '0';
+UPDATE Users SET Role = 'StudFarmAdmin' WHERE Role = '1';
+UPDATE Users SET Role = 'Staff'         WHERE Role = '2';
+UPDATE Users SET Status = 'PendingVerification' WHERE Status = '0';
+UPDATE Users SET Status = 'Active'     WHERE Status = '1';
+UPDATE Users SET Status = 'Suspended'  WHERE Status = '2';
 
 -- ── Seasons ──────────────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM Seasons WHERE Name = '2025 Season')
@@ -23,21 +41,19 @@ BEGIN
 END
 
 -- ── Users (stub stud farm admins) ───────────────────────────
--- These are placeholder rows so the FK from StudFarms → Users is satisfied.
--- EntraObjectId values are fake GUIDs; replace them with the real Entra OIDs
--- for your test accounts once you know them.
---   UserRole:   Buyer=0, StudFarmAdmin=1, Staff=2
---   UserStatus: PendingVerification=0, Active=1, Suspended=2
+-- Placeholder rows so the FK from StudFarms → Users is satisfied.
+-- EntraObjectId values are fake GUIDs; replace with real Entra OIDs
+-- once you have test user accounts.
 
 IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = '00000000-0000-0000-0000-000000000001')
 BEGIN
     INSERT INTO Users (Id, EntraObjectId, Email, DisplayName, Role, Status, CreatedAt)
     VALUES (
         '00000000-0000-0000-0000-000000000001',
-        'aaaaaaaa-0000-0000-0000-000000000001',   -- Replace with real Entra OID
+        'aaaaaaaa-0000-0000-0000-000000000001',
         'coolmore-admin@dev.local',
         'Coolmore Admin (Dev)',
-        1 /* StudFarmAdmin */, 1 /* Active */, GETUTCDATE()
+        'StudFarmAdmin', 'Active', GETUTCDATE()
     );
 END
 
@@ -46,24 +62,20 @@ BEGIN
     INSERT INTO Users (Id, EntraObjectId, Email, DisplayName, Role, Status, CreatedAt)
     VALUES (
         '00000000-0000-0000-0000-000000000002',
-        'aaaaaaaa-0000-0000-0000-000000000002',   -- Replace with real Entra OID
+        'aaaaaaaa-0000-0000-0000-000000000002',
         'arrowfield-admin@dev.local',
         'Arrowfield Admin (Dev)',
-        1 /* StudFarmAdmin */, 1 /* Active */, GETUTCDATE()
+        'StudFarmAdmin', 'Active', GETUTCDATE()
     );
 END
 
 -- ── Stud Farms ───────────────────────────────────────────────
--- Note: UserId references must match actual Entra ID user objects.
--- For local dev, insert placeholder GUIDs and update them once
--- you have the test user IDs from Entra ID.
-
 IF NOT EXISTS (SELECT 1 FROM StudFarms WHERE Name = 'Coolmore Australia (Dev)')
 BEGIN
     INSERT INTO StudFarms (Id, UserId, Name, ABN, ContactPhone, ContactEmail, Address, IsActive, CreatedAt)
     VALUES (
         '22222222-0000-0000-0000-000000000001',
-        '00000000-0000-0000-0000-000000000001',  -- Replace with stud farm admin user ID
+        '00000000-0000-0000-0000-000000000001',
         'Coolmore Australia (Dev)',
         '12 345 678 901',
         '02 4998 6700',
@@ -78,7 +90,7 @@ BEGIN
     INSERT INTO StudFarms (Id, UserId, Name, ABN, ContactPhone, ContactEmail, Address, IsActive, CreatedAt)
     VALUES (
         '22222222-0000-0000-0000-000000000002',
-        '00000000-0000-0000-0000-000000000002',  -- Replace with second stud farm admin user ID
+        '00000000-0000-0000-0000-000000000002',
         'Arrowfield Stud (Dev)',
         '98 765 432 109',
         '02 6545 3000',
@@ -141,7 +153,7 @@ BEGIN
         1, 1, GETUTCDATE());
 END
 
--- ── Fixed Price Listings (Active=1, fee set by staff) ────────
+-- ── Fixed Price Listings ──────────────────────────────────────
 -- Fastnet Rock: first 20 at $8,000
 IF NOT EXISTS (SELECT 1 FROM Listings WHERE Id = '44444444-0000-0000-0000-000000000001')
 BEGIN
@@ -149,7 +161,7 @@ BEGIN
         PlatformFeePercent, PublishedAt, CreatedAt)
     VALUES ('44444444-0000-0000-0000-000000000001',
         '33333333-0000-0000-0000-000000000001', @SeasonId, @CoolmoreId,
-        0 /* FixedPrice */, 1 /* Active */, 2.5, GETUTCDATE(), GETUTCDATE());
+        'FixedPrice', 'Active', 2.5, GETUTCDATE(), GETUTCDATE());
 
     INSERT INTO FixedPriceListings (Id, PriceIncGst, Quantity, QuantityRemaining)
     VALUES ('44444444-0000-0000-0000-000000000001', 8000.00, 20, 17);
@@ -162,7 +174,7 @@ BEGIN
         PlatformFeePercent, PublishedAt, CreatedAt)
     VALUES ('44444444-0000-0000-0000-000000000002',
         '33333333-0000-0000-0000-000000000001', @SeasonId, @CoolmoreId,
-        0 /* FixedPrice */, 1 /* Active */, 2.5, GETUTCDATE(), GETUTCDATE());
+        'FixedPrice', 'Active', 2.5, GETUTCDATE(), GETUTCDATE());
 
     INSERT INTO FixedPriceListings (Id, PriceIncGst, Quantity, QuantityRemaining)
     VALUES ('44444444-0000-0000-0000-000000000002', 10000.00, 10, 10);
@@ -175,7 +187,7 @@ BEGIN
         PlatformFeePercent, PublishedAt, CreatedAt)
     VALUES ('44444444-0000-0000-0000-000000000003',
         '33333333-0000-0000-0000-000000000002', @SeasonId, @ArrowfieldId,
-        0 /* FixedPrice */, 1 /* Active */, 3.0, GETUTCDATE(), GETUTCDATE());
+        'FixedPrice', 'Active', 3.0, GETUTCDATE(), GETUTCDATE());
 
     INSERT INTO FixedPriceListings (Id, PriceIncGst, Quantity, QuantityRemaining)
     VALUES ('44444444-0000-0000-0000-000000000003', 15000.00, 5, 2);
@@ -189,13 +201,13 @@ BEGIN
         PlatformFeePercent, PublishedAt, CreatedAt)
     VALUES ('44444444-0000-0000-0000-000000000004',
         '33333333-0000-0000-0000-000000000003', @SeasonId, @CoolmoreId,
-        1 /* Auction */, 1 /* Active */, 2.0, GETUTCDATE(), GETUTCDATE());
+        'Auction', 'Active', 2.0, GETUTCDATE(), GETUTCDATE());
 
     INSERT INTO AuctionListings (Id, StartingPrice, ReservePrice, IsNoReserve,
         MinimumBidIncrement, EndDateTime)
     VALUES ('44444444-0000-0000-0000-000000000004',
         5000.00, 12000.00, 0, 25.00,
-        DATEADD(hour, 4, GETUTCDATE()));   -- Ends in 4 hours (triggers "ending soon" badge)
+        DATEADD(hour, 4, GETUTCDATE()));
 END
 
 -- Deep Impact: 5 days remaining, no reserve
@@ -205,19 +217,16 @@ BEGIN
         PlatformFeePercent, PublishedAt, CreatedAt)
     VALUES ('44444444-0000-0000-0000-000000000005',
         '33333333-0000-0000-0000-000000000004', @SeasonId, @ArrowfieldId,
-        1 /* Auction */, 1 /* Active */, 1.5, GETUTCDATE(), GETUTCDATE());
+        'Auction', 'Active', 1.5, GETUTCDATE(), GETUTCDATE());
 
     INSERT INTO AuctionListings (Id, StartingPrice, ReservePrice, IsNoReserve,
         MinimumBidIncrement, EndDateTime)
     VALUES ('44444444-0000-0000-0000-000000000005',
         8000.00, NULL, 1, 25.00,
-        DATEADD(day, 5, GETUTCDATE()));    -- Ends in 5 days, no reserve
+        DATEADD(day, 5, GETUTCDATE()));
 END
 
 COMMIT;
 
--- ── Reminder ─────────────────────────────────────────────────
-PRINT 'Seed data inserted.';
-PRINT 'ACTION REQUIRED: Update the placeholder UserId values in StudFarms to match';
-PRINT 'the actual test user GUIDs from your Entra ID tenant.';
-PRINT 'Test user role assignments must be done in Entra ID app roles, not the database.';
+PRINT 'Seed data inserted/updated successfully.';
+PRINT 'NOTE: Update the placeholder EntraObjectId values in Users once you have real Entra OIDs.';
