@@ -22,6 +22,37 @@ BEGIN
     );
 END
 
+-- ── Users (stub stud farm admins) ───────────────────────────
+-- These are placeholder rows so the FK from StudFarms → Users is satisfied.
+-- EntraObjectId values are fake GUIDs; replace them with the real Entra OIDs
+-- for your test accounts once you know them.
+--   UserRole:   Buyer=0, StudFarmAdmin=1, Staff=2
+--   UserStatus: PendingVerification=0, Active=1, Suspended=2
+
+IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = '00000000-0000-0000-0000-000000000001')
+BEGIN
+    INSERT INTO Users (Id, EntraObjectId, Email, DisplayName, Role, Status, CreatedAt)
+    VALUES (
+        '00000000-0000-0000-0000-000000000001',
+        'aaaaaaaa-0000-0000-0000-000000000001',   -- Replace with real Entra OID
+        'coolmore-admin@dev.local',
+        'Coolmore Admin (Dev)',
+        1 /* StudFarmAdmin */, 1 /* Active */, GETUTCDATE()
+    );
+END
+
+IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = '00000000-0000-0000-0000-000000000002')
+BEGIN
+    INSERT INTO Users (Id, EntraObjectId, Email, DisplayName, Role, Status, CreatedAt)
+    VALUES (
+        '00000000-0000-0000-0000-000000000002',
+        'aaaaaaaa-0000-0000-0000-000000000002',   -- Replace with real Entra OID
+        'arrowfield-admin@dev.local',
+        'Arrowfield Admin (Dev)',
+        1 /* StudFarmAdmin */, 1 /* Active */, GETUTCDATE()
+    );
+END
+
 -- ── Stud Farms ───────────────────────────────────────────────
 -- Note: UserId references must match actual Entra ID user objects.
 -- For local dev, insert placeholder GUIDs and update them once
