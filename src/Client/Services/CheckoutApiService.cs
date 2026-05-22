@@ -13,7 +13,7 @@ public class CheckoutApiService
     /// Posts mare details. The server creates the purchase record and returns disclosure data.
     /// The buyer reviews the disclosure, then must explicitly confirm (Plan 3c Checkout page).
     /// </summary>
-    public async Task<CheckoutResponse> InitiateAsync(Guid listingId, CheckoutRequest request)
+    public virtual async Task<CheckoutResponse> InitiateAsync(Guid listingId, CheckoutRequest request)
     {
         var response = await _http.PostAsJsonAsync($"api/listings/{listingId}/checkout", request);
         if (!response.IsSuccessStatusCode)

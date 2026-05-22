@@ -1,0 +1,34 @@
+<EditForm Model="@Model" OnValidSubmit="OnSubmit">
+    <DataAnnotationsValidator />
+
+    <div class="form-group">
+        <label class="form-label" for="mare-name">
+            Mare name <span class="required-mark" aria-hidden="true">*</span>
+        </label>
+        <InputText id="mare-name" class="form-input" @bind-Value="Model.MareName"
+                   placeholder="e.g. Brilliant Star" />
+        <ValidationMessage For="() => Model.MareName" class="validation-message" />
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="mare-reg">Mare registration (optional)</label>
+        <InputText id="mare-reg" class="form-input" @bind-Value="Model.MareRegistration"
+                   placeholder="Racing Australia registration number" />
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="mare-breed">Mare breed (optional)</label>
+        <InputText id="mare-breed" class="form-input" @bind-Value="Model.MareBreed"
+                   placeholder="e.g. Thoroughbred" />
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-full mare-submit"
+            disabled="@string.IsNullOrWhiteSpace(Model.MareName)">
+        Continue to review
+    </button>
+</EditForm>
+
+@code {
+    [Parameter, EditorRequired] public CheckoutRequest Model { get; set; } = null!;
+    [Parameter, EditorRequired] public EventCallback OnSubmit { get; set; }
+}

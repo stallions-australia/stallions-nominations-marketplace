@@ -1,0 +1,116 @@
+@page "/checkout/{ListingId:guid}"
+@attribute [Authorize(Roles = "Buyer")]
+@inject ListingApiService ListingApi
+@inject CheckoutApiService CheckoutApi
+@inject NavigationManager Nav
+
+<PageTitle>Checkout — Stallions Australia</PageTitle>
+
+<div class="container checkout-container">
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" />
+    }
+    else if (_listing is null)
+    {
+        <LoadingSpinner Large="true" />
+    }
+    else if (_step == CheckoutStep.Success)
+    {
+        <div class="checkout-success">
+            <div class="success-icon">✓</div>
+            <h2>Nomination secured!</h2>
+            <p>Your nomination for <strong>@_listing.StallionName</strong> has been confirmed.</p>
+            <p class="text-secondary" style="margin-top: var(--space-3)">
+                The stud farm will be in touch to arrange the balance payment.
+            </p>
+            <a href="/my-purchases" class="btn btn-primary" style="margin-top: var(--space-6)">
+                View my purchases
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="checkout-header">
+            <h1>Purchase nomination</h1>
+            <p class="text-secondary">@_listing.StallionName — @_listing.StudFarmName</p>
+            <div class="checkout-steps">
+                <span class="step @(_step == CheckoutStep.MareDetails ? "step--active" : "")">
+                    1. Mare details
+                </span>
+                <span class="step-sep">›</span>
+                <span class="step @(_step == CheckoutStep.Disclosure ? "step--active" : "")">
+                    2. Review &amp; confirm
+                </span>
+            </div>
+        </div>
+
+        @if (_initiateError is not null)
+        {
+            <ErrorMessage Message="@_initiateError" style="margin-bottom: var(--space-4)" />
+        }
+
+        @if (_step == CheckoutStep.MareDetails)
+        {
+            <MareDetailsForm Model="@_request" OnSubmit="AdvanceToDisclosure" />
+        }
+        else if (_step == CheckoutStep.Disclosure && _disclosure is not null)
+        {
+            <BuyerDisclosure TotalPriceIncGst="@_disclosure.TotalPriceIncGst"
+                             PlatformFeeIncGst="@_disclosure.PlatformFeeIncGst"
+                             BalanceArrangementText="@_disclosure.StudFarmBalanceArrangement"
+                             RefundPolicyText="@_disclosure.RefundPolicy"
+                             OnConfirmed="Confirm" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid ListingId { get; set; }
+
+    private enum CheckoutStep { MareDetails, Disclosure, Success }
+    private CheckoutStep _step = CheckoutStep.MareDetails;
+
+    private ListingDto? _listing;
+    private CheckoutDisclosureDto? _disclosure;
+    private CheckoutRequest _request = new() { MareName = string.Empty };
+    private string? _error;
+    private string? _initiateError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _listing = await ListingApi.GetByIdAsync(ListingId);
+        }
+        catch (ApiException ex) when (ex.StatusCode == 404)
+        {
+            _error = "This listing could not be found.";
+        }
+        catch (ApiException)
+        {
+            _error = "Failed to load listing. Please try again.";
+        }
+    }
+
+    private async Task AdvanceToDisclosure()
+    {
+        _initiateError = null;
+        try
+        {
+            var response = await CheckoutApi.InitiateAsync(ListingId, _request);
+            _disclosure = response.Disclosure;
+            _step = CheckoutStep.Disclosure;
+        }
+        catch (ApiException ex)
+        {
+            _initiateError = ex.Message;
+        }
+    }
+
+    private void Confirm()
+    {
+        // InitiateAsync created the purchase; showing success screen confirms it to the user
+        _step = CheckoutStep.Success;
+    }
+}

@@ -1,0 +1,55 @@
+<div class="disclosure-panel">
+    <h3 class="disclosure-heading">Purchase Summary</h3>
+
+    <dl class="disclosure-table">
+        <div class="disclosure-row">
+            <dt>Total listing price</dt>
+            <dd>@TotalPriceIncGst.ToString("C0", AuCulture) <span class="text-muted text-sm">inc. GST</span></dd>
+        </div>
+        <div class="disclosure-row disclosure-row--fee">
+            <dt>Platform fee (Stallions Australia)</dt>
+            <dd>@PlatformFeeIncGst.ToString("C0", AuCulture) <span class="text-muted text-sm">inc. GST</span></dd>
+        </div>
+        <div class="disclosure-row disclosure-row--balance">
+            <dt>Balance invoiced by stud farm</dt>
+            <dd>@StudFarmBalance.ToString("C0", AuCulture)</dd>
+        </div>
+    </dl>
+
+    <div class="disclosure-notice">
+        <p><strong>Balance arrangement:</strong></p>
+        <p>@BalanceArrangementText</p>
+        <p style="margin-top: var(--space-3)"><strong>Refund policy:</strong></p>
+        <p>@RefundPolicyText</p>
+    </div>
+
+    <div class="disclosure-ack">
+        <label class="ack-label">
+            <input type="checkbox" @onchange="OnAckChanged" />
+            <span>I have read and understood the above disclosure.</span>
+        </label>
+    </div>
+
+    <button class="btn btn-gold btn-full" @onclick="ConfirmClicked"
+            disabled="@(!_acknowledged)">
+        Confirm purchase
+    </button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public decimal TotalPriceIncGst { get; set; }
+    [Parameter, EditorRequired] public decimal PlatformFeeIncGst { get; set; }
+    [Parameter, EditorRequired] public string BalanceArrangementText { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string RefundPolicyText { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public EventCallback OnConfirmed { get; set; }
+
+    private bool _acknowledged;
+    private decimal StudFarmBalance => TotalPriceIncGst - PlatformFeeIncGst;
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    private void OnAckChanged(ChangeEventArgs e) =>
+        _acknowledged = e.Value is bool b && b;
+
+    private async Task ConfirmClicked() => await OnConfirmed.InvokeAsync();
+}

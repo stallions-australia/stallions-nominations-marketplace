@@ -1,0 +1,10 @@
+.disclosure-panel { background: var(--warm-grey); border-radius: var(--radius-lg); padding: var(--space-6); }
+.disclosure-heading { font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); margin-bottom: var(--space-6); }
+.disclosure-table { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-6); }
+.disclosure-row { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+.disclosure-row--fee dd { color: var(--navy); font-weight: var(--font-weight-semibold); }
+.disclosure-row--balance { border-bottom: none; font-weight: var(--font-weight-semibold); }
+.disclosure-notice { background: var(--white); border-radius: var(--radius-md); padding: var(--space-4); font-size: var(--font-size-sm); line-height: 1.6; margin-bottom: var(--space-6); }
+.disclosure-ack { margin-bottom: var(--space-4); }
+.ack-label { display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer; font-size: var(--font-size-sm); }
+.ack-label input { margin-top: 3px; flex-shrink: 0; }
