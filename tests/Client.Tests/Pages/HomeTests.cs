@@ -21,7 +21,7 @@ public class HomeTests : TestContext
     }
 
     [Fact]
-    public async Task Home_WhenListingsLoaded_RendersCards()
+    public void Home_WhenListingsLoaded_RendersCards()
     {
         this.AddTestAuthorization();
         var cards = new List<ListingCardDto>
@@ -31,22 +31,18 @@ public class HomeTests : TestContext
         SetupService(cards);
 
         var cut = RenderComponent<Home>();
-        await Task.Delay(50); // allow async OnInitialized to complete
-        cut.Render();
 
-        cut.Markup.Should().Contain("Fastnet Rock");
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Fastnet Rock"));
     }
 
     [Fact]
-    public async Task Home_WhenNoListings_RendersEmptyState()
+    public void Home_WhenNoListings_RendersEmptyState()
     {
         this.AddTestAuthorization();
         SetupService(new List<ListingCardDto>());
 
         var cut = RenderComponent<Home>();
-        await Task.Delay(50);
-        cut.Render();
 
-        cut.Find(".empty-state").Should().NotBeNull();
+        cut.WaitForAssertion(() => cut.Find(".empty-state").Should().NotBeNull());
     }
 }

@@ -76,7 +76,7 @@
         }
         catch (ApiException ex)
         {
-            _error = ex.StatusCode == 503
+            _error = ex.StatusCode == (int)System.Net.HttpStatusCode.ServiceUnavailable
                 ? "We're having trouble connecting. Please try again."
                 : "Failed to load listings. Please try again.";
         }
