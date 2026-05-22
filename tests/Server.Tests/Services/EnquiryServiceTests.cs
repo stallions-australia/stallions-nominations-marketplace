@@ -165,4 +165,53 @@ public class EnquiryServiceTests
         result.Succeeded.Should().BeFalse();
         result.HttpStatusCode.Should().Be(409);
     }
+
+    [Fact]
+    public async Task GetAllForCallerAsync_StudFarmAdmin_PopulatesAdminInboxFields()
+    {
+        var admin = ActiveFarmAdmin();
+        var stallion = new Stallion { Id = Guid.NewGuid(), Name = "Sunline II" };
+        var season = new Season { Id = Guid.NewGuid(), Name = "2025 Season" };
+        var listing = new FixedPriceListing
+        {
+            Id = Guid.NewGuid(),
+            StudFarmId = Guid.NewGuid(),
+            Status = ListingStatus.Active,
+            PriceIncGst = 10_000m,
+            Stallion = stallion,
+            Season = season
+        };
+        var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active, DisplayName = "Jane Buyer" };
+        var unreadMessage = new EnquiryMessage
+        {
+            Id = Guid.NewGuid(),
+            SenderUserId = buyer.Id,
+            Body = "Is this still available?",
+            IsReadByRecipient = false
+        };
+        var enquiry = new Enquiry
+        {
+            Id = Guid.NewGuid(),
+            ListingId = listing.Id,
+            BuyerUserId = buyer.Id,
+            StudFarmUserId = admin.Id,
+            Status = EnquiryStatus.Open,
+            Listing = listing,
+            Buyer = buyer,
+            Messages = new List<EnquiryMessage> { unreadMessage }
+        };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(admin);
+        _enquiryRepoMock.Setup(r => r.GetByStudFarmUserIdAsync(admin.Id))
+            .ReturnsAsync(new List<Enquiry> { enquiry });
+
+        var result = await CreateSut().GetAllForCallerAsync();
+
+        result.Succeeded.Should().BeTrue();
+        var summary = result.Value!.Single();
+        summary.StallionName.Should().Be("Sunline II");
+        summary.BuyerName.Should().Be("Jane Buyer");
+        summary.IsUnread.Should().BeTrue();
+        summary.ListingTitle.Should().Contain("Sunline II");
+        summary.ListingTitle.Should().Contain("Fixed Price");
+    }
 }

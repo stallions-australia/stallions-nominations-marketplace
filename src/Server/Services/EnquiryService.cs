@@ -145,7 +145,24 @@ public class EnquiryService : IEnquiryService
         Subject = string.Empty,  // Entity has no Subject field; populated by listing name in future
         Status = e.Status.ToString(),
         MessageCount = e.Messages.Count,
-        LastMessageAt = e.Messages.Count > 0 ? e.Messages.MaxBy(m => m.SentAt)?.SentAt : null
+        LastMessageAt = e.Messages.Count > 0 ? e.Messages.MaxBy(m => m.SentAt)?.SentAt : null,
+        // Admin inbox fields — populated from navigation properties.
+        // These will be empty strings for callers who are not StudFarmAdmin,
+        // since the same DTO is returned for buyers too (their inbox doesn't need them).
+        StallionName = e.Listing?.Stallion?.Name ?? string.Empty,
+        ListingTitle = BuildListingTitle(e.Listing),
+        BuyerName = e.Buyer?.DisplayName ?? string.Empty,
+        // Unread from the farm's perspective: any buyer message the farm hasn't read.
+        IsUnread = e.Messages.Any(m => m.SenderUserId == e.BuyerUserId && !m.IsReadByRecipient)
+    };
+
+    private static string BuildListingTitle(Listing? listing) => listing switch
+    {
+        FixedPriceListing fpl =>
+            $"{fpl.Stallion?.Name} — Fixed Price ${fpl.PriceIncGst:N0} ({fpl.Season?.Name})",
+        AuctionListing al =>
+            $"{al.Stallion?.Name} — Auction from ${al.StartingPrice:N0} ({al.Season?.Name})",
+        _ => string.Empty
     };
 
     private static EnquiryDto MapToDto(Enquiry e) => new()
