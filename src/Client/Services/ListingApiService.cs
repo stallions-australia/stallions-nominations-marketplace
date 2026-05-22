@@ -9,7 +9,7 @@ public class ListingApiService
     private readonly HttpClient _http;
     public ListingApiService(HttpClient http) => _http = http;
 
-    public async Task<List<ListingCardDto>> GetListingsAsync(
+    public virtual async Task<List<ListingCardDto>> GetListingsAsync(
         Guid? seasonId = null, Guid? studFarmId = null, string? type = null)
     {
         var qs = new List<string>();

@@ -1,7 +1,95 @@
-﻿@page "/"
+@page "/"
+@inject ListingApiService ListingApi
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Browse Nominations — Stallions Australia</PageTitle>
 
-<h1>Hello, world!</h1>
+<!-- Hero -->
+<section class="hero">
+    <div class="container">
+        <p class="hero-eyebrow">2025 Breeding Season</p>
+        <h1 class="hero-headline">Find the Perfect Stallion Nomination</h1>
+        <p class="hero-sub">Browse nominations from Australia's leading stud farms. Bid at auction or buy now.</p>
 
-Welcome to your new app.
+        <div class="hero-search">
+            <input class="form-input hero-input" type="search"
+                   placeholder="Search by stallion or stud farm…"
+                   @bind="_search" @bind:event="oninput" @onkeyup="HandleSearchKey" />
+            <button class="btn btn-gold" @onclick="Load">Search</button>
+        </div>
+
+        <div class="hero-stats">
+            <div class="hero-stat">
+                <span class="hero-stat-num">@(_listings?.Count ?? 0)</span>
+                <span class="hero-stat-label">active listings</span>
+            </div>
+            <div class="hero-stat">
+                <span class="hero-stat-num">@(_listings?.Count(l => l.ListingType == "Auction") ?? 0)</span>
+                <span class="hero-stat-label">live auctions</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Filter bar -->
+<FilterBar ActiveFilter="@_typeFilter" OnFilterChanged="OnFilterChanged" />
+
+<!-- Results -->
+<div class="container results-section">
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else
+    {
+        <div class="results-header">
+            @if (_listings is not null)
+            {
+                <span class="results-count">@_filteredListings.Count nomination@(_filteredListings.Count != 1 ? "s" : "")</span>
+            }
+        </div>
+        <ListingGrid Listings="@(_listings is null ? null : _filteredListings)" />
+    }
+</div>
+
+@code {
+    private List<ListingCardDto>? _listings;
+    private string? _error;
+    private string? _typeFilter;
+    private string? _search;
+
+    private IReadOnlyList<ListingCardDto> _filteredListings =>
+        _listings?.Where(l =>
+            string.IsNullOrEmpty(_search) ||
+            l.StallionName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            (l.StudFarmName?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+        ).ToList() ?? new List<ListingCardDto>();
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _listings = null;
+        try
+        {
+            _listings = await ListingApi.GetListingsAsync(type: _typeFilter);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.StatusCode == 503
+                ? "We're having trouble connecting. Please try again."
+                : "Failed to load listings. Please try again.";
+        }
+    }
+
+    private async Task OnFilterChanged(string? filter)
+    {
+        _typeFilter = filter;
+        await Load();
+    }
+
+    private async Task HandleSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Load();
+    }
+}
