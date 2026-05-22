@@ -21,6 +21,10 @@ else
 @code {
     [Parameter] public IReadOnlyList<Stallions.Shared.DTOs.Enquiries.EnquiryMessageDto>? Messages { get; set; }
     [Parameter] public Guid? CurrentUserId { get; set; }
+    /// <summary>
+    /// The buyer's user ID from the enquiry. Used to determine which label to show
+    /// for the other party: if the current user is the buyer, the other side is "Stud Farm";
+    /// otherwise the current user is the stud farm admin and the other side is "Buyer".
+    /// </summary>
     [Parameter] public Guid? BuyerUserId { get; set; }
-    [Parameter] public Guid? StudFarmUserId { get; set; }
 }

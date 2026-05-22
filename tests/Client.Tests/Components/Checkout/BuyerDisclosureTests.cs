@@ -24,8 +24,10 @@ public class BuyerDisclosureTests : TestContext
         // Tick the acknowledgment checkbox
         cut.Find("input[type='checkbox']").Change(true);
 
-        // Now enabled
+        // Now enabled — click it and verify callback fires
         cut.Find("button.btn-gold").HasAttribute("disabled").Should().BeFalse();
+        cut.Find("button.btn-gold").Click();
+        cut.WaitForAssertion(() => confirmed.Should().BeTrue());
     }
 
     [Fact]
