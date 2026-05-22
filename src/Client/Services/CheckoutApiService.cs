@@ -18,8 +18,8 @@ public class CheckoutApiService
         var response = await _http.PostAsJsonAsync($"api/listings/{listingId}/checkout", request);
         if (!response.IsSuccessStatusCode)
         {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new ApiException((int)response.StatusCode, error.Trim('"'));
+            var error = await ServiceHelpers.ExtractErrorMessageAsync(response);
+            throw new ApiException((int)response.StatusCode, error);
         }
         return await response.Content.ReadFromJsonAsync<CheckoutResponse>()
                ?? throw new ApiException(500, "Empty response from server.");

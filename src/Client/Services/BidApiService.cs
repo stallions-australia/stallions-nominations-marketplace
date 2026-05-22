@@ -14,8 +14,8 @@ public class BidApiService
         var response = await _http.PostAsJsonAsync($"api/listings/{listingId}/bids", request);
         if (!response.IsSuccessStatusCode)
         {
-            var error = await response.Content.ReadAsStringAsync();
-            throw new ApiException((int)response.StatusCode, error.Trim('"'));
+            var error = await ServiceHelpers.ExtractErrorMessageAsync(response);
+            throw new ApiException((int)response.StatusCode, error);
         }
     }
 
