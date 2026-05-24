@@ -1,0 +1,337 @@
+@page "/admin/listings/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "StudFarmAdmin")]
+@inject AdminApiService AdminApi
+@inject NavigationManager Nav
+
+<PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1>@(_listing?.StallionName ?? "Listing")</h1>
+    <a href="/admin/listings" class="btn btn-secondary">← Back to My Listings</a>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_listing is null)
+{
+    <div class="alert alert-error">@(_error ?? "Listing not found.")</div>
+}
+else
+{
+    <div class="admin-form">
+
+        @* ── Status bar ──────────────────────────────────────────────────── *@
+        <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-6);flex-wrap:wrap">
+            <span class="badge @BadgeClass(_listing.Status)" style="font-size:14px;padding:5px 14px">
+                @_listing.Status
+            </span>
+            @if (_listing.Status == "Draft")
+            {
+                <button class="btn btn-primary" @onclick="HandlePublish" disabled="@_busy">
+                    @(_busy ? "Publishing…" : "Publish")
+                </button>
+            }
+            @if (_listing.Status == "Active")
+            {
+                <button class="btn btn-secondary" @onclick="HandleUnpublish" disabled="@_busy">
+                    @(_busy ? "Unpublishing…" : "Unpublish")
+                </button>
+                <button class="btn btn-danger" @onclick="HandleClose" disabled="@_busy">
+                    @(_busy ? "Closing…" : "Close Listing")
+                </button>
+            }
+            @if (_listing.PublishedAt.HasValue && _listing.Status == "Draft")
+            {
+                <span class="lock-notice">
+                    🔒 Price, T&amp;C and type are permanently locked (listing was previously published).
+                </span>
+            }
+        </div>
+
+        @* ── Core listing info ───────────────────────────────────────────── *@
+        <div class="form-section">
+            <div class="form-section-title">Listing Details</div>
+            <dl class="detail-list">
+                <dt>Stallion</dt><dd>@_listing.StallionName</dd>
+                <dt>Season</dt><dd>@_listing.SeasonName</dd>
+                <dt>Type</dt><dd>@_listing.ListingType</dd>
+                <dt>Created</dt><dd>@_listing.CreatedAt.ToString("dd MMM yyyy")</dd>
+                @if (_listing.PublishedAt.HasValue)
+                {
+                    <dt>First published</dt><dd>@_listing.PublishedAt.Value.ToString("dd MMM yyyy")</dd>
+                }
+            </dl>
+        </div>
+
+        @* ── Fixed price fields ──────────────────────────────────────────── *@
+        @if (_listing is FixedPriceListingDto fp)
+        {
+            <div class="form-section">
+                <div class="form-section-title">Fixed Price</div>
+                <dl class="detail-list">
+                    <dt>Price (inc. GST)</dt>
+                    <dd>
+                        @if (_neverPublished)
+                        {
+                            <input type="number" class="form-input" style="width:180px"
+                                   @bind="_editPrice" min="1" step="100" />
+                        }
+                        else
+                        {
+                            <span>$@fp.PriceIncGst.ToString("N0")</span>
+                            <span class="lock-notice" style="margin-left:var(--space-2)">🔒 locked</span>
+                        }
+                    </dd>
+                    <dt>Quantity</dt>
+                    <dd>
+                        @if (_listing.Status != "Cancelled" && _listing.Status != "Sold")
+                        {
+                            <input type="number" class="form-input" style="width:100px"
+                                   @bind="_editQuantity" min="@(fp.Quantity - fp.QuantityRemaining)" />
+                            <span class="form-hint" style="display:inline;margin-left:var(--space-2)">
+                                @fp.QuantityRemaining remaining of @fp.Quantity total
+                            </span>
+                        }
+                        else
+                        {
+                            <span>@fp.QuantityRemaining / @fp.Quantity</span>
+                        }
+                    </dd>
+                </dl>
+            </div>
+        }
+
+        @* ── Auction fields ──────────────────────────────────────────────── *@
+        @if (_listing is AuctionListingDto al)
+        {
+            <div class="form-section">
+                <div class="form-section-title">Auction</div>
+                <dl class="detail-list">
+                    <dt>Starting price</dt>
+                    <dd>
+                        @if (_neverPublished)
+                        {
+                            <input type="number" class="form-input" style="width:180px"
+                                   @bind="_editAuctionStart" min="1" step="100" />
+                        }
+                        else
+                        {
+                            <span>$@al.StartingPrice.ToString("N0")</span>
+                            <span class="lock-notice" style="margin-left:var(--space-2)">🔒 locked</span>
+                        }
+                    </dd>
+                    <dt>Current high bid</dt>
+                    <dd>@(al.CurrentHighestBidIncGst.HasValue ? $"${al.CurrentHighestBidIncGst:N0}" : "No bids yet")</dd>
+                    <dt>End date/time</dt>
+                    <dd>
+                        @if (_neverPublished)
+                        {
+                            <input type="datetime-local" class="form-input" @bind="_editAuctionEnd" />
+                        }
+                        else
+                        {
+                            <span>@al.EndDateTime.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
+                            <span class="lock-notice" style="margin-left:var(--space-2)">🔒 locked</span>
+                        }
+                    </dd>
+                    <dt>Reserve</dt>
+                    <dd>@(al.IsNoReserve ? "No reserve" : (al.ReservePrice.HasValue ? $"${al.ReservePrice:N0}" : "—"))</dd>
+                </dl>
+            </div>
+        }
+
+        @* ── Terms & Conditions ──────────────────────────────────────────── *@
+        <div class="form-section">
+            <div class="form-section-title">Terms &amp; Conditions</div>
+            @if (_neverPublished)
+            {
+                <div class="form-group">
+                    <textarea class="form-input" @bind="_editTerms" rows="6"></textarea>
+                </div>
+            }
+            else
+            {
+                <div class="locked-field" style="white-space:pre-wrap;padding:var(--space-3)">@_listing.TermsAndConditions</div>
+                <p class="lock-notice">🔒 Locked permanently after first publish. Close and relist to change T&amp;C.</p>
+            }
+        </div>
+
+        @* ── Description — always editable unless terminal status ────────── *@
+        @if (_listing.Status != "Cancelled" && _listing.Status != "Sold")
+        {
+            <div class="form-section">
+                <div class="form-section-title">
+                    Description
+                    <span style="font-weight:400;color:var(--text-muted)">(always editable)</span>
+                </div>
+                <div class="form-group">
+                    <textarea class="form-input" @bind="_editDescription" rows="5"></textarea>
+                </div>
+            </div>
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-error">@_error</div>
+            }
+            @if (_saved)
+            {
+                <div class="alert alert-success">Changes saved.</div>
+            }
+
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="HandleSave" disabled="@_busy">
+                    @(_busy ? "Saving…" : "Save Changes")
+                </button>
+            </div>
+        }
+        else if (_error is not null)
+        {
+            <div class="alert alert-error">@_error</div>
+        }
+
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ListingDto? _listing;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _saved;
+    private string? _error;
+
+    // Edit fields — populated from _listing on load
+    private decimal _editPrice;
+    private int _editQuantity;
+    private decimal _editAuctionStart;
+    private DateTime _editAuctionEnd;
+    private string _editTerms = string.Empty;
+    private string? _editDescription;
+
+    private bool _neverPublished => _listing?.PublishedAt == null;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error   = null;
+        try
+        {
+            _listing = await AdminApi.GetListingAsync(Id);
+            PopulateEditFields();
+        }
+        catch (ApiException ex)
+        {
+            _error   = ex.Message;
+            _listing = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void PopulateEditFields()
+    {
+        if (_listing is FixedPriceListingDto fp)
+        {
+            _editPrice    = fp.PriceIncGst;
+            _editQuantity = fp.Quantity;
+        }
+        else if (_listing is AuctionListingDto al)
+        {
+            _editAuctionStart = al.StartingPrice;
+            _editAuctionEnd   = al.EndDateTime.ToLocalTime();
+        }
+        _editTerms       = _listing?.TermsAndConditions ?? string.Empty;
+        _editDescription = _listing?.Description;
+    }
+
+    private async Task HandleSave()
+    {
+        _busy = true; _error = null; _saved = false;
+        try
+        {
+            var request = new UpdateListingRequest
+            {
+                Description        = _editDescription,
+                TermsAndConditions = _neverPublished ? _editTerms : null
+            };
+
+            if (_listing is FixedPriceListingDto)
+            {
+                if (_neverPublished)
+                    request.PriceIncGst = _editPrice;
+                request.Quantity = _editQuantity;
+            }
+            else if (_listing is AuctionListingDto && _neverPublished)
+            {
+                request.StartingPrice = _editAuctionStart;
+                request.EndDateTime   = _editAuctionEnd.ToUniversalTime();
+            }
+
+            _listing = await AdminApi.UpdateListingAsync(Id, request);
+            PopulateEditFields();
+            _saved = true;
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task HandlePublish()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            await AdminApi.PublishListingAsync(Id);
+            await LoadAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task HandleUnpublish()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            await AdminApi.UnpublishListingAsync(Id);
+            await LoadAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task HandleClose()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            await AdminApi.CloseListingAsync(Id);
+            await LoadAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string BadgeClass(string status) => status switch
+    {
+        "Active"    => "badge-active",
+        "Draft"     => "badge-draft",
+        "Cancelled" => "badge-cancelled",
+        "Expired"   => "badge-expired",
+        "Sold"      => "badge-sold",
+        _           => ""
+    };
+}

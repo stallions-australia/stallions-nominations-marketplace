@@ -1,0 +1,273 @@
+@page "/admin/listings/new"
+@layout AdminLayout
+@attribute [Authorize(Roles = "StudFarmAdmin")]
+@inject AdminApiService AdminApi
+@inject NavigationManager Nav
+
+<PageTitle>New Listing — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1>New Listing</h1>
+    <a href="/admin/listings" class="btn btn-secondary">← Back to My Listings</a>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_error is not null && _stallions.Count == 0)
+{
+    <ErrorMessage Message="@_error" />
+}
+else if (_stallions.Count == 0)
+{
+    <EmptyState Message="You need to add a stallion before you can create a listing." Icon="🐴">
+        <a href="/admin/stallions/new" class="btn btn-primary">Add a Stallion</a>
+    </EmptyState>
+}
+else
+{
+    <div class="admin-form">
+        <div class="form-section">
+            <div class="form-section-title">Step 1 — Stallion</div>
+            <div class="form-group">
+                <label class="form-label">Stallion <span class="required">*</span></label>
+                <select class="form-input" value="@_selectedStallionId" @onchange="OnStallionChanged">
+                    <option value="">— Select a stallion —</option>
+                    @foreach (var s in _stallions)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        @if (_selectedStallionId != Guid.Empty)
+        {
+            <div class="form-section">
+                <div class="form-section-title">Step 2 — Listing Type</div>
+                <div class="type-toggle">
+                    <button type="button"
+                            class="btn @(_type == "FixedPrice" ? "btn-primary" : "btn-outline")"
+                            @onclick='() => _type = "FixedPrice"'>Fixed Price</button>
+                    <button type="button"
+                            class="btn @(_type == "Auction" ? "btn-primary" : "btn-outline")"
+                            @onclick='() => _type = "Auction"'>Auction</button>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Step 3 — Season</div>
+                <div class="form-group">
+                    <label class="form-label">Season <span class="required">*</span></label>
+                    <select class="form-input" @bind="_selectedSeasonId">
+                        <option value="">— Select a season —</option>
+                        @foreach (var s in _seasons)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            @if (_type == "FixedPrice")
+            {
+                <div class="form-section">
+                    <div class="form-section-title">Fixed Price Details</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Price (inc. GST) <span class="required">*</span></label>
+                            <div class="input-prefix">
+                                <span>$</span>
+                                <input type="number" class="form-input" @bind="_fpPrice" min="1" step="100" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Quantity <span class="required">*</span></label>
+                            <input type="number" class="form-input" @bind="_fpQuantity" min="1" />
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (_type == "Auction")
+            {
+                <div class="form-section">
+                    <div class="form-section-title">Auction Details</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Starting Price (inc. GST) <span class="required">*</span></label>
+                            <div class="input-prefix">
+                                <span>$</span>
+                                <input type="number" class="form-input" @bind="_auctionStartPrice" min="1" step="100" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">End Date &amp; Time <span class="required">*</span></label>
+                            <input type="datetime-local" class="form-input" @bind="_auctionEndDate" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-check-label">
+                            <input type="checkbox" @bind="_noReserve" /> No reserve
+                        </label>
+                    </div>
+                    @if (!_noReserve)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Reserve Price (inc. GST)</label>
+                            <div class="input-prefix">
+                                <span>$</span>
+                                <input type="number" class="form-input" @bind="_auctionReserve" min="0" step="100" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="form-section">
+                <div class="form-section-title">Terms &amp; Conditions</div>
+                <div class="form-group">
+                    <label class="form-label">
+                        Terms &amp; Conditions <span class="required">*</span>
+                    </label>
+                    <textarea class="form-input" @bind="_termsAndConditions" rows="6"
+                              placeholder="e.g. 45-day payment on live foal guarantee. All nominations subject to availability…"></textarea>
+                    <p class="form-hint">
+                        ⚠️ Terms &amp; Conditions are locked permanently after the listing is first published.
+                        If you need to change T&amp;C later, close this listing and create a new one.
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description (optional)</label>
+                    <textarea class="form-input" @bind="_description" rows="4"
+                              placeholder="Additional details about this listing — can be edited after publishing."></textarea>
+                </div>
+            </div>
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-error">@_error</div>
+            }
+
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary" @onclick="HandleCreate" disabled="@_saving">
+                    @(_saving ? "Creating…" : "Create Listing")
+                </button>
+                <a href="/admin/listings" class="btn btn-secondary">Cancel</a>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery] public Guid? StallionId { get; set; }
+
+    private List<StallionSummaryDto> _stallions = [];
+    private List<SeasonDto> _seasons = [];
+    private Guid _selectedStallionId;
+    private Guid _selectedSeasonId;
+    private string _type = "FixedPrice";
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+
+    // Fixed price fields
+    private decimal _fpPrice;
+    private int _fpQuantity = 1;
+
+    // Auction fields
+    private decimal _auctionStartPrice;
+    private decimal? _auctionReserve;
+    private bool _noReserve;
+    private DateTime _auctionEndDate = DateTime.Now.AddDays(7);
+
+    // Shared
+    private string _termsAndConditions = string.Empty;
+    private string? _description;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var allStallions = await AdminApi.GetMyStallionsAsync();
+            _stallions = allStallions.Where(s => s.IsActive).ToList();
+            var allSeasons = await AdminApi.GetSeasonsAsync();
+            _seasons = allSeasons.Where(s => s.IsOpen).ToList();
+            // If no open seasons fall back to all seasons so the form is usable
+            if (_seasons.Count == 0)
+                _seasons = allSeasons;
+            if (StallionId.HasValue)
+                _selectedStallionId = StallionId.Value;
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnStallionChanged(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var id))
+            _selectedStallionId = id;
+        else
+            _selectedStallionId = Guid.Empty;
+    }
+
+    private async Task HandleCreate()
+    {
+        _error = null;
+
+        if (_selectedStallionId == Guid.Empty) { _error = "Please select a stallion."; return; }
+        if (_selectedSeasonId == Guid.Empty)   { _error = "Please select a season."; return; }
+        if (string.IsNullOrWhiteSpace(_termsAndConditions)) { _error = "Terms & Conditions are required."; return; }
+
+        _saving = true;
+        try
+        {
+            ListingDto created;
+            if (_type == "FixedPrice")
+            {
+                if (_fpPrice <= 0)    { _error = "Please enter a price."; return; }
+                if (_fpQuantity <= 0) { _error = "Quantity must be at least 1."; return; }
+                created = await AdminApi.CreateFixedPriceListingAsync(new CreateFixedPriceListingRequest
+                {
+                    StallionId         = _selectedStallionId,
+                    SeasonId           = _selectedSeasonId,
+                    PriceIncGst        = _fpPrice,
+                    Quantity           = _fpQuantity,
+                    TermsAndConditions = _termsAndConditions.Trim(),
+                    Description        = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim()
+                });
+            }
+            else
+            {
+                if (_auctionStartPrice <= 0)       { _error = "Please enter a starting price."; return; }
+                if (_auctionEndDate <= DateTime.Now) { _error = "End date must be in the future."; return; }
+                created = await AdminApi.CreateAuctionListingAsync(new CreateAuctionListingRequest
+                {
+                    StallionId         = _selectedStallionId,
+                    SeasonId           = _selectedSeasonId,
+                    StartingPrice      = _auctionStartPrice,
+                    ReservePrice       = _noReserve ? null : _auctionReserve,
+                    IsNoReserve        = _noReserve,
+                    EndDateTime        = _auctionEndDate.ToUniversalTime(),
+                    TermsAndConditions = _termsAndConditions.Trim(),
+                    Description        = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim()
+                });
+            }
+            Nav.NavigateTo($"/admin/listings/{created.Id}");
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

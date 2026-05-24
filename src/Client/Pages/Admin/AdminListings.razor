@@ -1,0 +1,140 @@
+@page "/admin/listings"
+@layout AdminLayout
+@attribute [Authorize(Roles = "StudFarmAdmin")]
+@inject AdminApiService AdminApi
+@inject NavigationManager Nav
+
+<PageTitle>My Listings — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1>My Listings</h1>
+    <a href="/admin/listings/new" class="btn btn-primary">+ New Listing</a>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_error is not null)
+{
+    <ErrorMessage Message="@_error" OnRetry="Load" />
+}
+else if (!_hasStallions)
+{
+    <EmptyState Message="You need to add a stallion before you can create listings." Icon="🐴">
+        <a href="/admin/stallions/new" class="btn btn-primary">Add Your First Stallion</a>
+    </EmptyState>
+}
+else if (_groups.Count == 0)
+{
+    <EmptyState Message="You haven't created any listings yet." Icon="📋">
+        <a href="/admin/listings/new" class="btn btn-primary">Create First Listing</a>
+    </EmptyState>
+}
+else
+{
+    @foreach (var group in _groups)
+    {
+        var firstListing = group.First();
+        <div class="stallion-group">
+            <div class="stallion-group-header">
+                <h3>🐴 @group.Key</h3>
+                <a href="/admin/listings/new?stallionId=@firstListing.StallionId"
+                   class="btn btn-sm btn-outline" style="color:white;border-color:rgba(255,255,255,0.4)">
+                    + Listing
+                </a>
+            </div>
+            <div class="stallion-group-body">
+                <table class="admin-table" style="border-radius:0">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Season</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                            <th>Progress</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var listing in group)
+                        {
+                            <tr>
+                                <td>@listing.ListingType</td>
+                                <td>@listing.SeasonName</td>
+                                <td>
+                                    @if (listing is FixedPriceListingDto fp)
+                                    {
+                                        <text>$@fp.PriceIncGst.ToString("N0")</text>
+                                    }
+                                    else if (listing is AuctionListingDto al)
+                                    {
+                                        <text>from $@al.StartingPrice.ToString("N0")</text>
+                                    }
+                                </td>
+                                <td><span class="badge @BadgeClass(listing.Status)">@listing.Status</span></td>
+                                <td>
+                                    @if (listing is FixedPriceListingDto fp2)
+                                    {
+                                        <text>@fp2.QuantityRemaining / @fp2.Quantity remaining</text>
+                                    }
+                                    else if (listing is AuctionListingDto al2)
+                                    {
+                                        <text>Ends @al2.EndDateTime.ToLocalTime().ToString("dd MMM yyyy")</text>
+                                    }
+                                </td>
+                                <td class="admin-table-actions">
+                                    <a href="/admin/listings/@listing.Id" class="btn btn-sm btn-secondary">View / Edit</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<IGrouping<string, ListingDto>> _groups = [];
+    private bool _hasStallions;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var stallions = await AdminApi.GetMyStallionsAsync();
+            _hasStallions = stallions.Count > 0;
+
+            var listings = await AdminApi.GetMyListingsAsync();
+            _groups = listings
+                .GroupBy(l => l.StallionName)
+                .OrderBy(g => g.Key)
+                .ToList();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string BadgeClass(string status) => status switch
+    {
+        "Active"    => "badge-active",
+        "Draft"     => "badge-draft",
+        "Cancelled" => "badge-cancelled",
+        "Expired"   => "badge-expired",
+        "Sold"      => "badge-sold",
+        _           => ""
+    };
+}
