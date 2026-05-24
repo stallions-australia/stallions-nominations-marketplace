@@ -81,10 +81,13 @@ else
                             Their listings are also hidden. History is preserved.</p>
                     </div>
                 </div>
+            }
 
+            @if (!_isNew && _stallion is not null)
+            {
                 <div class="form-section">
                     <div class="form-section-title">Images</div>
-                    @if (_stallion!.Images.Any())
+                    @if (_stallion.Images.Any())
                     {
                         <div class="image-grid">
                             @foreach (var img in _stallion.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.DisplayOrder))
@@ -112,10 +115,18 @@ else
                             }
                         </div>
                     }
+                    @if (_imageActionError is not null)
+                    {
+                        <div class="alert alert-error">@_imageActionError</div>
+                    }
                     <div class="form-group" style="margin-top: var(--space-4)">
                         <label class="form-label">Upload Image</label>
-                        <InputFile OnChange="HandleImageUpload" accept="image/jpeg,image/png,image/webp" multiple />
+                        <InputFile OnChange="HandleImageUpload" accept="image/jpeg,image/png,image/webp" multiple disabled="@_uploading" />
                         <p class="form-hint">JPEG, PNG or WebP, max 10 MB each.</p>
+                        @if (_uploading)
+                        {
+                            <p class="form-hint">Uploading…</p>
+                        }
                         @if (_uploadError is not null)
                         {
                             <div class="alert alert-error">@_uploadError</div>
@@ -148,8 +159,10 @@ else
     private bool _isActive = true;
     private bool _loading = true;
     private bool _saving;
+    private bool _uploading;
     private string? _error;
     private string? _uploadError;
+    private string? _imageActionError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -217,38 +230,48 @@ else
 
     private async Task HandleImageUpload(InputFileChangeEventArgs e)
     {
+        _uploading = true;
         _uploadError = null;
-        foreach (var file in e.GetMultipleFiles(10))
+        try
         {
-            try
+            foreach (var file in e.GetMultipleFiles(10))
             {
-                _stallion = await AdminApi.UploadStallionImageAsync(Id!.Value, file);
+                try
+                {
+                    _stallion = await AdminApi.UploadStallionImageAsync(Id!.Value, file);
+                }
+                catch (ApiException ex)
+                {
+                    _uploadError = ex.Message;
+                    break;
+                }
             }
-            catch (ApiException ex)
-            {
-                _uploadError = ex.Message;
-                break;
-            }
+        }
+        finally
+        {
+            _uploading = false;
         }
     }
 
     private async Task SetPrimaryAsync(Guid imageId)
     {
+        _imageActionError = null;
         try
         {
             await AdminApi.SetPrimaryImageAsync(Id!.Value, imageId);
             _stallion = await AdminApi.GetStallionAsync(Id!.Value);
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _imageActionError = ex.Message; }
     }
 
     private async Task DeleteImageAsync(Guid imageId)
     {
+        _imageActionError = null;
         try
         {
             await AdminApi.DeleteStallionImageAsync(Id!.Value, imageId);
             _stallion = await AdminApi.GetStallionAsync(Id!.Value);
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _imageActionError = ex.Message; }
     }
 }
