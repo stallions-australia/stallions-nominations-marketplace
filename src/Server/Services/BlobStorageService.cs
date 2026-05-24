@@ -25,7 +25,7 @@ public class BlobStorageService : IBlobStorageService
         Guid stallionId, string fileName, Stream content, string contentType)
     {
         var container = _serviceClient.GetBlobContainerClient(ContainerName);
-        await container.CreateIfNotExistsAsync(PublicAccessType.Blob);
+        await container.CreateIfNotExistsAsync(PublicAccessType.None);
 
         var blobName = $"stallions/{stallionId}/{Guid.NewGuid()}-{Path.GetFileName(fileName)}";
         var blobClient = container.GetBlobClient(blobName);

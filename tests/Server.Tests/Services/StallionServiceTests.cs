@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Moq;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
@@ -14,6 +15,7 @@ public class StallionServiceTests
     private readonly Mock<IStudFarmRepository> _farmRepoMock = new();
     private readonly Mock<IUserService> _usersMock = new();
     private readonly Mock<IBlobStorageService> _blobsMock = new();
+    private readonly Guid _studFarmId = Guid.NewGuid();
     private StallionService CreateSut() => new(_stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object, _blobsMock.Object);
 
     [Fact]
@@ -131,5 +133,77 @@ public class StallionServiceTests
         result.Succeeded.Should().BeTrue();
         oldPrimary.IsPrimary.Should().BeFalse();
         newPrimary.IsPrimary.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task UploadImageAsync_ReturnsError_WhenStallionNotFound()
+    {
+        // Arrange
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = _studFarmId, UserId = caller.Id };
+        var unknownId = Guid.NewGuid();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByIdAsync(unknownId)).ReturnsAsync((Stallion?)null);
+
+        var fileMock = new Mock<IFormFile>();
+        fileMock.Setup(f => f.ContentType).Returns("image/jpeg");
+        fileMock.Setup(f => f.Length).Returns(1024);
+        fileMock.Setup(f => f.FileName).Returns("test.jpg");
+
+        // Act
+        var result = await CreateSut().UploadImageAsync(unknownId, fileMock.Object);
+
+        // Assert
+        Assert.False(result.Succeeded);
+        Assert.Equal(404, result.HttpStatusCode);
+    }
+
+    [Fact]
+    public async Task UploadImageAsync_ReturnsError_WhenContentTypeNotAllowed()
+    {
+        // Arrange
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = _studFarmId, UserId = caller.Id };
+        var stallion = new Stallion { Id = Guid.NewGuid(), StudFarmId = _studFarmId, Name = "Test", IsActive = true };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+
+        var fileMock = new Mock<IFormFile>();
+        fileMock.Setup(f => f.ContentType).Returns("application/pdf");
+        fileMock.Setup(f => f.Length).Returns(1024);
+        fileMock.Setup(f => f.FileName).Returns("doc.pdf");
+
+        // Act
+        var result = await CreateSut().UploadImageAsync(stallion.Id, fileMock.Object);
+
+        // Assert
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.HttpStatusCode);
+    }
+
+    [Fact]
+    public async Task UploadImageAsync_ReturnsError_WhenFileTooLarge()
+    {
+        // Arrange
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = _studFarmId, UserId = caller.Id };
+        var stallion = new Stallion { Id = Guid.NewGuid(), StudFarmId = _studFarmId, Name = "Test", IsActive = true };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+
+        var fileMock = new Mock<IFormFile>();
+        fileMock.Setup(f => f.ContentType).Returns("image/jpeg");
+        fileMock.Setup(f => f.Length).Returns(11 * 1024 * 1024); // 11 MB
+        fileMock.Setup(f => f.FileName).Returns("big.jpg");
+
+        // Act
+        var result = await CreateSut().UploadImageAsync(stallion.Id, fileMock.Object);
+
+        // Assert
+        Assert.False(result.Succeeded);
+        Assert.Equal(400, result.HttpStatusCode);
     }
 }
