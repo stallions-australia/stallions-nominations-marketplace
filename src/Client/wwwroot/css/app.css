@@ -314,7 +314,13 @@ h1:focus { outline: none; }
   .container { padding-inline: var(--space-12); }
 }
 
-/* NavBar responsive — cannot use ::deep inside @media so these live in app.css */
+/* NavBar responsive visibility — mobile-first defaults.
+   These MUST live in global CSS (not NavBar.razor.css) because Blazor scoped CSS
+   gets an attribute selector appended (specificity 0,2,0) which would beat the
+   @media override (0,1,0), hiding nav links and auth buttons on all screen sizes. */
+.desktop-only { display: none; }
+.mobile-only  { display: flex; }
+
 @media (min-width: 768px) {
     .desktop-only { display: flex; }
     .mobile-only  { display: none !important; }

@@ -79,6 +79,7 @@
 }
 .drawer-link:hover { color: var(--navy); }
 
-/* Visibility helpers — media queries here because ::deep doesn't work in @media */
-.desktop-only { display: none; }
-.mobile-only  { display: flex; }
+/* Visibility helpers live in app.css (global) so that the mobile-first defaults
+   and the @media breakpoint override share the same specificity.
+   Scoped CSS gets a Blazor attribute selector appended (specificity 0,2,0) which
+   would beat a global @media rule (0,1,0), permanently hiding desktop nav items. */
