@@ -1,0 +1,147 @@
+/* ============================================================
+   ADMIN SHARED STYLES
+   ============================================================ */
+
+/* Page header row */
+.admin-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-6);
+}
+
+.admin-page-header h1 {
+    margin: 0;
+    font-size: var(--font-size-2xl);
+    color: var(--navy);
+}
+
+/* Admin table */
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--white);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+
+.admin-table th {
+    background: var(--navy);
+    color: var(--white);
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.admin-table td {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--font-size-sm);
+    vertical-align: middle;
+}
+
+.admin-table tr:last-child td {
+    border-bottom: none;
+}
+
+.admin-table tr:hover td {
+    background: var(--cream);
+}
+
+/* Status badges */
+.badge-active    { background: #e8f5e9; color: #2e7d32; }
+.badge-draft     { background: #fff8e1; color: #f57f17; }
+.badge-cancelled { background: #f5f5f5; color: #616161; }
+.badge-expired   { background: #fce4ec; color: #c62828; }
+.badge-sold      { background: #e3f2fd; color: #1565c0; }
+
+/* Stallion group header in listings view */
+.stallion-group {
+    margin-bottom: var(--space-6);
+}
+
+.stallion-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--navy);
+    color: var(--white);
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.stallion-group-header h3 {
+    margin: 0;
+    font-size: var(--font-size-md);
+    font-weight: 600;
+}
+
+.stallion-group-body {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+/* Admin form */
+.admin-form {
+    background: var(--white);
+    border-radius: var(--radius-md);
+    padding: var(--space-8);
+    box-shadow: var(--shadow-card);
+    max-width: 720px;
+}
+
+.admin-form .form-section {
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-6);
+    border-bottom: 1px solid var(--border);
+}
+
+.admin-form .form-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.admin-form .form-section-title {
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--navy);
+    margin-bottom: var(--space-4);
+}
+
+.locked-field {
+    background: var(--cream);
+    color: var(--text-muted);
+    font-style: italic;
+    cursor: not-allowed;
+}
+
+.lock-notice {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+}
+
+/* Enquiry inbox rows */
+.enquiry-row-unread td {
+    font-weight: 600;
+    background: #fafbff;
+}
+
+.enquiry-unread-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gold);
+    margin-right: var(--space-2);
+}

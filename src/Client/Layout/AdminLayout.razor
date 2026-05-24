@@ -1,0 +1,61 @@
+@inherits LayoutComponentBase
+@inject AdminApiService AdminApi
+@inject NavigationManager Nav
+
+<div class="admin-shell">
+    <aside class="admin-sidebar">
+        <div class="admin-sidebar-header">
+            <a href="/" class="admin-brand">Stallions Australia</a>
+            <span class="admin-badge">Admin</span>
+        </div>
+        <nav class="admin-nav">
+            <NavLink href="/admin/stallions" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">🐴</span> My Stallions
+            </NavLink>
+            <NavLink href="/admin/listings" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">📋</span> My Listings
+            </NavLink>
+            <NavLink href="/admin/enquiries" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">✉️</span> Enquiries
+                @if (_unreadCount > 0)
+                {
+                    <span class="admin-unread-badge">@_unreadCount</span>
+                }
+            </NavLink>
+        </nav>
+        <div class="admin-sidebar-footer">
+            <a href="/" class="admin-nav-link">← Back to marketplace</a>
+        </div>
+    </aside>
+
+    <main class="admin-content">
+        <ErrorBoundary>
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <div class="admin-error">
+                    <h3>Something went wrong</h3>
+                    <p>An unexpected error occurred. <a href="/admin/stallions">Return to My Stallions</a>.</p>
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
+    </main>
+</div>
+
+@code {
+    private int _unreadCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var enquiries = await AdminApi.GetMyEnquiriesAsync();
+            _unreadCount = enquiries.Count(e => e.IsUnread);
+        }
+        catch
+        {
+            // Non-fatal — badge just won't show
+        }
+    }
+}
