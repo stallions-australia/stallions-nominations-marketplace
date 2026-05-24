@@ -99,6 +99,14 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Apply pending EF Core migrations on startup — safe to run on every deploy
+// (EF is idempotent; already-applied migrations are skipped)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
+
 // Serve Blazor WASM client static files (wwwroot of Client project)
 app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
