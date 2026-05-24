@@ -1,0 +1,88 @@
+@page "/admin/stallions"
+@layout AdminLayout
+@attribute [Authorize(Roles = "StudFarmAdmin")]
+@inject AdminApiService AdminApi
+@inject NavigationManager Nav
+
+<PageTitle>My Stallions — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1>My Stallions</h1>
+    <a href="/admin/stallions/new" class="btn btn-primary">+ Add Stallion</a>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_error is not null)
+{
+    <ErrorMessage Message="@_error" OnRetry="Load" />
+}
+else if (_stallions.Count == 0)
+{
+    <EmptyState Message="You haven't added any stallions yet." Icon="🐴">
+        <a href="/admin/stallions/new" class="btn btn-primary">Add Your First Stallion</a>
+    </EmptyState>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Year of Birth</th>
+                <th>Colour</th>
+                <th>Status</th>
+                <th>Total Listings</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in _stallions)
+            {
+                <tr>
+                    <td><strong>@s.Name</strong></td>
+                    <td>@(s.YearOfBirth?.ToString() ?? "—")</td>
+                    <td>@(s.Colour ?? "—")</td>
+                    <td>
+                        <span class="badge @(s.IsActive ? "badge-active" : "badge-cancelled")">
+                            @(s.IsActive ? "Active" : "Inactive")
+                        </span>
+                    </td>
+                    <td>@s.TotalListingCount</td>
+                    <td class="admin-table-actions">
+                        <a href="/admin/stallions/@s.Id" class="btn btn-sm btn-secondary">Edit</a>
+                        <a href="/admin/listings/new?stallionId=@s.Id" class="btn btn-sm btn-outline">+ Listing</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<StallionSummaryDto> _stallions = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _stallions = await AdminApi.GetMyStallionsAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

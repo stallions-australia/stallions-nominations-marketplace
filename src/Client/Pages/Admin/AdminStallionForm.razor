@@ -1,0 +1,254 @@
+@page "/admin/stallions/new"
+@page "/admin/stallions/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "StudFarmAdmin")]
+@inject AdminApiService AdminApi
+@inject NavigationManager Nav
+
+<PageTitle>@(_isNew ? "Add Stallion" : "Edit Stallion") — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1>@(_isNew ? "Add Stallion" : "Edit Stallion")</h1>
+    <a href="/admin/stallions" class="btn btn-secondary">← Back to My Stallions</a>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else
+{
+    <div class="admin-form">
+        <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+
+            <div class="form-section">
+                <div class="form-section-title">Basic Details</div>
+
+                <div class="form-group">
+                    <label class="form-label">Name <span class="required">*</span></label>
+                    <InputText class="form-input" @bind-Value="_model.Name" />
+                    <ValidationMessage For="() => _model.Name" />
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Year of Birth</label>
+                        <InputNumber class="form-input" @bind-Value="_model.YearOfBirth" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Colour</label>
+                        <InputText class="form-input" @bind-Value="_model.Colour" placeholder="e.g. Bay, Chestnut" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Sire</label>
+                        <InputText class="form-input" @bind-Value="_model.Sire" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Dam</label>
+                        <InputText class="form-input" @bind-Value="_model.Dam" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Registration Number</label>
+                    <InputText class="form-input" @bind-Value="_model.RegistrationNumber" />
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">Public Profile</div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <InputTextArea class="form-input" @bind-Value="_model.Description" rows="5"
+                                   placeholder="Shown on the public stallion profile page." />
+                </div>
+            </div>
+
+            @if (!_isNew)
+            {
+                <div class="form-section">
+                    <div class="form-section-title">Status</div>
+                    <div class="form-group">
+                        <label class="form-check-label">
+                            <InputCheckbox @bind-Value="_isActive" />
+                            Active (visible on marketplace)
+                        </label>
+                        <p class="form-hint">Inactive stallions are hidden from public browse.
+                            Their listings are also hidden. History is preserved.</p>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <div class="form-section-title">Images</div>
+                    @if (_stallion!.Images.Any())
+                    {
+                        <div class="image-grid">
+                            @foreach (var img in _stallion.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.DisplayOrder))
+                            {
+                                <div class="image-card @(img.IsPrimary ? "image-card--primary" : "")">
+                                    <img src="@img.BlobPath" alt="Stallion image" />
+                                    <div class="image-card-actions">
+                                        @if (!img.IsPrimary)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline"
+                                                    @onclick="() => SetPrimaryAsync(img.Id)">
+                                                Set Primary
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-active">Primary</span>
+                                        }
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                                @onclick="() => DeleteImageAsync(img.Id)">
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div class="form-group" style="margin-top: var(--space-4)">
+                        <label class="form-label">Upload Image</label>
+                        <InputFile OnChange="HandleImageUpload" accept="image/jpeg,image/png,image/webp" multiple />
+                        <p class="form-hint">JPEG, PNG or WebP, max 10 MB each.</p>
+                        @if (_uploadError is not null)
+                        {
+                            <div class="alert alert-error">@_uploadError</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-error">@_error</div>
+            }
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" disabled="@_saving">
+                    @(_saving ? "Saving…" : (_isNew ? "Add Stallion" : "Save Changes"))
+                </button>
+                <a href="/admin/stallions" class="btn btn-secondary">Cancel</a>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private UpdateStallionRequest _model = new() { Name = string.Empty };
+    private StallionDto? _stallion;
+    private bool _isNew => Id is null;
+    private bool _isActive = true;
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _uploadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!_isNew)
+        {
+            try
+            {
+                _stallion = await AdminApi.GetStallionAsync(Id!.Value);
+                _model = new UpdateStallionRequest
+                {
+                    Name = _stallion.Name,
+                    YearOfBirth = _stallion.YearOfBirth,
+                    Colour = _stallion.Colour,
+                    Sire = _stallion.Sire,
+                    Dam = _stallion.Dam,
+                    RegistrationNumber = _stallion.RegistrationNumber,
+                    Description = _stallion.Description
+                };
+                _isActive = _stallion.IsActive;
+            }
+            catch (ApiException ex)
+            {
+                _error = ex.Message;
+            }
+        }
+        _loading = false;
+    }
+
+    private async Task HandleSubmit()
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            _model.IsActive = _isActive;
+            if (_isNew)
+            {
+                var create = new CreateStallionRequest
+                {
+                    Name = _model.Name,
+                    YearOfBirth = _model.YearOfBirth,
+                    Colour = _model.Colour,
+                    Sire = _model.Sire,
+                    Dam = _model.Dam,
+                    RegistrationNumber = _model.RegistrationNumber,
+                    Description = _model.Description
+                };
+                await AdminApi.CreateStallionAsync(create);
+            }
+            else
+            {
+                await AdminApi.UpdateStallionAsync(Id!.Value, _model);
+            }
+            Nav.NavigateTo("/admin/stallions");
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
+    {
+        _uploadError = null;
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            try
+            {
+                _stallion = await AdminApi.UploadStallionImageAsync(Id!.Value, file);
+            }
+            catch (ApiException ex)
+            {
+                _uploadError = ex.Message;
+                break;
+            }
+        }
+    }
+
+    private async Task SetPrimaryAsync(Guid imageId)
+    {
+        try
+        {
+            await AdminApi.SetPrimaryImageAsync(Id!.Value, imageId);
+            _stallion = await AdminApi.GetStallionAsync(Id!.Value);
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+    }
+
+    private async Task DeleteImageAsync(Guid imageId)
+    {
+        try
+        {
+            await AdminApi.DeleteStallionImageAsync(Id!.Value, imageId);
+            _stallion = await AdminApi.GetStallionAsync(Id!.Value);
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+    }
+}
