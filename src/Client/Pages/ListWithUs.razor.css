@@ -1,0 +1,144 @@
+.lwu-hero {
+    background: var(--navy-dark);
+    color: var(--white);
+    padding: var(--space-16) 0 var(--space-12);
+    text-align: center;
+}
+
+.lwu-hero h1 {
+    font-size: var(--font-size-4xl);
+    font-weight: var(--font-weight-bold);
+    margin-bottom: var(--space-4);
+    color: var(--white);
+}
+
+.lwu-subtitle {
+    font-size: var(--font-size-lg);
+    color: rgba(255,255,255,.8);
+    max-width: 640px;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+
+.lwu-body {
+    padding-block: var(--space-12);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+}
+
+/* How it works */
+.lwu-how h2,
+.lwu-contact h2 {
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--navy-dark);
+    margin-bottom: var(--space-6);
+}
+
+.lwu-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.lwu-steps li {
+    display: flex;
+    gap: var(--space-5);
+    align-items: flex-start;
+}
+
+.lwu-step-num {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: var(--gold);
+    color: var(--white);
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-base);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lwu-steps li strong {
+    display: block;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--space-1);
+}
+
+.lwu-steps li p {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.55;
+}
+
+/* Contact */
+.lwu-contact-cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-bottom: var(--space-5);
+}
+
+.lwu-contact-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5) var(--space-6);
+}
+
+.lwu-contact-icon {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+    color: var(--navy);
+}
+
+.lwu-contact-card strong {
+    display: block;
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-1);
+}
+
+.lwu-contact-card a {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--navy);
+}
+
+.lwu-contact-note {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* Already set up */
+.lwu-already {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-6);
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+/* Tablet+ */
+@media (min-width: 640px) {
+    .lwu-contact-cards {
+        flex-direction: row;
+    }
+
+    .lwu-contact-card {
+        flex: 1;
+    }
+}

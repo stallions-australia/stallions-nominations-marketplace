@@ -19,8 +19,9 @@
                     <button class="btn btn-outline btn-sm" @onclick="SignOut">Sign out</button>
                 </Authorized>
                 <NotAuthorized>
-                    <a href="authentication/login"    class="btn btn-outline btn-sm">Sign in</a>
-                    <a href="authentication/register" class="btn btn-primary btn-sm">Register</a>
+                    <a href="authentication/login"    class="btn btn-outline-white btn-sm">Sign in</a>
+                    <a href="authentication/register" class="btn btn-gold btn-sm">Register to Buy</a>
+                    <a href="/list-with-us"           class="btn btn-outline-white btn-sm">List Your Stallions</a>
                 </NotAuthorized>
             </AuthorizeView>
         </div>
@@ -46,7 +47,8 @@
                 </Authorized>
                 <NotAuthorized>
                     <a href="authentication/login"    class="btn btn-outline btn-full" @onclick="CloseDrawer">Sign in</a>
-                    <a href="authentication/register" class="btn btn-primary btn-full"  @onclick="CloseDrawer">Register</a>
+                    <a href="authentication/register" class="btn btn-gold btn-full"    @onclick="CloseDrawer">Register to Buy</a>
+                    <a href="/list-with-us"           class="btn btn-outline btn-full" @onclick="CloseDrawer">List Your Stallions</a>
                 </NotAuthorized>
             </AuthorizeView>
         </div>
