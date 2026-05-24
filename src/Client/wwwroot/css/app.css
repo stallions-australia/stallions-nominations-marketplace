@@ -314,6 +314,19 @@ h1:focus { outline: none; }
   .container { padding-inline: var(--space-12); }
 }
 
+/* NavBar link styles — must live in global CSS because NavLink renders its own <a>
+   element as a child Blazor component; the parent's CSS scope attribute is not applied
+   to child component outputs, so scoped .nav-link rules are never matched. */
+.nav-link {
+    color: rgba(255,255,255,.8);
+    text-decoration: none;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    transition: color .15s;
+}
+.nav-link:hover,
+.nav-link.active { color: var(--white); }
+
 /* NavBar responsive visibility — mobile-first defaults.
    These MUST live in global CSS (not NavBar.razor.css) because Blazor scoped CSS
    gets an attribute selector appended (specificity 0,2,0) which would beat the

@@ -21,14 +21,9 @@
 .navbar-links   { display: flex; align-items: center; gap: var(--space-6); margin-left: auto; }
 .navbar-auth    { display: flex; align-items: center; gap: var(--space-3); }
 
-.nav-link {
-    color: rgba(255,255,255,.8);
-    text-decoration: none;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-    transition: color .15s;
-}
-.nav-link:hover, .nav-link.active { color: var(--white); }
+/* .nav-link styles live in app.css (global) — NavLink renders its own <a> element
+   as a child component, so Blazor's CSS scope attribute is NOT applied to it.
+   Scoped rules can't reach it; only global CSS applies. */
 
 /* Hamburger */
 .navbar-hamburger {
