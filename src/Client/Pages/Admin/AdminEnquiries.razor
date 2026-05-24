@@ -1,0 +1,87 @@
+@page "/admin/enquiries"
+@layout AdminLayout
+@attribute [Authorize(Roles = "StudFarmAdmin")]
+@inject AdminApiService AdminApi
+@inject NavigationManager Nav
+
+<PageTitle>Enquiries — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1>Enquiries</h1>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_error is not null)
+{
+    <div class="alert alert-error">@_error</div>
+}
+else if (_enquiries.Count == 0)
+{
+    <div class="empty-state">
+        <div class="empty-state-icon">✉️</div>
+        <p class="empty-state-message">No enquiries yet. Buyers can send enquiries from listing pages.</p>
+    </div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Buyer</th>
+                <th>Stallion / Listing</th>
+                <th>Messages</th>
+                <th>Last Activity</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var e in _enquiries.OrderByDescending(e => e.LastMessageAt))
+            {
+                <tr class="@(e.IsUnread ? "enquiry-row-unread" : "")">
+                    <td>
+                        @if (e.IsUnread)
+                        {
+                            <span class="enquiry-unread-dot"></span>
+                        }
+                    </td>
+                    <td>@e.BuyerName</td>
+                    <td>
+                        <div>@e.StallionName</div>
+                        <div style="font-size:12px;color:var(--text-muted)">@e.ListingTitle</div>
+                    </td>
+                    <td>@e.MessageCount</td>
+                    <td>@(e.LastMessageAt?.ToString("dd MMM yyyy") ?? "—")</td>
+                    <td>
+                        <span class="badge @(e.Status == "Open" ? "badge-active" : "badge-cancelled")">
+                            @e.Status
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/admin/enquiries/@e.Id" class="btn btn-sm btn-secondary">View</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<EnquirySummaryDto> _enquiries = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _enquiries = await AdminApi.GetMyEnquiriesAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

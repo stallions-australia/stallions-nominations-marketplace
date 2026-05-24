@@ -1,0 +1,121 @@
+@page "/admin/enquiries/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "StudFarmAdmin")]
+@inject AdminApiService AdminApi
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Enquiry — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1>Enquiry</h1>
+    <a href="/admin/enquiries" class="btn btn-secondary">← Back to Enquiries</a>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_enquiry is null)
+{
+    <div class="alert alert-error">@(_error ?? "Enquiry not found.")</div>
+}
+else
+{
+    @* Context block *@
+    <div class="admin-form" style="margin-bottom:var(--space-5)">
+        <dl class="detail-list">
+            <dt>Buyer</dt><dd>@(_summary?.BuyerName ?? "—")</dd>
+            <dt>Stallion</dt><dd>@(_summary?.StallionName ?? "—")</dd>
+            <dt>Listing</dt><dd>@(_summary?.ListingTitle ?? "—")</dd>
+            <dt>Status</dt>
+            <dd>
+                <span class="badge @(_enquiry.Status == "Open" ? "badge-active" : "badge-cancelled")">
+                    @_enquiry.Status
+                </span>
+            </dd>
+        </dl>
+    </div>
+
+    @* Message thread — inline rendering *@
+    <div class="message-thread" style="margin-bottom:var(--space-5)">
+        @foreach (var msg in _enquiry.Messages.OrderBy(m => m.SentAt))
+        {
+            var isBuyer = msg.SenderUserId == _enquiry.BuyerUserId;
+            <div class="message @(isBuyer ? "message-buyer" : "message-seller")"
+                 style="margin-bottom:var(--space-3);padding:var(--space-3) var(--space-4);
+                        background:var(--color-white);border-radius:var(--radius-sm);
+                        border-left:3px solid @(isBuyer ? "var(--navy)" : "var(--gold)")">
+                <div style="font-size:12px;color:var(--text-muted);margin-bottom:var(--space-1)">
+                    @(isBuyer ? "Buyer" : "You") · @msg.SentAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")
+                </div>
+                <div style="white-space:pre-wrap">@msg.Body</div>
+            </div>
+        }
+    </div>
+
+    @* Reply form — inline rendering *@
+    @if (_enquiry.Status == "Open")
+    {
+        <div class="admin-form" style="margin-top:var(--space-5)">
+            <div class="form-section-title">Send Reply</div>
+            <div class="form-group">
+                <textarea class="form-input" @bind="_replyBody" rows="4" placeholder="Type your reply…"></textarea>
+            </div>
+            @if (_replyError is not null)
+            {
+                <div class="alert alert-error">@_replyError</div>
+            }
+            <div class="form-actions">
+                <button class="btn btn-primary" @onclick="HandleReply" disabled="@_sending">
+                    @(_sending ? "Sending…" : "Send Reply")
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <p class="text-muted" style="margin-top:var(--space-4)">This enquiry is closed.</p>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private EnquiryDto? _enquiry;
+    private EnquirySummaryDto? _summary;
+    private string? _replyBody;
+    private bool _loading = true;
+    private bool _sending;
+    private string? _error;
+    private string? _replyError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _enquiry = await AdminApi.GetEnquiryAsync(Id);
+            var all = await AdminApi.GetMyEnquiriesAsync();
+            _summary = all.FirstOrDefault(e => e.Id == Id);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task HandleReply()
+    {
+        if (string.IsNullOrWhiteSpace(_replyBody)) return;
+        _replyError = null;
+        _sending = true;
+        try
+        {
+            await AdminApi.SendReplyAsync(Id, new SendMessageRequest { Body = _replyBody.Trim() });
+            _replyBody = string.Empty;
+            _enquiry = await AdminApi.GetEnquiryAsync(Id);
+        }
+        catch (ApiException ex) { _replyError = ex.Message; }
+        finally { _sending = false; }
+    }
+}
