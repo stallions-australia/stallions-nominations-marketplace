@@ -134,9 +134,9 @@ public class StaffApiService
     /// <summary>
     /// Returns all users with the StudFarmAdmin role.
     /// Used to populate the User dropdown on the new stud farm form.
-    /// Note: server validates at submission time that the selected user has no farm yet.
+    /// Server validates at submission time that the selected user is not already linked to a farm.
     /// </summary>
-    public virtual async Task<List<UserDto>> GetUnlinkedStudFarmAdminsAsync()
+    public virtual async Task<List<UserDto>> GetStudFarmAdminsAsync()
     {
         var all = await GetUsersAsync();
         return all.Where(u => u.Role == "StudFarmAdmin").ToList();

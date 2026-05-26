@@ -79,18 +79,6 @@
     </EditForm>
 </div>
 
-<style>
-    .admin-form-card {
-        background: var(--white);
-        border-radius: 8px;
-        padding: var(--space-8);
-        border: 1px solid var(--border);
-        max-width: 560px;
-        margin-top: var(--space-6);
-    }
-    .required { color: #dc2626; }
-</style>
-
 @code {
     private readonly CreateStudFarmRequest _request = new();
     private List<UserDto> _studFarmAdmins = [];
@@ -100,7 +88,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try { _studFarmAdmins = await StaffApi.GetUnlinkedStudFarmAdminsAsync(); }
+        try { _studFarmAdmins = await StaffApi.GetStudFarmAdminsAsync(); }
         catch { /* Non-fatal — page will show warning state */ }
         finally { _loadingUsers = false; }
     }
