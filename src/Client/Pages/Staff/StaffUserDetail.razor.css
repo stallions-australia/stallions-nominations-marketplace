@@ -1,0 +1,25 @@
+.admin-detail-card {
+    background: var(--white);
+    border-radius: 8px;
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    max-width: 520px;
+    margin-top: var(--space-6);
+}
+
+.admin-dl {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: var(--space-3) var(--space-4);
+    margin: 0;
+}
+
+.admin-dl dt {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+}
+
+.admin-dl dd {
+    margin: 0;
+}

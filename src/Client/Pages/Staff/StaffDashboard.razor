@@ -45,42 +45,6 @@ else if (_dto != null)
     </div>
 }
 
-<style>
-    .staff-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: var(--space-6);
-        margin-top: var(--space-6);
-    }
-    .stat-card {
-        background: var(--white);
-        border-radius: 8px;
-        padding: var(--space-6);
-        border: 1px solid var(--border);
-    }
-    .stat-card--alert {
-        border-color: #f59e0b;
-        background: #fffbeb;
-    }
-    .stat-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: var(--navy);
-        line-height: 1;
-        margin-bottom: var(--space-2);
-    }
-    .stat-label {
-        font-size: var(--font-size-sm);
-        color: var(--text-muted);
-    }
-    .stat-action-link {
-        display: block;
-        margin-top: var(--space-1);
-        color: var(--gold);
-        font-weight: 600;
-    }
-</style>
-
 @code {
     private DashboardDto? _dto;
     private bool _loading = true;

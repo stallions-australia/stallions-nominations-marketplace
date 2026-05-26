@@ -118,20 +118,6 @@ else
     </div>
 }
 
-<style>
-    .modal-backdrop {
-        position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100;
-    }
-    .modal-dialog {
-        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-        background: var(--white); border-radius: 8px; padding: var(--space-6);
-        width: 440px; max-width: 95vw; z-index: 101; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    }
-    .modal-header { margin-bottom: var(--space-5); }
-    .modal-header h2 { font-size: var(--font-size-lg); margin: 0; }
-    .modal-footer { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
-</style>
-
 @code {
     private List<ListingStaffSummaryDto> _listings = [];
     private bool _loading = true;

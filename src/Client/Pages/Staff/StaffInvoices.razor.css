@@ -1,0 +1,44 @@
+.invoice-section {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: var(--space-4);
+    overflow: hidden;
+}
+
+.invoice-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-5) var(--space-6);
+    cursor: pointer;
+    list-style: none;
+    gap: var(--space-4);
+}
+
+.invoice-summary::-webkit-details-marker {
+    display: none;
+}
+
+.invoice-farm-name {
+    font-weight: 700;
+    font-size: var(--font-size-lg);
+    color: var(--navy);
+}
+
+.invoice-totals {
+    display: flex;
+    gap: var(--space-6);
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+}
+
+.remittance-amount {
+    color: var(--navy);
+    font-size: 1.05em;
+}
+
+.invoice-lines {
+    padding: 0 var(--space-6) var(--space-5);
+    border-top: 1px solid var(--border);
+}
