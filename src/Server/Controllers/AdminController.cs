@@ -52,7 +52,7 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> CreateStudFarm([FromBody] CreateStudFarmRequest request)
     {
         var r = await _admin.CreateStudFarmAsync(request);
-        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+        return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
     [HttpGet("listings")]
