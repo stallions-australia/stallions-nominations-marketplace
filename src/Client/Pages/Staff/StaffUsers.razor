@@ -1,0 +1,131 @@
+@page "/staff/users"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+@inject NavigationManager Nav
+
+<PageTitle>Users — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Users</h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else
+{
+    <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-5)">
+        <select class="form-select" style="width:180px" @bind="_roleFilter">
+            <option value="">All Roles</option>
+            <option value="Buyer">Buyer</option>
+            <option value="StudFarmAdmin">Stud Farm Admin</option>
+            <option value="Staff">Staff</option>
+        </select>
+        <select class="form-select" style="width:200px" @bind="_statusFilter">
+            <option value="">All Statuses</option>
+            <option value="PendingVerification">Pending Verification</option>
+            <option value="Active">Active</option>
+            <option value="Suspended">Suspended</option>
+        </select>
+    </div>
+
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Joined</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in Filtered)
+            {
+                <tr>
+                    <td><a href="/staff/users/@u.Id">@u.DisplayName</a></td>
+                    <td>@u.Email</td>
+                    <td><span class="badge badge-role">@u.Role</span></td>
+                    <td><span class="badge badge-status-@u.Status.ToLowerInvariant()">@u.Status</span></td>
+                    <td>@u.CreatedAt.ToString("d MMM yyyy")</td>
+                    <td>
+                        @if (u.Status == "PendingVerification")
+                        {
+                            <button class="btn btn-sm btn-success" @onclick="() => VerifyAsync(u.Id)"
+                                    disabled="@_busy">Verify</button>
+                        }
+                        else if (u.Status == "Active")
+                        {
+                            <button class="btn btn-sm btn-outline" @onclick="() => SuspendAsync(u.Id)"
+                                    disabled="@_busy">Suspend</button>
+                        }
+                    </td>
+                </tr>
+            }
+            @if (!Filtered.Any())
+            {
+                <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No users match the selected filters.</td></tr>
+            }
+        </tbody>
+    </table>
+
+    @if (_actionError != null)
+    {
+        <div class="alert alert-danger" style="margin-top:var(--space-4)">@_actionError</div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery] public string? status { get; set; }
+
+    private List<UserDto> _users = [];
+    private bool _loading = true;
+    private string? _error;
+    private string? _actionError;
+    private bool _busy;
+    private string _roleFilter = string.Empty;
+    private string _statusFilter = string.Empty;
+
+    private IEnumerable<UserDto> Filtered => _users
+        .Where(u => string.IsNullOrEmpty(_roleFilter) || u.Role == _roleFilter)
+        .Where(u => string.IsNullOrEmpty(_statusFilter) || u.Status == _statusFilter);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(status))
+            _statusFilter = status;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try { _users = await StaffApi.GetUsersAsync(); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load users."; }
+        finally { _loading = false; }
+    }
+
+    private async Task VerifyAsync(Guid id)
+    {
+        _busy = true; _actionError = null;
+        try { await StaffApi.VerifyUserAsync(id); await Load(); }
+        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to verify user."; }
+        finally { _busy = false; }
+    }
+
+    private async Task SuspendAsync(Guid id)
+    {
+        _busy = true; _actionError = null;
+        try { await StaffApi.SuspendUserAsync(id); await Load(); }
+        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to suspend user."; }
+        finally { _busy = false; }
+    }
+}

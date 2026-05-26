@@ -1,0 +1,79 @@
+@page "/staff/studfarms"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+@inject NavigationManager Nav
+
+<PageTitle>Stud Farms — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Stud Farms</h1>
+    <a href="/staff/studfarms/new" class="btn btn-gold btn-sm">+ Onboard New Farm</a>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (!_farms.Any())
+{
+    <div class="admin-empty-state">
+        <p>No stud farms have been onboarded yet.</p>
+        <a href="/staff/studfarms/new" class="btn btn-gold">Onboard First Farm</a>
+    </div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Farm Name</th>
+                <th>ABN</th>
+                <th>Contact Email</th>
+                <th>Linked User</th>
+                <th>Active</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var f in _farms)
+            {
+                <tr>
+                    <td>@f.Name</td>
+                    <td>@(f.ABN ?? "—")</td>
+                    <td>@(f.ContactEmail ?? "—")</td>
+                    <td>
+                        <div>@f.LinkedUserDisplayName</div>
+                        <div style="font-size:var(--font-size-sm);color:var(--text-muted)">@f.LinkedUserEmail</div>
+                    </td>
+                    <td>
+                        <span class="badge @(f.IsActive ? "badge-status-active" : "badge-status-suspended")">
+                            @(f.IsActive ? "Active" : "Inactive")
+                        </span>
+                    </td>
+                    <td>@f.CreatedAt.ToString("d MMM yyyy")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<StudFarmSummaryDto> _farms = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true; _error = null;
+        try { _farms = await StaffApi.GetStudFarmsAsync(); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load stud farms."; }
+        finally { _loading = false; }
+    }
+}

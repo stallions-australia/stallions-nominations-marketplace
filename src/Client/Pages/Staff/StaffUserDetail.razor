@@ -1,0 +1,115 @@
+@page "/staff/users/{Id:guid}"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+@inject NavigationManager Nav
+
+<PageTitle>User Detail — Staff Admin</PageTitle>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_user != null)
+{
+    <div class="admin-page-header">
+        <div>
+            <h1 class="admin-page-title">@_user.DisplayName</h1>
+            <p style="color:var(--text-muted);margin:0">@_user.Email</p>
+        </div>
+        <a href="/staff/users" class="btn btn-outline btn-sm">← Back to Users</a>
+    </div>
+
+    <div class="admin-detail-card">
+        <dl class="admin-dl">
+            <dt>Role</dt>
+            <dd><span class="badge badge-role">@_user.Role</span></dd>
+            <dt>Status</dt>
+            <dd><span class="badge badge-status-@_user.Status.ToLowerInvariant()">@_user.Status</span></dd>
+            <dt>Joined</dt>
+            <dd>@_user.CreatedAt.ToString("d MMMM yyyy")</dd>
+            @if (_user.VerifiedAt.HasValue)
+            {
+                <dt>Verified At</dt>
+                <dd>@_user.VerifiedAt.Value.ToString("d MMMM yyyy HH:mm") UTC</dd>
+            }
+        </dl>
+
+        @if (_user.Status == "PendingVerification")
+        {
+            <div style="margin-top:var(--space-5)">
+                <button class="btn btn-success" @onclick="VerifyAsync" disabled="@_busy">Verify User</button>
+            </div>
+        }
+        else if (_user.Status == "Active")
+        {
+            <div style="margin-top:var(--space-5)">
+                <button class="btn btn-outline" @onclick="SuspendAsync" disabled="@_busy">Suspend User</button>
+            </div>
+        }
+
+        @if (_actionError != null)
+        {
+            <div class="alert alert-danger" style="margin-top:var(--space-4)">@_actionError</div>
+        }
+    </div>
+}
+
+<style>
+    .admin-detail-card {
+        background: var(--white);
+        border-radius: 8px;
+        padding: var(--space-6);
+        border: 1px solid var(--border);
+        max-width: 520px;
+        margin-top: var(--space-6);
+    }
+    .admin-dl {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: var(--space-3) var(--space-4);
+        margin: 0;
+    }
+    .admin-dl dt { font-weight: 600; color: var(--text-muted); font-size: var(--font-size-sm); }
+    .admin-dl dd { margin: 0; }
+</style>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private UserDto? _user;
+    private bool _loading = true;
+    private string? _error;
+    private string? _actionError;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true; _error = null;
+        try { _user = await StaffApi.GetUserAsync(Id); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load user."; }
+        finally { _loading = false; }
+    }
+
+    private async Task VerifyAsync()
+    {
+        _busy = true; _actionError = null;
+        try { await StaffApi.VerifyUserAsync(Id); await Load(); }
+        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to verify user."; }
+        finally { _busy = false; }
+    }
+
+    private async Task SuspendAsync()
+    {
+        _busy = true; _actionError = null;
+        try { await StaffApi.SuspendUserAsync(Id); await Load(); }
+        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to suspend user."; }
+        finally { _busy = false; }
+    }
+}

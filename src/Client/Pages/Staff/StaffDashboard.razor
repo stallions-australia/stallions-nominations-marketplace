@@ -1,0 +1,108 @@
+@page "/staff/dashboard"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+
+<PageTitle>Staff Dashboard — Stallions Australia</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Dashboard</h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_dto != null)
+{
+    <div class="staff-stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">@_dto.ActiveListingCount</div>
+            <div class="stat-label">Active Listings</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">@_dto.AuctionListingCount / @_dto.FixedPriceListingCount</div>
+            <div class="stat-label">Auctions / Fixed Price</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">@_dto.RecentFeeRevenueIncGst.ToString("C")</div>
+            <div class="stat-label">Fee Revenue (30 days)</div>
+        </div>
+        <div class="stat-card @(_dto.PendingVerificationCount > 0 ? "stat-card--alert" : string.Empty)">
+            <div class="stat-value">@_dto.PendingVerificationCount</div>
+            <div class="stat-label">
+                Pending Verifications
+                @if (_dto.PendingVerificationCount > 0)
+                {
+                    <a href="/staff/users?status=PendingVerification" class="stat-action-link">Review →</a>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .staff-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: var(--space-6);
+        margin-top: var(--space-6);
+    }
+    .stat-card {
+        background: var(--white);
+        border-radius: 8px;
+        padding: var(--space-6);
+        border: 1px solid var(--border);
+    }
+    .stat-card--alert {
+        border-color: #f59e0b;
+        background: #fffbeb;
+    }
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--navy);
+        line-height: 1;
+        margin-bottom: var(--space-2);
+    }
+    .stat-label {
+        font-size: var(--font-size-sm);
+        color: var(--text-muted);
+    }
+    .stat-action-link {
+        display: block;
+        margin-top: var(--space-1);
+        color: var(--gold);
+        font-weight: 600;
+    }
+</style>
+
+@code {
+    private DashboardDto? _dto;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _dto = await StaffApi.GetDashboardAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex is ApiException ae ? ae.Message : "Failed to load dashboard. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

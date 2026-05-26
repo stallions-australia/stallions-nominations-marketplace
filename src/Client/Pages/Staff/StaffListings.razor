@@ -1,0 +1,204 @@
+@page "/staff/listings"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+
+<PageTitle>Listings — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">All Listings</h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (!_listings.Any())
+{
+    <div class="admin-empty-state">
+        <p>No listings yet. <a href="/staff/studfarms/new">Onboard a stud farm</a> first.</p>
+    </div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Stallion</th>
+                <th>Farm</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Price (inc. GST)</th>
+                <th>Fee %</th>
+                <th>Published</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in _listings)
+            {
+                <tr>
+                    <td>@l.StallionName</td>
+                    <td>@l.StudFarmName</td>
+                    <td><span class="badge badge-type-@l.ListingType.ToLowerInvariant()">@l.ListingType</span></td>
+                    <td><span class="badge badge-status-@l.Status.ToLowerInvariant()">@l.Status</span></td>
+                    <td>@(l.PriceIncGst.HasValue ? l.PriceIncGst.Value.ToString("C") : "—")</td>
+                    <td>
+                        @if (_editingFeeId == l.Id)
+                        {
+                            <div style="display:flex;gap:var(--space-2);align-items:center">
+                                <input type="number" class="form-control" style="width:80px"
+                                       @bind="_editingFeeValue" min="0" max="100" step="0.1" />
+                                <button class="btn btn-sm btn-gold" @onclick="() => SaveFeeAsync(l.Id)"
+                                        disabled="@_busy">✓</button>
+                                <button class="btn btn-sm btn-outline" @onclick="CancelFeeEdit">✕</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <span style="cursor:pointer;text-decoration:underline dotted"
+                                  @onclick="() => StartFeeEdit(l)">
+                                @(l.PlatformFeePercent.HasValue ? $"{l.PlatformFeePercent:0.##}%" : "—")
+                            </span>
+                        }
+                    </td>
+                    <td>@(l.PublishedAt.HasValue ? l.PublishedAt.Value.ToString("d MMM yyyy") : "—")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline" @onclick="() => OpenForceStatusModal(l)">
+                            Override Status
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_actionError != null)
+{
+    <div class="alert alert-danger" style="margin-top:var(--space-4)">@_actionError</div>
+}
+
+@if (_modalListing != null)
+{
+    <div class="modal-backdrop" @onclick="CloseModal"></div>
+    <div class="modal-dialog" role="dialog" aria-modal="true">
+        <div class="modal-header">
+            <h2>Override Status — @_modalListing.StallionName</h2>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">New Status</label>
+                <select class="form-select" @bind="_modalStatus">
+                    <option value="Draft">Draft</option>
+                    <option value="Active">Active</option>
+                    <option value="Sold">Sold</option>
+                    <option value="Expired">Expired</option>
+                    <option value="Cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Reason (optional)</label>
+                <textarea class="form-control" rows="2" @bind="_modalReason"
+                          placeholder="Briefly explain the reason for this override"></textarea>
+            </div>
+            @if (_modalError != null)
+            {
+                <div class="alert alert-danger">@_modalError</div>
+            }
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-gold" @onclick="ConfirmForceStatusAsync" disabled="@_busy">Confirm</button>
+            <button class="btn btn-outline" @onclick="CloseModal" disabled="@_busy">Cancel</button>
+        </div>
+    </div>
+}
+
+<style>
+    .modal-backdrop {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100;
+    }
+    .modal-dialog {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        background: var(--white); border-radius: 8px; padding: var(--space-6);
+        width: 440px; max-width: 95vw; z-index: 101; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    .modal-header { margin-bottom: var(--space-5); }
+    .modal-header h2 { font-size: var(--font-size-lg); margin: 0; }
+    .modal-footer { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
+</style>
+
+@code {
+    private List<ListingStaffSummaryDto> _listings = [];
+    private bool _loading = true;
+    private string? _error;
+    private string? _actionError;
+    private bool _busy;
+
+    private Guid? _editingFeeId;
+    private decimal _editingFeeValue;
+
+    private ListingStaffSummaryDto? _modalListing;
+    private string _modalStatus = "Draft";
+    private string _modalReason = string.Empty;
+    private string? _modalError;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true; _error = null;
+        try { _listings = await StaffApi.GetAllListingsAsync(); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load listings."; }
+        finally { _loading = false; }
+    }
+
+    private void StartFeeEdit(ListingStaffSummaryDto listing)
+    {
+        _editingFeeId = listing.Id;
+        _editingFeeValue = listing.PlatformFeePercent ?? 0;
+        _actionError = null;
+    }
+
+    private void CancelFeeEdit() => _editingFeeId = null;
+
+    private async Task SaveFeeAsync(Guid id)
+    {
+        _busy = true; _actionError = null;
+        try { await StaffApi.SetListingFeeAsync(id, _editingFeeValue); _editingFeeId = null; await Load(); }
+        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to save fee."; }
+        finally { _busy = false; }
+    }
+
+    private void OpenForceStatusModal(ListingStaffSummaryDto listing)
+    {
+        _modalListing = listing;
+        _modalStatus = listing.Status;
+        _modalReason = string.Empty;
+        _modalError = null;
+    }
+
+    private void CloseModal() { _modalListing = null; _modalError = null; }
+
+    private async Task ConfirmForceStatusAsync()
+    {
+        if (_modalListing == null) return;
+        _busy = true; _modalError = null;
+        try
+        {
+            await StaffApi.ForceListingStatusAsync(_modalListing.Id, new ForceListingStatusRequest
+            {
+                Status = _modalStatus,
+                Reason = string.IsNullOrWhiteSpace(_modalReason) ? null : _modalReason
+            });
+            CloseModal();
+            await Load();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to override status."; }
+        finally { _busy = false; }
+    }
+}

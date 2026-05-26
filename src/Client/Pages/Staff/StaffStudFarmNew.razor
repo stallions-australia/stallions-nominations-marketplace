@@ -1,0 +1,125 @@
+@page "/staff/studfarms/new"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+@inject NavigationManager Nav
+
+<PageTitle>Onboard New Stud Farm — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Onboard New Stud Farm</h1>
+    <a href="/staff/studfarms" class="btn btn-outline btn-sm">← Back to Stud Farms</a>
+</div>
+
+<div class="admin-form-card">
+    <EditForm Model="_request" OnValidSubmit="SubmitAsync">
+        <DataAnnotationsValidator />
+
+        <div class="form-group">
+            <label class="form-label">Linked User <span class="required">*</span></label>
+            @if (_loadingUsers)
+            {
+                <p style="font-size:var(--font-size-sm);color:var(--text-muted)">Loading users…</p>
+            }
+            else if (!_studFarmAdmins.Any())
+            {
+                <div class="alert alert-warning">
+                    No users with the StudFarmAdmin role found. Ask the farm contact to register, then assign them the StudFarmAdmin role in Entra ID before onboarding.
+                </div>
+            }
+            else
+            {
+                <select class="form-select" @bind="_request.UserId">
+                    <option value="@Guid.Empty">— Select a user —</option>
+                    @foreach (var u in _studFarmAdmins)
+                    {
+                        <option value="@u.Id">@u.DisplayName (@u.Email)</option>
+                    }
+                </select>
+            }
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Farm Name <span class="required">*</span></label>
+            <InputText class="form-control" @bind-Value="_request.Name" placeholder="e.g. Coolmore Australia" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">ABN <span class="required">*</span></label>
+            <InputText class="form-control" @bind-Value="_request.ABN" placeholder="11 digit ABN" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Contact Phone</label>
+            <InputText class="form-control" @bind-Value="_request.ContactPhone" placeholder="+61 2 0000 0000" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Contact Email</label>
+            <InputText class="form-control" @bind-Value="_request.ContactEmail" placeholder="nominations@farm.com.au" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Address</label>
+            <InputTextArea class="form-control" @bind-Value="_request.Address" rows="3"
+                           placeholder="Street, Town, State, Postcode" />
+        </div>
+
+        @if (_error != null)
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div style="margin-top:var(--space-6);display:flex;gap:var(--space-3)">
+            <button type="submit" class="btn btn-gold" disabled="@_submitting">
+                @(_submitting ? "Creating…" : "Create Stud Farm")
+            </button>
+            <a href="/staff/studfarms" class="btn btn-outline">Cancel</a>
+        </div>
+    </EditForm>
+</div>
+
+<style>
+    .admin-form-card {
+        background: var(--white);
+        border-radius: 8px;
+        padding: var(--space-8);
+        border: 1px solid var(--border);
+        max-width: 560px;
+        margin-top: var(--space-6);
+    }
+    .required { color: #dc2626; }
+</style>
+
+@code {
+    private readonly CreateStudFarmRequest _request = new();
+    private List<UserDto> _studFarmAdmins = [];
+    private bool _loadingUsers = true;
+    private bool _submitting;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _studFarmAdmins = await StaffApi.GetUnlinkedStudFarmAdminsAsync(); }
+        catch { /* Non-fatal — page will show warning state */ }
+        finally { _loadingUsers = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_request.UserId == Guid.Empty) { _error = "Please select a user to link to this farm."; return; }
+        if (string.IsNullOrWhiteSpace(_request.Name)) { _error = "Farm Name is required."; return; }
+
+        _submitting = true; _error = null;
+        try
+        {
+            await StaffApi.CreateStudFarmAsync(_request);
+            Nav.NavigateTo("/staff/studfarms");
+        }
+        catch (Exception ex)
+        {
+            _error = ex is ApiException ae ? ae.Message : "Failed to create stud farm. Please try again.";
+        }
+        finally { _submitting = false; }
+    }
+}

@@ -1,0 +1,75 @@
+@page "/staff/transactions"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+
+<PageTitle>Transactions — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Transactions</h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (!_transactions.Any())
+{
+    <div class="admin-empty-state">
+        <p>No transactions recorded yet.</p>
+    </div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Stallion</th>
+                <th>Farm</th>
+                <th>Buyer</th>
+                <th>Sale Price (inc. GST)</th>
+                <th>Platform Fee (inc. GST)</th>
+                <th>Fee ex GST</th>
+                <th>GST Amount</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _transactions)
+            {
+                <tr>
+                    <td>@(t.PaidAt.HasValue ? t.PaidAt.Value.ToString("d MMM yyyy") : "—")</td>
+                    <td>@t.StallionName</td>
+                    <td>@t.StudFarmName</td>
+                    <td>@t.BuyerDisplayName</td>
+                    <td>@t.TotalPriceIncGst.ToString("C")</td>
+                    <td>@t.PlatformFeeIncGst.ToString("C")</td>
+                    <td>@t.PlatformFeeExGst.ToString("C")</td>
+                    <td>@t.PlatformFeeGst.ToString("C")</td>
+                    <td><span class="badge badge-status-@t.Status.ToLowerInvariant()">@t.Status</span></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<TransactionDto> _transactions = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true; _error = null;
+        try { _transactions = await StaffApi.GetTransactionsAsync(); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load transactions."; }
+        finally { _loading = false; }
+    }
+}

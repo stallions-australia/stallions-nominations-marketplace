@@ -1,0 +1,118 @@
+@page "/staff/invoices"
+@layout StaffLayout
+@attribute [Authorize(Roles = "Staff")]
+@inject StaffApiService StaffApi
+
+<PageTitle>Invoices — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Remittance Invoices</h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (!_invoices.Any())
+{
+    <div class="admin-empty-state">
+        <p>No completed sales to invoice yet.</p>
+    </div>
+}
+else
+{
+    @foreach (var inv in _invoices)
+    {
+        <details class="invoice-section">
+            <summary class="invoice-summary">
+                <div class="invoice-farm-name">@inv.StudFarmName</div>
+                <div class="invoice-totals">
+                    <span>Sales: <strong>@inv.TotalSalesIncGst.ToString("C")</strong></span>
+                    <span>Fees Retained: <strong>@inv.TotalPlatformFeesIncGst.ToString("C")</strong></span>
+                    <span>Remittance Due: <strong class="remittance-amount">@inv.TotalRemittance.ToString("C")</strong></span>
+                </div>
+            </summary>
+            <div class="invoice-lines">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Stallion</th>
+                            <th>Sale Price (inc. GST)</th>
+                            <th>Platform Fee (inc. GST)</th>
+                            <th>Remittance Amount</th>
+                            <th>Sale Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in inv.Lines)
+                        {
+                            <tr>
+                                <td>@line.StallionName</td>
+                                <td>@line.SalePriceIncGst.ToString("C")</td>
+                                <td>@line.PlatformFeeIncGst.ToString("C")</td>
+                                <td>@line.RemittanceAmount.ToString("C")</td>
+                                <td>@line.PaidAt.ToString("d MMM yyyy")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+}
+
+<style>
+    .invoice-section {
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: var(--space-4);
+        overflow: hidden;
+    }
+    .invoice-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-5) var(--space-6);
+        cursor: pointer;
+        list-style: none;
+        gap: var(--space-4);
+    }
+    .invoice-summary::-webkit-details-marker { display: none; }
+    .invoice-farm-name {
+        font-weight: 700;
+        font-size: var(--font-size-lg);
+        color: var(--navy);
+    }
+    .invoice-totals {
+        display: flex;
+        gap: var(--space-6);
+        font-size: var(--font-size-sm);
+        color: var(--text-muted);
+    }
+    .remittance-amount { color: var(--navy); font-size: 1.05em; }
+    .invoice-lines {
+        padding: 0 var(--space-6) var(--space-5);
+        border-top: 1px solid var(--border);
+    }
+</style>
+
+@code {
+    private List<InvoiceDto> _invoices = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _loading = true; _error = null;
+        try { _invoices = await StaffApi.GetInvoicesAsync(); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load invoices."; }
+        finally { _loading = false; }
+    }
+}
