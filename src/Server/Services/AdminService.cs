@@ -1,4 +1,5 @@
 using Stallions.Server.Auth;
+using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Shared.DTOs.Admin;
 using Stallions.Shared.Enums;
@@ -10,6 +11,7 @@ public class AdminService : IAdminService
     private readonly IListingRepository _listingRepo;
     private readonly IPurchaseRepository _purchaseRepo;
     private readonly IUserRepository _userRepo;
+    private readonly IStudFarmRepository _studFarmRepo;
     private readonly IAuditLogRepository _auditRepo;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserService _users;
@@ -18,6 +20,7 @@ public class AdminService : IAdminService
         IListingRepository listingRepo,
         IPurchaseRepository purchaseRepo,
         IUserRepository userRepo,
+        IStudFarmRepository studFarmRepo,
         IAuditLogRepository auditRepo,
         ICurrentUserService currentUser,
         IUserService users)
@@ -25,6 +28,7 @@ public class AdminService : IAdminService
         _listingRepo = listingRepo;
         _purchaseRepo = purchaseRepo;
         _userRepo = userRepo;
+        _studFarmRepo = studFarmRepo;
         _auditRepo = auditRepo;
         _currentUser = currentUser;
         _users = users;
@@ -123,6 +127,123 @@ public class AdminService : IAdminService
             "SetListingFee",
             caller.Id,
             $"Fee changed from {previousFee?.ToString() ?? "unset"} to {request.PlatformFeePercent}");
+
+        return ServiceResult.Ok();
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<StudFarmSummaryDto>>> GetAllStudFarmsAsync()
+    {
+        var farms = await _studFarmRepo.GetAllAsync();
+        var dtos = farms.Select(f => new StudFarmSummaryDto
+        {
+            Id = f.Id,
+            Name = f.Name,
+            ABN = f.ABN,
+            ContactEmail = f.ContactEmail,
+            LinkedUserDisplayName = f.User?.DisplayName ?? string.Empty,
+            LinkedUserEmail = f.User?.Email ?? string.Empty,
+            IsActive = f.IsActive,
+            CreatedAt = f.CreatedAt
+        }).ToList();
+        return ServiceResult<IReadOnlyList<StudFarmSummaryDto>>.Ok(dtos);
+    }
+
+    public async Task<ServiceResult<StudFarmSummaryDto>> CreateStudFarmAsync(CreateStudFarmRequest request)
+    {
+        var user = await _userRepo.GetByIdAsync(request.UserId);
+        if (user == null)
+            return ServiceResult<StudFarmSummaryDto>.NotFound("User not found.");
+
+        if (user.Role != UserRole.StudFarmAdmin)
+            return ServiceResult<StudFarmSummaryDto>.BadRequest(
+                "User must have the StudFarmAdmin role.");
+
+        var existing = await _studFarmRepo.GetByUserIdAsync(request.UserId);
+        if (existing != null)
+            return ServiceResult<StudFarmSummaryDto>.BadRequest(
+                "This user already has a stud farm linked to their account.");
+
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+
+        var farm = new StudFarm
+        {
+            UserId = request.UserId,
+            Name = request.Name,
+            ABN = request.ABN,
+            ContactPhone = request.ContactPhone,
+            ContactEmail = request.ContactEmail,
+            Address = request.Address
+        };
+
+        farm = await _studFarmRepo.AddAsync(farm);
+
+        await _auditRepo.LogAsync(
+            "StudFarm",
+            farm.Id,
+            "CreateStudFarm",
+            caller?.Id,
+            $"Farm '{farm.Name}' created and linked to user {user.Email}");
+
+        var dto = new StudFarmSummaryDto
+        {
+            Id = farm.Id,
+            Name = farm.Name,
+            ABN = farm.ABN,
+            ContactEmail = farm.ContactEmail,
+            LinkedUserDisplayName = user.DisplayName,
+            LinkedUserEmail = user.Email,
+            IsActive = farm.IsActive,
+            CreatedAt = farm.CreatedAt
+        };
+        return ServiceResult<StudFarmSummaryDto>.Ok(dto);
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>> GetAllListingsStaffAsync()
+    {
+        var listings = await _listingRepo.GetAllStaffAsync();
+        var dtos = listings.Select(l =>
+        {
+            decimal? price = l switch
+            {
+                FixedPriceListing fp => fp.PriceIncGst,
+                AuctionListing al => al.StartingPrice,
+                _ => null
+            };
+            return new ListingStaffSummaryDto
+            {
+                Id = l.Id,
+                StallionName = l.Stallion?.Name ?? string.Empty,
+                StudFarmName = l.StudFarm?.Name ?? string.Empty,
+                ListingType = l.ListingType.ToString(),
+                Status = l.Status.ToString(),
+                PriceIncGst = price,
+                PlatformFeePercent = l.PlatformFeePercent,
+                PublishedAt = l.PublishedAt
+            };
+        }).ToList();
+        return ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>.Ok(dtos);
+    }
+
+    public async Task<ServiceResult> ForceListingStatusAsync(Guid listingId, ForceListingStatusRequest request)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+
+        var listing = await _listingRepo.GetByIdAsync(listingId);
+        if (listing == null) return ServiceResult.NotFound("Listing not found.");
+
+        if (!Enum.TryParse<ListingStatus>(request.Status, ignoreCase: true, out var newStatus))
+            return ServiceResult.BadRequest($"'{request.Status}' is not a valid listing status.");
+
+        var previousStatus = listing.Status;
+        listing.Status = newStatus;
+        await _listingRepo.UpdateAsync(listing);
+
+        await _auditRepo.LogAsync(
+            "Listing",
+            listingId,
+            "ForceListingStatus",
+            caller?.Id,
+            $"Status forced from {previousStatus} to {newStatus}. Reason: {request.Reason ?? "none"}");
 
         return ServiceResult.Ok();
     }
