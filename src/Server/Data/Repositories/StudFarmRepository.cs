@@ -14,6 +14,12 @@ public class StudFarmRepository : IStudFarmRepository
     public async Task<StudFarm?> GetByUserIdAsync(Guid userId) =>
         await _db.StudFarms.FirstOrDefaultAsync(f => f.UserId == userId);
 
+    public async Task<IReadOnlyList<StudFarm>> GetAllAsync() =>
+        await _db.StudFarms
+            .Include(f => f.User)
+            .OrderBy(f => f.Name)
+            .ToListAsync();
+
     public async Task<StudFarm> AddAsync(StudFarm studFarm)
     {
         _db.StudFarms.Add(studFarm);

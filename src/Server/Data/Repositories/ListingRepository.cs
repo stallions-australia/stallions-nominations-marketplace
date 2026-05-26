@@ -62,6 +62,13 @@ public class ListingRepository : IListingRepository
             .Where(a => a.EndDateTime <= DateTime.UtcNow && a.Status == ListingStatus.Active)
             .ToListAsync();
 
+    public async Task<IReadOnlyList<Listing>> GetAllStaffAsync() =>
+        await _db.Listings
+            .Include(l => l.Stallion)
+            .Include(l => l.StudFarm)
+            .OrderByDescending(l => l.CreatedAt)
+            .ToListAsync();
+
     public async Task<Listing> AddAsync(Listing listing)
     {
         _db.Listings.Add(listing);

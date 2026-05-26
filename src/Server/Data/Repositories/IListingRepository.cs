@@ -12,6 +12,7 @@ public interface IListingRepository
     Task<Dictionary<Guid, (int Count, decimal? Highest)>> GetBidAggregatesAsync(IEnumerable<Guid> auctionIds);
     Task<IReadOnlyList<Listing>> GetByStudFarmIdAsync(Guid studFarmId);
     Task<IReadOnlyList<AuctionListing>> GetExpiredAuctionsAsync();
+    Task<IReadOnlyList<Listing>> GetAllStaffAsync();
     Task<Listing> AddAsync(Listing listing);
     Task UpdateAsync(Listing listing);
 }
