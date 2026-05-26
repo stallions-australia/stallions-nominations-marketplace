@@ -1,0 +1,59 @@
+@page "/auth-debug"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject UserApiService UserApi
+@inject HttpClient Http
+@inject IAccessTokenProvider TokenProvider
+
+<PageTitle>Auth Debug</PageTitle>
+<div style="padding:2rem;font-family:monospace;white-space:pre-wrap">
+@if (_loading)
+{
+    <p>Loading...</p>
+}
+else if (_error is not null)
+{
+    <p style="color:red">ERROR: @_error</p>
+}
+else
+{
+    <p>@_result</p>
+}
+</div>
+
+@code {
+    private bool   _loading = true;
+    private string? _result;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tokenResult = await TokenProvider.RequestAccessToken();
+            if (!tokenResult.TryGetToken(out var token))
+            {
+                _error = "Could not acquire access token.";
+                return;
+            }
+
+            using var req = new HttpRequestMessage(HttpMethod.Get,
+                "/api/auth/debug");
+            req.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Value);
+
+            using var http = new HttpClient { BaseAddress = new Uri(Http.BaseAddress!.AbsoluteUri) };
+            var response = await http.SendAsync(req);
+            _result = await response.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
