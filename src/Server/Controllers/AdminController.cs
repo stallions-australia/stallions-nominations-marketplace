@@ -40,4 +40,32 @@ public class AdminController : ControllerBase
         var r = await _admin.SetListingFeeAsync(id, request);
         return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
     }
+
+    [HttpGet("studfarms")]
+    public async Task<IActionResult> GetStudFarms()
+    {
+        var r = await _admin.GetAllStudFarmsAsync();
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPost("studfarms")]
+    public async Task<IActionResult> CreateStudFarm([FromBody] CreateStudFarmRequest request)
+    {
+        var r = await _admin.CreateStudFarmAsync(request);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpGet("listings")]
+    public async Task<IActionResult> GetListings()
+    {
+        var r = await _admin.GetAllListingsStaffAsync();
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPost("listings/{id:guid}/force-status")]
+    public async Task<IActionResult> ForceListingStatus(Guid id, [FromBody] ForceListingStatusRequest request)
+    {
+        var r = await _admin.ForceListingStatusAsync(id, request);
+        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
+    }
 }
