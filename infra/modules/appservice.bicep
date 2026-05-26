@@ -5,6 +5,7 @@ param appInsightsConnectionString string
 param keyVaultUri string
 param entraTenantId string
 param entraClientId string
+param storageAccountName string
 
 var isProduction = environmentName == 'prod'
 var entraAudience = 'api://${entraClientId}'
@@ -77,6 +78,10 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'AzureAd__Audience'
           value: entraAudience
+        }
+        {
+          name: 'AZURE_STORAGE_ACCOUNT_NAME'
+          value: storageAccountName
         }
       ]
     }

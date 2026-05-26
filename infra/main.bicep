@@ -90,6 +90,7 @@ module appservice './modules/appservice.bicep' = {
     keyVaultUri: keyvault.outputs.keyVaultUri
     entraTenantId: entraTenantId
     entraClientId: entraClientId
+    storageAccountName: storage.outputs.storageAccountName
   }
 }
 
