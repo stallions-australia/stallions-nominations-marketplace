@@ -37,6 +37,14 @@ public class UsersController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Staff")]
+    public async Task<IActionResult> GetById(Guid id)
+    {
+        var r = await _users.GetByIdAsync(id);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpPost("{id:guid}/verify")]
     [Authorize(Roles = "Staff")]
     public async Task<IActionResult> Verify(Guid id)

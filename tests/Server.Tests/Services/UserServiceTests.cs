@@ -75,6 +75,34 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task GetById_WhenUserExists_ReturnsDto()
+    {
+        var userId = Guid.NewGuid();
+        var user = new User { Id = userId, EntraObjectId = "oid-3", DisplayName = "Tom", Email = "tom@example.com",
+            Role = UserRole.Buyer, Status = UserStatus.Active };
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
+
+        var result = await CreateSut().GetByIdAsync(userId);
+
+        result.Succeeded.Should().BeTrue();
+        result.Value!.Id.Should().Be(userId);
+        result.Value.Email.Should().Be("tom@example.com");
+        result.Value.Role.Should().Be("Buyer");
+    }
+
+    [Fact]
+    public async Task GetById_WhenUserNotFound_ReturnsNotFound()
+    {
+        var userId = Guid.NewGuid();
+        _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync((User?)null);
+
+        var result = await CreateSut().GetByIdAsync(userId);
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(404);
+    }
+
+    [Fact]
     public async Task SuspendUser_WhenUserIsActive_SetsSuspended()
     {
         var staffId = Guid.NewGuid().ToString();

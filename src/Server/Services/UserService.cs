@@ -85,6 +85,14 @@ public class UserService : IUserService
         return ServiceResult<IReadOnlyList<UserDto>>.Ok(users.Select(MapToDto).ToList());
     }
 
+    public async Task<ServiceResult<UserDto>> GetByIdAsync(Guid userId)
+    {
+        var user = await _repo.GetByIdAsync(userId);
+        return user == null
+            ? ServiceResult<UserDto>.NotFound("User not found.")
+            : ServiceResult<UserDto>.Ok(MapToDto(user));
+    }
+
     public async Task<ServiceResult> VerifyUserAsync(Guid id)
     {
         var caller = await GetOrCreateCurrentUserAsync();
