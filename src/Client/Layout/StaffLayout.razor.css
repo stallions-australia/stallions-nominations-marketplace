@@ -1,0 +1,8 @@
+/* admin-shell layout styles have been moved to app.css so StaffLayout can share them. */
+
+/* Gold badge is the default from admin-badge; staff gets a distinct white-text treatment */
+.staff-badge {
+    background: #c4993a;
+    color: #fff;
+    letter-spacing: 0.08em;
+}

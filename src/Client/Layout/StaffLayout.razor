@@ -1,0 +1,48 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+
+<div class="admin-shell">
+    <aside class="admin-sidebar">
+        <div class="admin-sidebar-header">
+            <a href="/" class="admin-brand">Stallions Australia</a>
+            <span class="admin-badge staff-badge">Staff</span>
+        </div>
+        <nav class="admin-nav">
+            <NavLink href="/staff/dashboard" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">📊</span> Dashboard
+            </NavLink>
+            <NavLink href="/staff/users" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">👤</span> Users
+            </NavLink>
+            <NavLink href="/staff/studfarms" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">🏡</span> Stud Farms
+            </NavLink>
+            <NavLink href="/staff/listings" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">📋</span> Listings
+            </NavLink>
+            <NavLink href="/staff/transactions" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">💰</span> Transactions
+            </NavLink>
+            <NavLink href="/staff/invoices" class="admin-nav-link" Match="NavLinkMatch.Prefix">
+                <span class="admin-nav-icon">🧾</span> Invoices
+            </NavLink>
+        </nav>
+        <div class="admin-sidebar-footer">
+            <a href="/" class="admin-nav-link">← Back to marketplace</a>
+        </div>
+    </aside>
+
+    <main class="admin-content">
+        <ErrorBoundary>
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <div class="admin-error">
+                    <h3>Something went wrong</h3>
+                    <p>An unexpected error occurred. <a href="/staff/dashboard">Return to Dashboard</a>.</p>
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
+    </main>
+</div>
