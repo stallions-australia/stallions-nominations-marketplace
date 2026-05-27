@@ -10,7 +10,10 @@ public class ListingRepository : IListingRepository
     public ListingRepository(AppDbContext db) => _db = db;
 
     public async Task<Listing?> GetByIdAsync(Guid id) =>
-        await _db.Listings.Include(l => l.Stallion).ThenInclude(s => s.Images)
+        await _db.Listings
+            .Include(l => l.Stallion).ThenInclude(s => s.Images)
+            .Include(l => l.Season)
+            .Include(l => l.StudFarm)
             .FirstOrDefaultAsync(l => l.Id == id);
 
     public async Task<AuctionListing?> GetAuctionByIdAsync(Guid id) =>

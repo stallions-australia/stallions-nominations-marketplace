@@ -145,9 +145,11 @@ else
         {
             _error = "This listing could not be found. It may have been removed.";
         }
-        catch (ApiException)
+        catch (ApiException ex)
         {
-            _error = "Failed to load listing. Please try again.";
+            _error = ex.StatusCode == 500
+                ? $"Failed to load listing: {ex.Message}"
+                : "Failed to load listing. Please try again.";
         }
     }
 

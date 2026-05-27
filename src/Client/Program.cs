@@ -2,18 +2,26 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Stallions.Client;
+using Stallions.Client.Auth;
 using Stallions.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// Entra ID (MSAL) auth
-builder.Services.AddMsalAuthentication(options =>
-{
-    builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
-    options.ProviderOptions.DefaultAccessTokenScopes.Add(builder.Configuration["ApiScope"]!);
-});
+// Entra ID (MSAL) auth — custom account type so the 'roles' JSON array in the
+// ID token is deserialised and added to ClaimTypes.Role, making AuthorizeView
+// Roles="Staff" / "StudFarmAdmin" work correctly on the client side.
+builder.Services
+    .AddMsalAuthentication<RemoteAuthenticationState, CustomUserAccount>(options =>
+    {
+        builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
+        options.ProviderOptions.DefaultAccessTokenScopes.Add(builder.Configuration["ApiScope"]!);
+    })
+    .AddAccountClaimsPrincipalFactory<
+        RemoteAuthenticationState,
+        CustomUserAccount,
+        CustomAccountClaimsPrincipalFactory>();
 
 // Typed API services — BaseAddressAuthorizationMessageHandler attaches the Entra ID access
 // token when the user is signed in; unauthenticated requests to public endpoints pass through.

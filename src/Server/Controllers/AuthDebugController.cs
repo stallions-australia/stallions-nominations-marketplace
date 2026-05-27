@@ -24,10 +24,13 @@ public class AuthDebugController : ControllerBase
             .Select(c => c.Value)
             .ToList();
 
+        var name = User.Identity?.Name
+            ?? User.Claims.FirstOrDefault(c => c.Type == "name")?.Value;
+
         return Ok(new
         {
             IsAuthenticated = User.Identity?.IsAuthenticated,
-            Name            = User.Identity?.Name,
+            Name            = name,
             IsStaff         = User.IsInRole("Staff"),
             IsStudFarmAdmin = User.IsInRole("StudFarmAdmin"),
             IsBuyer         = User.IsInRole("Buyer"),

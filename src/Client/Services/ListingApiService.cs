@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Stallions.Shared;
 using Stallions.Shared.DTOs.Listings;
 
 namespace Stallions.Client.Services;
@@ -21,7 +22,10 @@ public class ListingApiService
         var response = await _http.GetAsync(url);
         if (!response.IsSuccessStatusCode)
             throw new ApiException((int)response.StatusCode, "Failed to load listings.");
-        return await response.Content.ReadFromJsonAsync<List<ListingCardDto>>()
+
+        // Use source-generated context options — trim-safe for Blazor WASM Release builds.
+        return await response.Content.ReadFromJsonAsync<List<ListingCardDto>>(
+                   StallionsJsonContext.Default.Options)
                ?? new List<ListingCardDto>();
     }
 
@@ -32,7 +36,21 @@ public class ListingApiService
             throw new ApiException(404, "Listing not found.");
         if (!response.IsSuccessStatusCode)
             throw new ApiException((int)response.StatusCode, "Failed to load listing.");
-        return await response.Content.ReadFromJsonAsync<ListingDto>()
-               ?? throw new ApiException(500, "Empty response from server.");
+
+        try
+        {
+            // Use source-generated context options so the [JsonPolymorphic] /
+            // [JsonDerivedType] discriminator is resolved at compile time, not via
+            // reflection. Without this, IL trimming in a Release Blazor WASM build
+            // strips the reflection members needed to discover AuctionListingDto /
+            // FixedPriceListingDto at runtime.
+            return await response.Content.ReadFromJsonAsync<ListingDto>(
+                       StallionsJsonContext.Default.Options)
+                   ?? throw new ApiException(500, "Empty response from server.");
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new ApiException(500, $"Listing data could not be parsed: {ex.Message}");
+        }
     }
 }

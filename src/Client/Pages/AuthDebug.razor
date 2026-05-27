@@ -1,10 +1,12 @@
 @page "/auth-debug"
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using System.Text
+@using System.Text.Json
 @attribute [Authorize]
-@inject UserApiService UserApi
-@inject HttpClient Http
+@inject NavigationManager Nav
 @inject IAccessTokenProvider TokenProvider
+@inject IHttpClientFactory HttpFactory
 
 <PageTitle>Auth Debug</PageTitle>
 <div style="padding:2rem;font-family:monospace;white-space:pre-wrap">
@@ -12,20 +14,31 @@
 {
     <p>Loading...</p>
 }
-else if (_error is not null)
-{
-    <p style="color:red">ERROR: @_error</p>
-}
 else
 {
-    <p>@_result</p>
+    @if (_tokenPayload is not null)
+    {
+        <h3 style="color:#888">== ACCESS TOKEN PAYLOAD (client-decoded) ==</h3>
+        <p>@_tokenPayload</p>
+        <hr/>
+    }
+    @if (_error is not null)
+    {
+        <p style="color:red">ERROR: @_error</p>
+    }
+    else
+    {
+        <h3 style="color:#888">== SERVER RESPONSE ==</h3>
+        <p>@_result</p>
+    }
 }
 </div>
 
 @code {
-    private bool   _loading = true;
+    private bool    _loading = true;
     private string? _result;
     private string? _error;
+    private string? _tokenPayload;
 
     protected override async Task OnInitializedAsync()
     {
@@ -34,26 +47,58 @@ else
             var tokenResult = await TokenProvider.RequestAccessToken();
             if (!tokenResult.TryGetToken(out var token))
             {
-                _error = "Could not acquire access token.";
+                _error = "Could not acquire access token. TryGetToken returned false.";
                 return;
             }
 
-            using var req = new HttpRequestMessage(HttpMethod.Get,
-                "/api/auth/debug");
+            // Decode the JWT payload client-side so we can see it even if the server rejects it
+            _tokenPayload = DecodeJwtPayload(token.Value);
+
+            var baseUri = Nav.BaseUri.TrimEnd('/');
+
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUri}/api/auth/debug");
             req.Headers.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Value);
 
-            using var http = new HttpClient { BaseAddress = new Uri(Http.BaseAddress!.AbsoluteUri) };
+            using var http = HttpFactory.CreateClient();
             var response = await http.SendAsync(req);
-            _result = await response.Content.ReadAsStringAsync();
+            _result = $"HTTP {(int)response.StatusCode}\n\n" +
+                      await response.Content.ReadAsStringAsync();
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _error = $"{ex.GetType().Name}: {ex.Message}";
         }
         finally
         {
             _loading = false;
+        }
+    }
+
+    private static string DecodeJwtPayload(string jwt)
+    {
+        try
+        {
+            var parts = jwt.Split('.');
+            if (parts.Length < 2) return "(not a JWT)";
+
+            var payload = parts[1];
+            // Fix base64url padding
+            payload = payload.Replace('-', '+').Replace('_', '/');
+            switch (payload.Length % 4)
+            {
+                case 2: payload += "=="; break;
+                case 3: payload += "=";  break;
+            }
+
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+            using var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc.RootElement,
+                new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            return $"(decode error: {ex.Message})";
         }
     }
 }
