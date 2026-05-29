@@ -12,7 +12,7 @@ public class CurrentUserService : ICurrentUserService
 
     private ClaimsPrincipal? User => _httpContextAccessor.HttpContext?.User;
 
-    public string? EntraObjectId =>
+    public string? ObjectId =>
         User?.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
         ?? User?.FindFirst("oid")?.Value;
 

@@ -12,8 +12,8 @@ public class UserRepository : IUserRepository
     public async Task<User?> GetByIdAsync(Guid id) =>
         await _db.Users.FindAsync(id);
 
-    public async Task<User?> GetByEntraObjectIdAsync(string entraObjectId) =>
-        await _db.Users.FirstOrDefaultAsync(u => u.EntraObjectId == entraObjectId);
+    public async Task<User?> GetByObjectIdAsync(string objectId) =>
+        await _db.Users.FirstOrDefaultAsync(u => u.ObjectId == objectId);
 
     public async Task<IReadOnlyList<User>> GetAllAsync(UserRole? role = null, UserStatus? status = null)
     {

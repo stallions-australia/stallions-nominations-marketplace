@@ -22,13 +22,13 @@ public class UserService : IUserService
 
     public async Task<User?> GetOrCreateCurrentUserAsync()
     {
-        var entraOid = _currentUser.EntraObjectId;
-        if (entraOid == null) return null;
+        var objectId = _currentUser.ObjectId;
+        if (objectId == null) return null;
 
-        var user = await _repo.GetByEntraObjectIdAsync(entraOid);
+        var user = await _repo.GetByObjectIdAsync(objectId);
         if (user != null) return user;
 
-        // First login — provision user from Entra claims
+        // First login — provision user from B2C claims
         // Priority-order role selection: Staff > StudFarmAdmin > Buyer
         var role = _currentUser.Roles.Contains("Staff") ? UserRole.Staff
                  : _currentUser.Roles.Contains("StudFarmAdmin") ? UserRole.StudFarmAdmin
@@ -37,7 +37,7 @@ public class UserService : IUserService
 
         user = new User
         {
-            EntraObjectId = entraOid,
+            ObjectId = objectId,
             Email = _currentUser.Email ?? string.Empty,
             DisplayName = _currentUser.DisplayName ?? _currentUser.Email ?? string.Empty,
             Role = role,
@@ -52,7 +52,7 @@ public class UserService : IUserService
         catch (DbUpdateException)
         {
             // Concurrent first-login: another request inserted the same user — fetch the row that won
-            return await _repo.GetByEntraObjectIdAsync(entraOid);
+            return await _repo.GetByObjectIdAsync(objectId);
         }
     }
 
