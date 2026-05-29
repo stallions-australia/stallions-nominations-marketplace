@@ -21,7 +21,7 @@ public class StallionsController : ControllerBase
     }
 
     [HttpGet("mine")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> GetMine()
     {
         var r = await _stallions.GetByStudFarmAsync();
@@ -37,7 +37,7 @@ public class StallionsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Create([FromBody] CreateStallionRequest request)
     {
         var r = await _stallions.CreateAsync(request);
@@ -45,7 +45,7 @@ public class StallionsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateStallionRequest request)
     {
         var r = await _stallions.UpdateAsync(id, request);
@@ -53,7 +53,7 @@ public class StallionsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/images")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     [RequestSizeLimit(10_485_760)]
     [RequestFormLimits(MultipartBodyLengthLimit = 10_485_760)]
     public async Task<IActionResult> UploadImage(Guid id, [FromForm] IFormFile file)
@@ -63,7 +63,7 @@ public class StallionsController : ControllerBase
     }
 
     [HttpPut("{id:guid}/images/{imageId:guid}/primary")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> SetPrimaryImage(Guid id, Guid imageId)
     {
         var r = await _stallions.SetPrimaryImageAsync(id, imageId);
@@ -71,7 +71,7 @@ public class StallionsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/images/{imageId:guid}")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> DeleteImage(Guid id, Guid imageId)
     {
         var r = await _stallions.DeleteImageAsync(id, imageId);

@@ -7,7 +7,7 @@ namespace Stallions.Server.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = "Staff")]
+[Authorize(Policy = "StaffOnly")]
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _admin;

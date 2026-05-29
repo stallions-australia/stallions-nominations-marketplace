@@ -35,7 +35,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpGet("mine")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> GetMine()
     {
         var r = await _listings.GetMineAsync();
@@ -43,7 +43,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPost("auction")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> CreateAuction([FromBody] CreateAuctionListingRequest request)
     {
         var r = await _listings.CreateAuctionListingAsync(request);
@@ -51,7 +51,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPost("fixed-price")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> CreateFixedPrice([FromBody] CreateFixedPriceListingRequest request)
     {
         var r = await _listings.CreateFixedPriceListingAsync(request);
@@ -59,7 +59,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateListingRequest request)
     {
         var r = await _listings.UpdateListingAsync(id, request);
@@ -67,7 +67,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/publish")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Publish(Guid id)
     {
         var r = await _listings.PublishListingAsync(id);
@@ -75,7 +75,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/unpublish")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Unpublish(Guid id)
     {
         var r = await _listings.UnpublishListingAsync(id);
@@ -83,7 +83,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/close")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Close(Guid id)
     {
         var r = await _listings.CloseByStudFarmAsync(id);
@@ -91,7 +91,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/cancel")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Cancel(Guid id)
     {
         var r = await _listings.CancelListingAsync(id);
@@ -99,7 +99,7 @@ public class ListingsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/relist")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Relist(Guid id)
     {
         var r = await _listings.RelistAsync(id);

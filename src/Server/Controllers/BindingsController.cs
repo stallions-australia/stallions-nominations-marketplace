@@ -21,7 +21,7 @@ public class BindingsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/acknowledge")]
-    [Authorize(Roles = "StudFarmAdmin")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Acknowledge(Guid id)
     {
         var r = await _bindings.AcknowledgeAsync(id);
@@ -36,7 +36,7 @@ public class BindingsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/dispute")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Dispute(Guid id)
     {
         var r = await _bindings.DisputeAsync(id);
