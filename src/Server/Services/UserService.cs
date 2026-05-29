@@ -55,6 +55,13 @@ public class UserService : IUserService
         }
     }
 
+    public async Task<User?> GetCurrentUserReadOnlyAsync()
+    {
+        var objectId = _currentUser.ObjectId;
+        if (objectId is null) return null;
+        return await _repo.GetByObjectIdAsync(objectId);
+    }
+
     public async Task<ServiceResult<UserDto>> GetCurrentUserAsync()
     {
         if (!_currentUser.IsAuthenticated)

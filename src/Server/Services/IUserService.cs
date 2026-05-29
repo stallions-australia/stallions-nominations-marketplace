@@ -13,4 +13,10 @@ public interface IUserService
     Task<ServiceResult> VerifyUserAsync(Guid id);
     Task<ServiceResult> SuspendUserAsync(Guid id);
     Task<User?> GetOrCreateCurrentUserAsync();
+
+    /// <summary>
+    /// Returns the current user from the database, or null if not found.
+    /// Does NOT create a new user row — use this for read-only lookups such as authorization checks.
+    /// </summary>
+    Task<User?> GetCurrentUserReadOnlyAsync();
 }

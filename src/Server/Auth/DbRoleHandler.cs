@@ -34,13 +34,18 @@ public class DbRoleHandler : AuthorizationHandler<DbRoleRequirement>
         if (context.User.Identity?.IsAuthenticated != true)
             return;
 
-        var user = await _users.GetOrCreateCurrentUserAsync();
+        var user = await _users.GetCurrentUserReadOnlyAsync();   // read-only — does NOT provision new users
 
         if (user is null)
             return;
 
-        if (user.Status == UserStatus.Active &&
-            requirement.AllowedRoles.Contains(user.Role))
+        if (user.Status != UserStatus.Active)
+        {
+            context.Fail();   // explicitly deny suspended/pending users
+            return;
+        }
+
+        if (requirement.AllowedRoles.Contains(user.Role))
         {
             context.Succeed(requirement);
         }
