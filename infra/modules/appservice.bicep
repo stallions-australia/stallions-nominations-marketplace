@@ -3,12 +3,12 @@ param location string
 param tags object
 param appInsightsConnectionString string
 param keyVaultUri string
-param entraTenantId string
-param entraClientId string
+param b2cTenantId string
+param b2cDomain string
+param b2cClientId string
 param storageAccountName string
 
 var isProduction = environmentName == 'prod'
-var entraAudience = 'api://${entraClientId}'
 
 // Merge the azd service-name tag so azd deploy can locate this App Service
 var appServiceTags = union(tags, { 'azd-service-name': 'api' })
@@ -64,20 +64,24 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
           value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/SqlConnectionString/)'
         }
         {
-          name: 'AzureAd__Instance'
-          value: 'https://login.microsoftonline.com/'
+          name: 'AzureAdB2C__Instance'
+          value: 'https://stallionsaustralia.b2clogin.com'
         }
         {
-          name: 'AzureAd__TenantId'
-          value: entraTenantId
+          name: 'AzureAdB2C__Domain'
+          value: b2cDomain
         }
         {
-          name: 'AzureAd__ClientId'
-          value: entraClientId
+          name: 'AzureAdB2C__TenantId'
+          value: b2cTenantId
         }
         {
-          name: 'AzureAd__Audience'
-          value: entraAudience
+          name: 'AzureAdB2C__ClientId'
+          value: b2cClientId
+        }
+        {
+          name: 'AzureAdB2C__SignUpSignInPolicyId'
+          value: 'B2C_1_susi'
         }
         {
           name: 'AZURE_STORAGE_ACCOUNT_NAME'
