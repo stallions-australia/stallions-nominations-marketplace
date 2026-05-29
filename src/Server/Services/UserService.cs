@@ -28,12 +28,11 @@ public class UserService : IUserService
         var user = await _repo.GetByObjectIdAsync(objectId);
         if (user != null) return user;
 
-        // First login — provision user from B2C claims
-        // Priority-order role selection: Staff > StudFarmAdmin > Buyer
-        var role = _currentUser.Roles.Contains("Staff") ? UserRole.Staff
-                 : _currentUser.Roles.Contains("StudFarmAdmin") ? UserRole.StudFarmAdmin
-                 : UserRole.Buyer;
-        var status = role == UserRole.Buyer ? UserStatus.PendingVerification : UserStatus.Active;
+        // First login — provision user from B2C claims.
+        // B2C tokens carry no role claims; all users start as Buyer (PendingVerification)
+        // and are promoted to StudFarmAdmin / Staff by a platform admin via the database.
+        var role = UserRole.Buyer;
+        var status = UserStatus.PendingVerification;
 
         user = new User
         {
@@ -42,7 +41,7 @@ public class UserService : IUserService
             DisplayName = _currentUser.DisplayName ?? _currentUser.Email ?? string.Empty,
             Role = role,
             Status = status,
-            VerifiedAt = role != UserRole.Buyer ? DateTime.UtcNow : null
+            VerifiedAt = null   // Buyers start unverified; admin promotes via dashboard
         };
 
         try

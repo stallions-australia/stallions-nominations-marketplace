@@ -17,16 +17,12 @@ public class CurrentUserService : ICurrentUserService
         ?? User?.FindFirst("oid")?.Value;
 
     public string? Email =>
-        User?.FindFirst(ClaimTypes.Email)?.Value
-        ?? User?.FindFirst("preferred_username")?.Value;
+        User?.FindFirst("emails")?.Value        // B2C: email/password + Google
+        ?? User?.FindFirst("email")?.Value;     // fallback
 
     public string? DisplayName =>
         User?.FindFirst("name")?.Value
         ?? User?.FindFirst(ClaimTypes.Name)?.Value;
-
-    public IReadOnlyList<string> Roles =>
-        User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList().AsReadOnly()
-        ?? (IReadOnlyList<string>)[];
 
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated ?? false;
 }
