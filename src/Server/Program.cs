@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
@@ -8,15 +9,31 @@ using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
 using Stallions.Server.Services;
+using Stallions.Shared.Enums;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
-// Auth — Entra ID JWT validation via Microsoft.Identity.Web
+// Auth — Azure AD B2C JWT validation via Microsoft.Identity.Web
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
-builder.Services.AddAuthorization();
+    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAdB2C"));
+builder.Services.AddAuthorization(options =>
+{
+    // DB-backed role policies — role and Active status checked against the Users table.
+    // JWT only proves identity; the database is the source of truth for roles.
+    options.AddPolicy("StaffOnly",
+        p => p.AddRequirements(new DbRoleRequirement(UserRole.Staff)));
+    options.AddPolicy("StudFarmAdminOnly",
+        p => p.AddRequirements(new DbRoleRequirement(UserRole.StudFarmAdmin)));
+    options.AddPolicy("StudFarmOrStaff",
+        p => p.AddRequirements(new DbRoleRequirement(UserRole.StudFarmAdmin, UserRole.Staff)));
+    options.AddPolicy("BuyerOnly",
+        p => p.AddRequirements(new DbRoleRequirement(UserRole.Buyer)));
+});
+
+// Register the handler that evaluates DbRoleRequirement
+builder.Services.AddScoped<IAuthorizationHandler, DbRoleHandler>();
 
 // Config options
 builder.Services.Configure<CheckoutOptions>(builder.Configuration.GetSection("Checkout"));
