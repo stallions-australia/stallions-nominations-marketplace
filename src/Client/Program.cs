@@ -53,4 +53,6 @@ builder.Services.AddHttpClient<AdminApiService>(c => c.BaseAddress = apiBase)
 builder.Services.AddHttpClient<StaffApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 
+builder.Services.AddScoped<UserStateService>();
+
 await builder.Build().RunAsync();
