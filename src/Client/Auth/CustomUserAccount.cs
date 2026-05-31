@@ -1,15 +1,12 @@
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 
 namespace Stallions.Client.Auth;
 
 /// <summary>
-/// Extends RemoteUserAccount to capture the 'roles' claim array from the
-/// Entra ID token. Without this, the default deserialiser ignores the JSON
-/// array and AuthorizeView Roles="..." never sees the values.
+/// Extends RemoteUserAccount for B2C. No role claims are present in B2C tokens —
+/// roles are determined from the database and accessed via UserStateService.
+/// This class exists to satisfy the MSAL generic type constraint.
 /// </summary>
 public class CustomUserAccount : RemoteUserAccount
 {
-    [JsonPropertyName("roles")]
-    public string[] Roles { get; set; } = [];
 }
