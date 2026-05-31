@@ -19,12 +19,12 @@ public class UserServiceTests
     [Fact]
     public async Task GetCurrentUser_WhenUserExists_ReturnsDto()
     {
-        var entraOid = Guid.NewGuid().ToString();
-        var user = new User { EntraObjectId = entraOid, DisplayName = "Jane", Email = "jane@example.com",
+        var oid = Guid.NewGuid().ToString();
+        var user = new User { ObjectId = oid, DisplayName = "Jane", Email = "jane@example.com",
             Role = UserRole.Buyer, Status = UserStatus.Active };
-        _currentUserMock.Setup(s => s.EntraObjectId).Returns(entraOid);
+        _currentUserMock.Setup(s => s.ObjectId).Returns(oid);
         _currentUserMock.Setup(s => s.IsAuthenticated).Returns(true);
-        _repoMock.Setup(r => r.GetByEntraObjectIdAsync(entraOid)).ReturnsAsync(user);
+        _repoMock.Setup(r => r.GetByObjectIdAsync(oid)).ReturnsAsync(user);
 
         var result = await CreateSut().GetCurrentUserAsync();
 
@@ -35,14 +35,12 @@ public class UserServiceTests
     [Fact]
     public async Task GetCurrentUser_WhenFirstLogin_CreatesNewBuyerUser()
     {
-        var entraOid = Guid.NewGuid().ToString();
-        _currentUserMock.Setup(s => s.EntraObjectId).Returns(entraOid);
+        var oid = Guid.NewGuid().ToString();
+        _currentUserMock.Setup(s => s.ObjectId).Returns(oid);
         _currentUserMock.Setup(s => s.IsAuthenticated).Returns(true);
         _currentUserMock.Setup(s => s.Email).Returns("new@example.com");
         _currentUserMock.Setup(s => s.DisplayName).Returns("New User");
-        // NOTE: Roles is IReadOnlyList<string>, not string? EntraRole
-        _currentUserMock.Setup(s => s.Roles).Returns(new List<string> { "Buyer" }.AsReadOnly());
-        _repoMock.Setup(r => r.GetByEntraObjectIdAsync(entraOid)).ReturnsAsync((User?)null);
+        _repoMock.Setup(r => r.GetByObjectIdAsync(oid)).ReturnsAsync((User?)null);
         _repoMock.Setup(r => r.AddAsync(It.IsAny<User>()))
             .ReturnsAsync((User u) => u);
 
@@ -59,9 +57,9 @@ public class UserServiceTests
         var staffId = Guid.NewGuid().ToString();
         var staff = new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active };
         var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.PendingVerification };
-        _currentUserMock.Setup(s => s.EntraObjectId).Returns(staffId);
+        _currentUserMock.Setup(s => s.ObjectId).Returns(staffId);
         _currentUserMock.Setup(s => s.IsAuthenticated).Returns(true);
-        _repoMock.Setup(r => r.GetByEntraObjectIdAsync(staffId)).ReturnsAsync(staff);
+        _repoMock.Setup(r => r.GetByObjectIdAsync(staffId)).ReturnsAsync(staff);
         _repoMock.Setup(r => r.GetByIdAsync(buyer.Id)).ReturnsAsync(buyer);
 
         var result = await CreateSut().VerifyUserAsync(buyer.Id);
@@ -78,7 +76,7 @@ public class UserServiceTests
     public async Task GetById_WhenUserExists_ReturnsDto()
     {
         var userId = Guid.NewGuid();
-        var user = new User { Id = userId, EntraObjectId = "oid-3", DisplayName = "Tom", Email = "tom@example.com",
+        var user = new User { Id = userId, ObjectId = "oid-3", DisplayName = "Tom", Email = "tom@example.com",
             Role = UserRole.Buyer, Status = UserStatus.Active };
         _repoMock.Setup(r => r.GetByIdAsync(userId)).ReturnsAsync(user);
 
@@ -108,9 +106,9 @@ public class UserServiceTests
         var staffId = Guid.NewGuid().ToString();
         var staff = new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active };
         var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
-        _currentUserMock.Setup(s => s.EntraObjectId).Returns(staffId);
+        _currentUserMock.Setup(s => s.ObjectId).Returns(staffId);
         _currentUserMock.Setup(s => s.IsAuthenticated).Returns(true);
-        _repoMock.Setup(r => r.GetByEntraObjectIdAsync(staffId)).ReturnsAsync(staff);
+        _repoMock.Setup(r => r.GetByObjectIdAsync(staffId)).ReturnsAsync(staff);
         _repoMock.Setup(r => r.GetByIdAsync(buyer.Id)).ReturnsAsync(buyer);
         _auditRepoMock.Setup(a => a.LogAsync(
             It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<string?>()))
