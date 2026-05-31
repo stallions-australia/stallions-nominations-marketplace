@@ -314,7 +314,7 @@ public class ListingService : IListingService
 
     public async Task<ServiceResult> CancelListingAsync(Guid id)
     {
-        // Staff-only: authorization enforced at controller level via [Authorize(Roles = "Staff")]
+        // Staff-only: authorization enforced at controller level via [Authorize(Policy = "StaffOnly")]
         // No ownership check required — staff may cancel any listing
         var listing = await _listingRepo.GetByIdAsync(id);
         if (listing == null)
