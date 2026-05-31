@@ -1,12 +1,21 @@
 using Bunit;
 using Bunit.TestDoubles;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Stallions.Client.Layout;
+using Stallions.Client.Services;
 
 namespace Stallions.Client.Tests.Layout;
 
 public class NavBarTests : TestContext
 {
+    public NavBarTests()
+    {
+        var httpClient = new HttpClient { BaseAddress = new Uri("http://localhost/") };
+        Services.AddScoped(_ => new UserApiService(httpClient));
+        Services.AddScoped<UserStateService>();
+    }
+
     [Fact]
     public void NavBar_Unauthenticated_ShowsSignInLink()
     {

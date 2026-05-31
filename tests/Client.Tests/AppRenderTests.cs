@@ -11,6 +11,13 @@ namespace Stallions.Client.Tests;
 
 public class AppRenderTests : TestContext
 {
+    public AppRenderTests()
+    {
+        var httpClient = new HttpClient { BaseAddress = new Uri("http://localhost/") };
+        Services.AddScoped(_ => new UserApiService(httpClient));
+        Services.AddScoped<UserStateService>();
+    }
+
     [Fact]
     public void App_RendersWithoutThrowing()
     {
