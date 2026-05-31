@@ -15,7 +15,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services
     .AddMsalAuthentication<RemoteAuthenticationState, CustomUserAccount>(options =>
     {
-        builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
+        builder.Configuration.Bind("AzureAdB2C", options.ProviderOptions.Authentication);
         options.ProviderOptions.DefaultAccessTokenScopes.Add(builder.Configuration["ApiScope"]!);
     })
     .AddAccountClaimsPrincipalFactory<
