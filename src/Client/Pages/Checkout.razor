@@ -1,8 +1,9 @@
 @page "/checkout/{ListingId:guid}"
-@attribute [Authorize(Roles = "Buyer")]
+@attribute [Authorize]
 @inject ListingApiService ListingApi
 @inject CheckoutApiService CheckoutApi
 @inject NavigationManager Nav
+@inject UserStateService UserState
 
 <PageTitle>Checkout — Stallions Australia</PageTitle>
 
@@ -87,6 +88,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await UserState.LoadAsync();
+        if (!UserState.IsBuyer) { Nav.NavigateTo("/", replace: true); return; }
         try
         {
             _listing = await ListingApi.GetByIdAsync(ListingId);

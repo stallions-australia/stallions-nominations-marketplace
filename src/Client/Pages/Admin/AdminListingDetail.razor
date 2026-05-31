@@ -1,8 +1,9 @@
 @page "/admin/listings/{Id:guid}"
 @layout AdminLayout
-@attribute [Authorize(Roles = "StudFarmAdmin")]
+@attribute [Authorize]
 @inject AdminApiService AdminApi
 @inject NavigationManager Nav
+@inject UserStateService UserState
 
 <PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
 
@@ -214,7 +215,12 @@ else
 
     private bool _neverPublished => _listing?.PublishedAt == null;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStudFarmAdmin) { Nav.NavigateTo("/", replace: true); return; }
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {

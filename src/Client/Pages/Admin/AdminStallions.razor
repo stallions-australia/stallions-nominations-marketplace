@@ -1,8 +1,9 @@
 @page "/admin/stallions"
 @layout AdminLayout
-@attribute [Authorize(Roles = "StudFarmAdmin")]
+@attribute [Authorize]
 @inject AdminApiService AdminApi
 @inject NavigationManager Nav
+@inject UserStateService UserState
 
 <PageTitle>My Stallions — Stallions Australia</PageTitle>
 
@@ -66,7 +67,12 @@ else
     private bool _loading = true;
     private string? _error;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStudFarmAdmin) { Nav.NavigateTo("/", replace: true); return; }
+        await Load();
+    }
 
     private async Task Load()
     {
