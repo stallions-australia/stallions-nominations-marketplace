@@ -27,6 +27,16 @@
     {
         var authState = await AuthProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
-            await UserState.LoadAsync();
+        {
+            try
+            {
+                await UserState.LoadAsync();
+            }
+            catch (Exception)
+            {
+                // A transient error loading user state should not crash the layout.
+                // The user will see the app in unauthenticated mode; they can refresh.
+            }
+        }
     }
 }
