@@ -6,12 +6,13 @@ using Moq;
 using Stallions.Client.Pages;
 using Stallions.Client.Services;
 using Stallions.Shared.DTOs.Listings;
+using Stallions.Shared.DTOs.Users;
 
 namespace Stallions.Client.Tests.Pages;
 
 public class ListingDetailTests : TestContext
 {
-    private void RegisterServices(ListingDto listing)
+    private void RegisterServices(ListingDto listing, string? role = null)
     {
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
@@ -21,19 +22,38 @@ public class ListingDetailTests : TestContext
         var bidMock = new Mock<BidApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         Services.AddSingleton(bidMock.Object);
+
+        var userApiMock = new Mock<UserApiService>(MockBehavior.Loose,
+            new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        if (role is not null)
+        {
+            userApiMock.Setup(s => s.GetMeAsync()).ReturnsAsync(new UserDto
+            {
+                Id = Guid.NewGuid(), DisplayName = "Test User",
+                Email = "test@example.com", Role = role, Status = "Active"
+            });
+        }
+        else
+        {
+            userApiMock.Setup(s => s.GetMeAsync()).ReturnsAsync((UserDto?)null);
+        }
+
+        var userState = new UserStateService(userApiMock.Object);
+        userState.LoadAsync().GetAwaiter().GetResult();
+        Services.AddSingleton(userState);
     }
 
     [Fact]
     public void ListingDetail_FixedPrice_ShowsPurchaseLink()
     {
-        this.AddTestAuthorization().SetAuthorized("buyer@example.com").SetRoles("Buyer");
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
         var listing = new FixedPriceListingDto
         {
             Id = Guid.NewGuid(), StallionName = "Fastnet Rock", StudFarmName = "Coolmore",
             ListingType = "FixedPrice", Status = "Active",
             PriceIncGst = 8000m, QuantityRemaining = 3, Quantity = 10
         };
-        RegisterServices(listing);
+        RegisterServices(listing, role: "Buyer");
 
         var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
 

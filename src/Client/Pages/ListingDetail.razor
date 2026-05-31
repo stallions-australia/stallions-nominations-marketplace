@@ -2,6 +2,7 @@
 @inject ListingApiService ListingApi
 @inject BidApiService BidApi
 @inject NavigationManager Nav
+@inject UserStateService UserState
 
 <PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
 
@@ -87,9 +88,12 @@ else
             {
                 <div class="listing-fp-block">
                     <p class="listing-qty-label text-secondary text-sm">@fp.QuantityRemaining nominations remaining</p>
-                    <AuthorizeView Roles="Buyer">
+                    <AuthorizeView>
                         <Authorized>
-                            <a href="/checkout/@_listing.Id" class="btn btn-gold btn-full">Purchase nomination</a>
+                            @if (UserState.IsBuyer)
+                            {
+                                <a href="/checkout/@_listing.Id" class="btn btn-gold btn-full">Purchase nomination</a>
+                            }
                         </Authorized>
                         <NotAuthorized>
                             <a href="authentication/login" class="btn btn-gold btn-full">Sign in to purchase</a>
