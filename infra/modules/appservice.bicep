@@ -54,10 +54,11 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
           value: keyVaultUri
         }
         {
-          // Always run as Production on Azure — dev/prod distinction is handled
-          // by separate resource groups and app registrations, not the runtime env.
+          // Dev runs as Development so the Blazor WASM client loads appsettings.json (dev client ID).
+          // Prod runs as Production so it loads appsettings.Production.json (prod client ID).
+          // The dev/prod distinction maps directly to Entra External ID app registrations.
           name: 'ASPNETCORE_ENVIRONMENT'
-          value: 'Production'
+          value: isProduction ? 'Production' : 'Development'
         }
         {
           name: 'ConnectionStrings__DefaultConnection'
