@@ -14,7 +14,7 @@ public class PurchasesController : ControllerBase
     public PurchasesController(ICheckoutService checkout) => _checkout = checkout;
 
     [HttpPost("listings/{id:guid}/checkout")]
-    [Authorize(Roles = "Buyer")]
+    [Authorize(Policy = "BuyerOnly")]
     public async Task<IActionResult> Initiate(Guid id, [FromBody] CheckoutRequest request)
     {
         var r = await _checkout.InitiateCheckoutAsync(id, request);
@@ -47,7 +47,7 @@ public class PurchasesController : ControllerBase
     }
 
     [HttpPost("purchases/{id:guid}/refund")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Refund(Guid id)
     {
         var r = await _checkout.RefundAsync(id);

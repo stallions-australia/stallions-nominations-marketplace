@@ -23,7 +23,7 @@ public class BidsController : ControllerBase
     }
 
     [HttpPost("listings/{id:guid}/bids")]
-    [Authorize(Roles = "Buyer")]
+    [Authorize(Policy = "BuyerOnly")]
     public async Task<IActionResult> PlaceBid(Guid id, [FromBody] PlaceBidRequest request)
     {
         var r = await _bids.PlaceBidAsync(id, request);
@@ -32,7 +32,7 @@ public class BidsController : ControllerBase
 
     // Full history with buyer IDs — Staff only
     [HttpGet("listings/{id:guid}/bids")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> GetHistory(Guid id)
     {
         var r = await _bids.GetHistoryAsync(id);
@@ -40,7 +40,7 @@ public class BidsController : ControllerBase
     }
 
     [HttpGet("bids/mine")]
-    [Authorize(Roles = "Buyer")]
+    [Authorize(Policy = "BuyerOnly")]
     public async Task<IActionResult> GetMine()
     {
         var r = await _bids.GetMineAsync();

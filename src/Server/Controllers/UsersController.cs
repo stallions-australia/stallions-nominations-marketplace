@@ -30,7 +30,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> GetAll([FromQuery] UserRole? role, [FromQuery] UserStatus? status)
     {
         var r = await _users.GetAllAsync(role, status);
@@ -38,7 +38,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> GetById(Guid id)
     {
         var r = await _users.GetByIdAsync(id);
@@ -46,7 +46,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/verify")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Verify(Guid id)
     {
         var r = await _users.VerifyUserAsync(id);
@@ -54,7 +54,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/suspend")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Suspend(Guid id)
     {
         var r = await _users.SuspendUserAsync(id);

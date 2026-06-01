@@ -31,13 +31,13 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<User>(e =>
         {
             e.HasKey(u => u.Id);
-            e.HasIndex(u => u.EntraObjectId).IsUnique();
+            e.HasIndex(u => u.ObjectId).IsUnique();
             e.HasIndex(u => u.Email).IsUnique();
             e.Property(u => u.Role).HasConversion<string>().HasMaxLength(20);
             e.Property(u => u.Status).HasConversion<string>().HasMaxLength(30);
             e.Property(u => u.Email).HasMaxLength(256).IsRequired();
             e.Property(u => u.DisplayName).HasMaxLength(200).IsRequired();
-            e.Property(u => u.EntraObjectId).HasMaxLength(36).IsRequired();
+            e.Property(u => u.ObjectId).HasMaxLength(36).IsRequired();
 
             e.HasOne(u => u.VerifiedBy)
                 .WithMany()

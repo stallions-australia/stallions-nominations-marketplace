@@ -13,7 +13,7 @@ public class EnquiriesController : ControllerBase
     public EnquiriesController(IEnquiryService enquiries) => _enquiries = enquiries;
 
     [HttpPost("api/listings/{id:guid}/enquiries")]
-    [Authorize(Roles = "Buyer")]
+    [Authorize(Policy = "BuyerOnly")]
     public async Task<IActionResult> Create(Guid id, [FromBody] OpenEnquiryRequest request)
     {
         var r = await _enquiries.CreateAsync(id, request);

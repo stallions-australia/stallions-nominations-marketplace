@@ -36,7 +36,7 @@ public class AdminServiceTests
             Id = Guid.NewGuid(), Status = ListingStatus.Draft, PlatformFeePercent = null
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
-        _currentUserMock.Setup(u => u.EntraObjectId).Returns("staff-oid");
+        _currentUserMock.Setup(u => u.ObjectId).Returns("staff-oid");
         _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
 
         var result = await CreateSut().SetListingFeeAsync(listing.Id, new SetListingFeeRequest { PlatformFeePercent = 2.5m });
@@ -81,7 +81,7 @@ public class AdminServiceTests
     public async Task GetAllStudFarmsAsync_ReturnsMappedDtos()
     {
         var user = new User { Id = Guid.NewGuid(), DisplayName = "Alice", Email = "alice@test.com",
-            EntraObjectId = "oid1", Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+            ObjectId = "oid1", Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
         var farm = new StudFarm
         {
             Id = Guid.NewGuid(), Name = "Alpha Stud", ABN = "123", ContactEmail = "farm@test.com",
@@ -115,7 +115,7 @@ public class AdminServiceTests
     [Fact]
     public async Task CreateStudFarmAsync_WhenUserIsNotStudFarmAdmin_ReturnsBadRequest()
     {
-        var user = new User { Id = Guid.NewGuid(), EntraObjectId = "oid2", Role = UserRole.Buyer,
+        var user = new User { Id = Guid.NewGuid(), ObjectId = "oid2", Role = UserRole.Buyer,
             Status = UserStatus.Active, DisplayName = "Bob", Email = "bob@test.com" };
         _userRepoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
 
@@ -131,7 +131,7 @@ public class AdminServiceTests
     [Fact]
     public async Task CreateStudFarmAsync_WhenUserAlreadyHasFarm_ReturnsBadRequest()
     {
-        var user = new User { Id = Guid.NewGuid(), EntraObjectId = "oid3", Role = UserRole.StudFarmAdmin,
+        var user = new User { Id = Guid.NewGuid(), ObjectId = "oid3", Role = UserRole.StudFarmAdmin,
             Status = UserStatus.Active, DisplayName = "Carol", Email = "carol@test.com" };
         _userRepoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
         _studFarmRepoMock.Setup(r => r.GetByUserIdAsync(user.Id))
@@ -152,14 +152,14 @@ public class AdminServiceTests
         var user = new User
         {
             Id = Guid.NewGuid(), DisplayName = "Alice", Email = "alice@test.com",
-            EntraObjectId = "oid4", Role = UserRole.StudFarmAdmin, Status = UserStatus.Active
+            ObjectId = "oid4", Role = UserRole.StudFarmAdmin, Status = UserStatus.Active
         };
         _userRepoMock.Setup(r => r.GetByIdAsync(user.Id)).ReturnsAsync(user);
         _studFarmRepoMock.Setup(r => r.GetByUserIdAsync(user.Id)).ReturnsAsync((StudFarm?)null);
         _studFarmRepoMock.Setup(r => r.AddAsync(It.IsAny<StudFarm>()))
             .ReturnsAsync((StudFarm f) => f);
         _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync())
-            .ReturnsAsync(new User { Id = Guid.NewGuid(), EntraObjectId = "oid-staff",
+            .ReturnsAsync(new User { Id = Guid.NewGuid(), ObjectId = "oid-staff",
                 Role = UserRole.Staff, Status = UserStatus.Active, DisplayName = "Staff", Email = "staff@test.com" });
 
         var result = await CreateSut().CreateStudFarmAsync(new CreateStudFarmRequest
@@ -178,7 +178,7 @@ public class AdminServiceTests
     {
         _listingRepoMock.Setup(r => r.GetByIdAsync(It.IsAny<Guid>())).ReturnsAsync((Listing?)null);
         _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync())
-            .ReturnsAsync(new User { Id = Guid.NewGuid(), EntraObjectId = "oid-staff2",
+            .ReturnsAsync(new User { Id = Guid.NewGuid(), ObjectId = "oid-staff2",
                 Role = UserRole.Staff, Status = UserStatus.Active, DisplayName = "Staff", Email = "staff@test.com" });
 
         var result = await CreateSut().ForceListingStatusAsync(Guid.NewGuid(),
@@ -194,7 +194,7 @@ public class AdminServiceTests
         var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.Draft };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
         _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync())
-            .ReturnsAsync(new User { Id = Guid.NewGuid(), EntraObjectId = "oid-staff3",
+            .ReturnsAsync(new User { Id = Guid.NewGuid(), ObjectId = "oid-staff3",
                 Role = UserRole.Staff, Status = UserStatus.Active, DisplayName = "Staff", Email = "staff@test.com" });
 
         var result = await CreateSut().ForceListingStatusAsync(listing.Id,
@@ -210,7 +210,7 @@ public class AdminServiceTests
         var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.Draft };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
         _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync())
-            .ReturnsAsync(new User { Id = Guid.NewGuid(), EntraObjectId = "oid-staff4",
+            .ReturnsAsync(new User { Id = Guid.NewGuid(), ObjectId = "oid-staff4",
                 Role = UserRole.Staff, Status = UserStatus.Active, DisplayName = "Staff", Email = "staff@test.com" });
 
         var result = await CreateSut().ForceListingStatusAsync(listing.Id,

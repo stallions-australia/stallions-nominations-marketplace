@@ -13,12 +13,14 @@ param sqlAdminLogin string = 'sqladmin'
 
 param developerIpAddress string = ''
 
-// Entra ID — TenantId is shared across environments.
-// ClientId maps to the API app registration for each environment (not a secret — public client IDs).
-var entraTenantId = 'ce5db765-3fd3-4452-93c7-dd2dc14b3627'
-var entraClientId = environmentName == 'prod'
-  ? '2c38d79f-30e4-4c94-9eb1-580200eb0b6e'
-  : 'e168521b-e3b2-4220-912b-00affbacc4d9'
+// Microsoft Entra External ID — one external tenant serves both environments.
+// Client IDs are not secrets; they are embedded in the public MSAL config.
+// Fill these in after completing the Azure Portal setup (external tenant creation + app registrations).
+var entraTenantName  = 'stallionsnoms'
+var entraTenantId    = '70049249-ff15-494f-a7a7-9f1a1e826397'
+var entraApiClientId = environmentName == 'prod'
+  ? 'a2a204d5-310a-49ed-b542-10d36801bc5d'
+  : '2e164ce2-65f7-439c-b462-ae115e0669d5'
 
 var tags = {
   'azd-env-name': environmentName
@@ -89,7 +91,8 @@ module appservice './modules/appservice.bicep' = {
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     keyVaultUri: keyvault.outputs.keyVaultUri
     entraTenantId: entraTenantId
-    entraClientId: entraClientId
+    entraTenantName: entraTenantName
+    entraApiClientId: entraApiClientId
     storageAccountName: storage.outputs.storageAccountName
   }
 }

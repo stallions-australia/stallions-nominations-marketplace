@@ -13,8 +13,8 @@ public class StudFarmRepositoryGetAllTests
     {
         await using var db = DbContextFactory.Create(nameof(GetAllAsync_ReturnsAllFarms_WithUserNavigation));
 
-        var user1 = new User { Id = Guid.NewGuid(), EntraObjectId = "oid-1", DisplayName = "Alice", Email = "alice@test.com", Role = UserRole.StudFarmAdmin };
-        var user2 = new User { Id = Guid.NewGuid(), EntraObjectId = "oid-2", DisplayName = "Bob", Email = "bob@test.com", Role = UserRole.StudFarmAdmin };
+        var user1 = new User { Id = Guid.NewGuid(), ObjectId = "oid-1", DisplayName = "Alice", Email = "alice@test.com", Role = UserRole.StudFarmAdmin };
+        var user2 = new User { Id = Guid.NewGuid(), ObjectId = "oid-2", DisplayName = "Bob", Email = "bob@test.com", Role = UserRole.StudFarmAdmin };
         db.Users.AddRange(user1, user2);
 
         var farm1 = new StudFarm { Id = Guid.NewGuid(), UserId = user1.Id, Name = "Alpha Stud" };

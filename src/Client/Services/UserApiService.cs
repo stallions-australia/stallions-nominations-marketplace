@@ -9,7 +9,7 @@ public class UserApiService
     private readonly HttpClient _http;
     public UserApiService(HttpClient http) => _http = http;
 
-    public async Task<UserDto?> GetMeAsync()
+    public virtual async Task<UserDto?> GetMeAsync()
     {
         var response = await _http.GetAsync("api/users/me");
         if (response.StatusCode == HttpStatusCode.Unauthorized) return null;

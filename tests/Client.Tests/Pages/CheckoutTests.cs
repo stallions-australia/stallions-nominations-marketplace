@@ -7,17 +7,30 @@ using Stallions.Client.Pages;
 using Stallions.Client.Services;
 using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.DTOs.Listings;
+using Stallions.Shared.DTOs.Users;
 
 namespace Stallions.Client.Tests.Pages;
 
 public class CheckoutTests : TestContext
 {
+    private UserStateService CreateBuyerUserState()
+    {
+        var userApiMock = new Mock<UserApiService>(MockBehavior.Loose,
+            new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        userApiMock.Setup(s => s.GetMeAsync())
+            .ReturnsAsync(new UserDto { Id = Guid.NewGuid(), DisplayName = "Test Buyer", Role = "Buyer", Status = "Active" });
+        var userState = new UserStateService(userApiMock.Object);
+        return userState;
+    }
+
     [Fact]
     public void Checkout_Step1_ShowsMareNameInput()
     {
         var auth = this.AddTestAuthorization();
         auth.SetAuthorized("buyer@example.com");
         auth.SetRoles("Buyer");
+
+        Services.AddSingleton(CreateBuyerUserState());
 
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
@@ -44,6 +57,8 @@ public class CheckoutTests : TestContext
         var auth = this.AddTestAuthorization();
         auth.SetAuthorized("buyer@example.com");
         auth.SetRoles("Buyer");
+
+        Services.AddSingleton(CreateBuyerUserState());
 
         var listingId = Guid.NewGuid();
 

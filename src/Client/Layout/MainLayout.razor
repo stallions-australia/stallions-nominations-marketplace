@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject AuthenticationStateProvider AuthProvider
+@inject UserStateService UserState
 
 <div class="page-wrapper">
     <NavBar />
@@ -19,3 +21,22 @@
     </main>
     <Footer />
 </div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            try
+            {
+                await UserState.LoadAsync();
+            }
+            catch (Exception)
+            {
+                // A transient error loading user state should not crash the layout.
+                // The user will see the app in unauthenticated mode; they can refresh.
+            }
+        }
+    }
+}

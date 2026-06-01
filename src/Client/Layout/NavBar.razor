@@ -1,4 +1,5 @@
 @inject NavigationManager Nav
+@inject UserStateService UserState
 
 <nav class="navbar">
     <div class="container navbar-inner">
@@ -13,16 +14,14 @@
         <div class="navbar-auth desktop-only">
             <AuthorizeView>
                 <Authorized>
-                    <AuthorizeView Roles="Staff" Context="_staff">
-                        <Authorized>
-                            <NavLink href="/staff/dashboard" class="nav-link">Staff Admin</NavLink>
-                        </Authorized>
-                    </AuthorizeView>
-                    <AuthorizeView Roles="StudFarmAdmin" Context="_studFarm">
-                        <Authorized>
-                            <NavLink href="/admin/stallions" class="nav-link">My Stud Farm</NavLink>
-                        </Authorized>
-                    </AuthorizeView>
+                    @if (UserState.IsStaff)
+                    {
+                        <NavLink href="/staff/dashboard" class="nav-link">Staff Admin</NavLink>
+                    }
+                    @if (UserState.IsStudFarmAdmin)
+                    {
+                        <NavLink href="/admin/stallions" class="nav-link">My Stud Farm</NavLink>
+                    }
                     <NavLink href="/my-bids"      class="nav-link">My Bids</NavLink>
                     <NavLink href="/my-purchases" class="nav-link">My Purchases</NavLink>
                     <NavLink href="/enquiries"    class="nav-link">Messages</NavLink>
@@ -50,16 +49,14 @@
             <NavLink href="/" Match="NavLinkMatch.All" class="drawer-link" @onclick="CloseDrawer">Browse</NavLink>
             <AuthorizeView>
                 <Authorized>
-                    <AuthorizeView Roles="Staff" Context="_staffDrawer">
-                        <Authorized>
-                            <NavLink href="/staff/dashboard" class="drawer-link" @onclick="CloseDrawer">Staff Admin</NavLink>
-                        </Authorized>
-                    </AuthorizeView>
-                    <AuthorizeView Roles="StudFarmAdmin" Context="_studFarmDrawer">
-                        <Authorized>
-                            <NavLink href="/admin/stallions" class="drawer-link" @onclick="CloseDrawer">My Stud Farm</NavLink>
-                        </Authorized>
-                    </AuthorizeView>
+                    @if (UserState.IsStaff)
+                    {
+                        <NavLink href="/staff/dashboard" class="drawer-link" @onclick="CloseDrawer">Staff Admin</NavLink>
+                    }
+                    @if (UserState.IsStudFarmAdmin)
+                    {
+                        <NavLink href="/admin/stallions" class="drawer-link" @onclick="CloseDrawer">My Stud Farm</NavLink>
+                    }
                     <NavLink href="/my-bids"      class="drawer-link" @onclick="CloseDrawer">My Bids</NavLink>
                     <NavLink href="/my-purchases" class="drawer-link" @onclick="CloseDrawer">My Purchases</NavLink>
                     <NavLink href="/enquiries"    class="drawer-link" @onclick="CloseDrawer">Messages</NavLink>
@@ -81,6 +78,7 @@
     private void CloseDrawer()  => _drawerOpen = false;
     private void SignOut()
     {
+        UserState.Clear();
         CloseDrawer();
         Nav.NavigateToLogout("authentication/logout");
     }

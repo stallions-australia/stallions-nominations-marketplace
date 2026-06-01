@@ -1,8 +1,9 @@
 @page "/staff/users"
 @layout StaffLayout
-@attribute [Authorize(Roles = "Staff")]
+@attribute [Authorize]
 @inject StaffApiService StaffApi
 @inject NavigationManager Nav
+@inject UserStateService UserState
 
 <PageTitle>Users — Staff Admin</PageTitle>
 
@@ -99,6 +100,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
         if (!string.IsNullOrWhiteSpace(status))
             _statusFilter = status;
         await Load();

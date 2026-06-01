@@ -5,7 +5,7 @@ namespace Stallions.Server.Data.Entities;
 public class User
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public string EntraObjectId { get; set; } = string.Empty;
+    public string ObjectId { get; set; } = string.Empty;   // B2C Object ID (was EntraObjectId)
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public UserRole Role { get; set; }

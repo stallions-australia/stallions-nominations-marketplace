@@ -29,7 +29,7 @@ public class SeasonsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Create([FromBody] CreateSeasonRequest request)
     {
         var r = await _seasons.CreateAsync(request);
@@ -37,7 +37,7 @@ public class SeasonsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateSeasonRequest request)
     {
         var r = await _seasons.UpdateAsync(id, request);
@@ -45,7 +45,7 @@ public class SeasonsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/open")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Open(Guid id)
     {
         var r = await _seasons.OpenSeasonAsync(id);
@@ -53,7 +53,7 @@ public class SeasonsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/close")]
-    [Authorize(Roles = "Staff")]
+    [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Close(Guid id)
     {
         var r = await _seasons.CloseSeasonAsync(id);

@@ -9,9 +9,8 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// Entra ID (MSAL) auth — custom account type so the 'roles' JSON array in the
-// ID token is deserialised and added to ClaimTypes.Role, making AuthorizeView
-// Roles="Staff" / "StudFarmAdmin" work correctly on the client side.
+// Auth — Microsoft Entra External ID via MSAL. CustomUserAccount is a pass-through (no role
+// claims in tokens). Roles are DB-backed: fetched from /api/users/me after login via UserStateService.
 builder.Services
     .AddMsalAuthentication<RemoteAuthenticationState, CustomUserAccount>(options =>
     {
@@ -52,5 +51,7 @@ builder.Services.AddHttpClient<AdminApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 builder.Services.AddHttpClient<StaffApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
+
+builder.Services.AddScoped<UserStateService>();
 
 await builder.Build().RunAsync();

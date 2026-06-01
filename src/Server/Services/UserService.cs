@@ -22,27 +22,26 @@ public class UserService : IUserService
 
     public async Task<User?> GetOrCreateCurrentUserAsync()
     {
-        var entraOid = _currentUser.EntraObjectId;
-        if (entraOid == null) return null;
+        var objectId = _currentUser.ObjectId;
+        if (objectId == null) return null;
 
-        var user = await _repo.GetByEntraObjectIdAsync(entraOid);
+        var user = await _repo.GetByObjectIdAsync(objectId);
         if (user != null) return user;
 
-        // First login — provision user from Entra claims
-        // Priority-order role selection: Staff > StudFarmAdmin > Buyer
-        var role = _currentUser.Roles.Contains("Staff") ? UserRole.Staff
-                 : _currentUser.Roles.Contains("StudFarmAdmin") ? UserRole.StudFarmAdmin
-                 : UserRole.Buyer;
-        var status = role == UserRole.Buyer ? UserStatus.PendingVerification : UserStatus.Active;
+        // First login — provision user from B2C claims.
+        // B2C tokens carry no role claims; all users start as Buyer (PendingVerification)
+        // and are promoted to StudFarmAdmin / Staff by a platform admin via the database.
+        var role = UserRole.Buyer;
+        var status = UserStatus.PendingVerification;
 
         user = new User
         {
-            EntraObjectId = entraOid,
+            ObjectId = objectId,
             Email = _currentUser.Email ?? string.Empty,
             DisplayName = _currentUser.DisplayName ?? _currentUser.Email ?? string.Empty,
             Role = role,
             Status = status,
-            VerifiedAt = role != UserRole.Buyer ? DateTime.UtcNow : null
+            VerifiedAt = null   // Buyers start unverified; admin promotes via dashboard
         };
 
         try
@@ -52,8 +51,15 @@ public class UserService : IUserService
         catch (DbUpdateException)
         {
             // Concurrent first-login: another request inserted the same user — fetch the row that won
-            return await _repo.GetByEntraObjectIdAsync(entraOid);
+            return await _repo.GetByObjectIdAsync(objectId);
         }
+    }
+
+    public async Task<User?> GetCurrentUserReadOnlyAsync()
+    {
+        var objectId = _currentUser.ObjectId;
+        if (objectId is null) return null;
+        return await _repo.GetByObjectIdAsync(objectId);
     }
 
     public async Task<ServiceResult<UserDto>> GetCurrentUserAsync()

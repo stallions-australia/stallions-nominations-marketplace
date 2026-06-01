@@ -2,6 +2,7 @@
 @inject ListingApiService ListingApi
 @inject BidApiService BidApi
 @inject NavigationManager Nav
+@inject UserStateService UserState
 
 <PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
 
@@ -59,22 +60,25 @@ else
 
                     <AuthorizeView>
                         <Authorized>
-                            <div class="bid-form">
-                                <p class="bid-form-hint">
-                                    Current: <strong>@FormatPrice(GetDisplayPrice())</strong>
-                                    &middot; Min next bid: <strong>@FormatPrice(GetDisplayPrice() + auction.MinimumBidIncrement)</strong>
-                                </p>
-                                <div class="bid-form-row">
-                                    <input class="form-input" type="number" step="25"
-                                           min="@(GetDisplayPrice() + auction.MinimumBidIncrement)"
-                                           @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
-                                    <button class="btn btn-gold" @onclick="PlaceBid" disabled="@_bidBusy">
-                                        @(_bidBusy ? "Placing…" : "Place bid")
-                                    </button>
+                            @if (UserState.IsBuyer)
+                            {
+                                <div class="bid-form">
+                                    <p class="bid-form-hint">
+                                        Current: <strong>@FormatPrice(GetDisplayPrice())</strong>
+                                        &middot; Min next bid: <strong>@FormatPrice(GetDisplayPrice() + auction.MinimumBidIncrement)</strong>
+                                    </p>
+                                    <div class="bid-form-row">
+                                        <input class="form-input" type="number" step="25"
+                                               min="@(GetDisplayPrice() + auction.MinimumBidIncrement)"
+                                               @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
+                                        <button class="btn btn-gold" @onclick="PlaceBid" disabled="@_bidBusy">
+                                            @(_bidBusy ? "Placing…" : "Place bid")
+                                        </button>
+                                    </div>
+                                    @if (_bidError is not null) { <ErrorMessage Message="@_bidError" /> }
+                                    @if (_bidSuccess)           { <p class="text-success">&#10003; Bid placed!</p> }
                                 </div>
-                                @if (_bidError is not null) { <ErrorMessage Message="@_bidError" /> }
-                                @if (_bidSuccess)           { <p class="text-success">&#10003; Bid placed!</p> }
-                            </div>
+                            }
                         </Authorized>
                         <NotAuthorized>
                             <a href="authentication/login" class="btn btn-gold btn-full">Sign in to bid</a>
@@ -87,9 +91,12 @@ else
             {
                 <div class="listing-fp-block">
                     <p class="listing-qty-label text-secondary text-sm">@fp.QuantityRemaining nominations remaining</p>
-                    <AuthorizeView Roles="Buyer">
+                    <AuthorizeView>
                         <Authorized>
-                            <a href="/checkout/@_listing.Id" class="btn btn-gold btn-full">Purchase nomination</a>
+                            @if (UserState.IsBuyer)
+                            {
+                                <a href="/checkout/@_listing.Id" class="btn btn-gold btn-full">Purchase nomination</a>
+                            }
                         </Authorized>
                         <NotAuthorized>
                             <a href="authentication/login" class="btn btn-gold btn-full">Sign in to purchase</a>

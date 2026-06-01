@@ -13,7 +13,7 @@ public class ListingRepositoryGetAllStaffTests
     {
         var user = new User
         {
-            Id = Guid.NewGuid(), EntraObjectId = $"oid-{suffix}",
+            Id = Guid.NewGuid(), ObjectId = $"oid-{suffix}",
             DisplayName = $"Admin {suffix}", Email = $"admin{suffix}@test.com",
             Role = UserRole.StudFarmAdmin, Status = UserStatus.Active
         };

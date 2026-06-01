@@ -4,11 +4,11 @@ param tags object
 param appInsightsConnectionString string
 param keyVaultUri string
 param entraTenantId string
-param entraClientId string
+param entraTenantName string
+param entraApiClientId string
 param storageAccountName string
 
 var isProduction = environmentName == 'prod'
-var entraAudience = 'api://${entraClientId}'
 
 // Merge the azd service-name tag so azd deploy can locate this App Service
 var appServiceTags = union(tags, { 'azd-service-name': 'api' })
@@ -55,7 +55,7 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         }
         {
           // Always run as Production on Azure — dev/prod distinction is handled
-          // by separate resource groups and Entra app registrations, not the runtime env.
+          // by separate resource groups and app registrations, not the runtime env.
           name: 'ASPNETCORE_ENVIRONMENT'
           value: 'Production'
         }
@@ -65,7 +65,7 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         }
         {
           name: 'AzureAd__Instance'
-          value: 'https://login.microsoftonline.com/'
+          value: 'https://${entraTenantName}.ciamlogin.com/'
         }
         {
           name: 'AzureAd__TenantId'
@@ -73,11 +73,7 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         }
         {
           name: 'AzureAd__ClientId'
-          value: entraClientId
-        }
-        {
-          name: 'AzureAd__Audience'
-          value: entraAudience
+          value: entraApiClientId
         }
         {
           name: 'AZURE_STORAGE_ACCOUNT_NAME'
