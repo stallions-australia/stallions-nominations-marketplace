@@ -17,7 +17,44 @@ builder.Services.AddControllers();
 
 // Auth — Microsoft Entra External ID JWT validation via Microsoft.Identity.Web
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    .AddMicrosoftIdentityWebApi(
+        jwtBearerOptions =>
+        {
+            jwtBearerOptions.Events = new JwtBearerEvents
+            {
+                OnTokenValidated = ctx =>
+                {
+                    var log = ctx.HttpContext.RequestServices
+                        .GetRequiredService<ILogger<Program>>();
+                    var sub = ctx.Principal?.FindFirst("sub")?.Value ?? "(none)";
+                    var oid = ctx.Principal?.FindFirst("oid")?.Value
+                           ?? ctx.Principal?.FindFirst(
+                               "http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+                           ?? "(none)";
+                    log.LogInformation("JWT validated — sub={Sub} oid={Oid}", sub, oid);
+                    return Task.CompletedTask;
+                },
+                OnAuthenticationFailed = ctx =>
+                {
+                    var log = ctx.HttpContext.RequestServices
+                        .GetRequiredService<ILogger<Program>>();
+                    log.LogError("JWT validation FAILED: {Error}", ctx.Exception?.Message);
+                    return Task.CompletedTask;
+                },
+                OnChallenge = ctx =>
+                {
+                    var log = ctx.HttpContext.RequestServices
+                        .GetRequiredService<ILogger<Program>>();
+                    log.LogWarning("JWT challenge issued — error={Error} desc={Desc}",
+                        ctx.Error, ctx.ErrorDescription);
+                    return Task.CompletedTask;
+                }
+            };
+        },
+        microsoftIdentityOptions =>
+        {
+            builder.Configuration.Bind("AzureAd", microsoftIdentityOptions);
+        });
 builder.Services.AddAuthorization(options =>
 {
     // DB-backed role policies — role and Active status checked against the Users table.
