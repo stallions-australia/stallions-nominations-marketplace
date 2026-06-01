@@ -1,0 +1,24 @@
+[    2773ms] [INFO] info: System.Net.Http.HttpClient.ListingApiService.LogicalHandler[100]
+      Start processing HTTP request GET https://app-stallions-noms-dev.azurewebsites.net/api/listings @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2
+[    2876ms] [ERROR] fail: Microsoft.AspNetCore.Components.Web.ErrorBoundary[0]
+      Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenNotAvailableException: ''
+         at Microsoft.AspNetCore.Components.WebAssembly.Authentication.AuthorizationMessageHandler.SendAsync(HttpRequestMessage , CancellationToken )
+         at Microsoft.Extensions.Http.Logging.LoggingScopeHttpMessageHandler.<SendCoreAsync>g__Core|4_0(HttpRequestMessage , Boolean , CancellationToken )
+         at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage , HttpCompletionOption , CancellationTokenSource , Boolean , CancellationTokenSource , CancellationToken )
+         at Stallions.Client.Services.ListingApiService.GetListingsAsync(Nullable`1 seasonId, Nullable`1 studFarmId, String type)
+         at Stallions.Client.Pages.Home.Load()
+         at Stallions.Client.Pages.Home.OnInitializedAsync()
+         at Microsoft.AspNetCore.Components.ComponentBase.RunInitAndSetParametersAsync()
+         at Microsoft.AspNetCore.Components.RenderTree.Renderer.GetErrorHandledTask(Task , ComponentState )
+Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenNotAvailableException: ''
+   at Microsoft.AspNetCore.Components.WebAssembly.Authentication.AuthorizationMessageHandler.SendAsync(HttpRequestMessage , CancellationToken )
+   at Microsoft.Extensions.Http.Logging.LoggingScopeHttpMessageHandler.<SendCoreAsync>g__Core|4_0(HttpRequestMessage , Boolean , CancellationToken )
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage , HttpCompletionOption , CancellationTokenSource , Boolean , CancellationTokenSource , CancellationToken )
+   at Stallions.Client.Services.ListingApiService.GetListingsAsync(Nullable`1 seasonId, Nullable`1 studFarmId, String type)
+   at Stallions.Client.Pages.Home.Load()
+   at Stallions.Client.Pages.Home.OnInitializedAsync()
+   at Microsoft.AspNetCore.Components.ComponentBase.RunInitAndSetParametersAsync()
+   at Microsoft.AspNetCore.Components.RenderTree.Renderer.GetErrorHandledTask(Task , ComponentState ) @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2
+[    2932ms] [INFO] info: Microsoft.AspNetCore.Authorization.DefaultAuthorizationService[2]
+      Authorization failed. These requirements were not met:
+      DenyAnonymousAuthorizationRequirement: Requires an authenticated user. @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2

@@ -1,5 +1,6 @@
 @inject NavigationManager Nav
 @inject UserStateService UserState
+@implements IDisposable
 
 <nav class="navbar">
     <div class="container navbar-inner">
@@ -64,7 +65,7 @@
                 </Authorized>
                 <NotAuthorized>
                     <a href="authentication/login"    class="btn btn-outline btn-full" @onclick="CloseDrawer">Sign in</a>
-                    <a href="authentication/register" class="btn btn-gold btn-full"    @onclick="CloseDrawer">Register to Buy</a>
+                    <a href="authentication/register" class="btn btn-gold btn-full"   @onclick="CloseDrawer">Register to Buy</a>
                     <a href="/list-with-us"           class="btn btn-outline btn-full" @onclick="CloseDrawer">List Your Stallions</a>
                 </NotAuthorized>
             </AuthorizeView>
@@ -74,6 +75,22 @@
 
 @code {
     private bool _drawerOpen;
+
+    protected override void OnInitialized()
+    {
+        UserState.OnChange += OnUserStateChanged;
+    }
+
+    private void OnUserStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        UserState.OnChange -= OnUserStateChanged;
+    }
+
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
     private void CloseDrawer()  => _drawerOpen = false;
     private void SignOut()

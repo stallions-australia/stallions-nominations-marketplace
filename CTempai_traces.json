@@ -1,0 +1,158 @@
+{
+  "tables": [
+    {
+      "columns": [
+        {
+          "name": "timestamp",
+          "type": "datetime"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        },
+        {
+          "name": "severityLevel",
+          "type": "int"
+        }
+      ],
+      "name": "PrimaryResult",
+      "rows": [
+        [
+          "2026-06-01T05:41:23.499855Z",
+          "Failed executing DbCommand (19ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime2), @p2='?' (Size = 200), @p3='?' (Size = 256), @p4='?' (Size = 36), @p5='?' (Size = 20), @p6='?' (Size = 30), @p7='?' (DbType = DateTime2), @p8='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']\r\nSET IMPLICIT_TRANSACTIONS OFF;\r\nSET NOCOUNT ON;\r\nINSERT INTO [Users] ([Id], [CreatedAt], [DisplayName], [Email], [ObjectId], [Role], [Status], [VerifiedAt], [VerifiedByUserId])\r\nVALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8);",
+          3
+        ],
+        [
+          "2026-06-01T05:41:23.4539649Z",
+          "JWT validated — sub=(none) oid=ead6ee5d-0380-426b-a378-0071f7518bb6",
+          1
+        ],
+        [
+          "2026-06-01T05:41:23.4535922Z",
+          "IDX10245: Creating claims identity from the validated token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]'.",
+          1
+        ],
+        [
+          "2026-06-01T05:41:23.4515357Z",
+          "IDX10234: Audience Validated.Audience: '2e164ce2-65f7-439c-b462-ae115e0669d5'",
+          1
+        ],
+        [
+          "2026-06-01T05:41:23.451225Z",
+          "IDX10239: Lifetime of the token is valid.",
+          1
+        ],
+        [
+          "2026-06-01T05:41:23.4455586Z",
+          "IDX10242: Security token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]' has a valid signature.",
+          1
+        ],
+        [
+          "2026-06-01T05:38:04.8816843Z",
+          "Failed executing DbCommand (60ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime2), @p2='?' (Size = 200), @p3='?' (Size = 256), @p4='?' (Size = 36), @p5='?' (Size = 20), @p6='?' (Size = 30), @p7='?' (DbType = DateTime2), @p8='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']\r\nSET IMPLICIT_TRANSACTIONS OFF;\r\nSET NOCOUNT ON;\r\nINSERT INTO [Users] ([Id], [CreatedAt], [DisplayName], [Email], [ObjectId], [Role], [Status], [VerifiedAt], [VerifiedByUserId])\r\nVALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8);",
+          3
+        ],
+        [
+          "2026-06-01T05:38:04.1496998Z",
+          "JWT validated — sub=(none) oid=ead6ee5d-0380-426b-a378-0071f7518bb6",
+          1
+        ],
+        [
+          "2026-06-01T05:38:04.1423111Z",
+          "IDX10245: Creating claims identity from the validated token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]'.",
+          1
+        ],
+        [
+          "2026-06-01T05:38:03.9853784Z",
+          "IDX10234: Audience Validated.Audience: '2e164ce2-65f7-439c-b462-ae115e0669d5'",
+          1
+        ],
+        [
+          "2026-06-01T05:38:03.9603663Z",
+          "IDX10239: Lifetime of the token is valid.",
+          1
+        ],
+        [
+          "2026-06-01T05:38:03.9341628Z",
+          "Microsoft.IdentityModel Version: 8.14.0.0. Date 06/01/2026 05:38:03. PII logging is OFF. See https://aka.ms/IdentityModel/PII for details. \r\nIDX10242: Security token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]' has a valid signature.",
+          1
+        ],
+        [
+          "2026-06-01T05:36:45.2720528Z",
+          "Content root path: C:\\home\\site\\wwwroot",
+          1
+        ],
+        [
+          "2026-06-01T05:36:45.2719124Z",
+          "Hosting environment: Staging",
+          1
+        ],
+        [
+          "2026-06-01T05:36:45.2627673Z",
+          "Application started. Press Ctrl+C to shut down.",
+          1
+        ],
+        [
+          "2026-06-01T05:36:44.7213791Z",
+          "No migrations were applied. The database is already up to date.",
+          1
+        ],
+        [
+          "2026-06-01T05:36:44.2473329Z",
+          "Acquiring an exclusive lock for migration application. See https://aka.ms/efcore-docs-migrations-lock for more information if this takes too long.",
+          1
+        ],
+        [
+          "2026-06-01T05:24:54.1875655Z",
+          "Failed executing DbCommand (51ms) [Parameters=[@p0='?' (DbType = Guid), @p1='?' (DbType = DateTime2), @p2='?' (Size = 200), @p3='?' (Size = 256), @p4='?' (Size = 36), @p5='?' (Size = 20), @p6='?' (Size = 30), @p7='?' (DbType = DateTime2), @p8='?' (DbType = Guid)], CommandType='Text', CommandTimeout='30']\r\nSET IMPLICIT_TRANSACTIONS OFF;\r\nSET NOCOUNT ON;\r\nINSERT INTO [Users] ([Id], [CreatedAt], [DisplayName], [Email], [ObjectId], [Role], [Status], [VerifiedAt], [VerifiedByUserId])\r\nVALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8);",
+          3
+        ],
+        [
+          "2026-06-01T05:24:53.4665554Z",
+          "IDX10245: Creating claims identity from the validated token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]'.",
+          1
+        ],
+        [
+          "2026-06-01T05:24:53.3826395Z",
+          "IDX10234: Audience Validated.Audience: '2e164ce2-65f7-439c-b462-ae115e0669d5'",
+          1
+        ],
+        [
+          "2026-06-01T05:24:53.3461882Z",
+          "IDX10239: Lifetime of the token is valid.",
+          1
+        ],
+        [
+          "2026-06-01T05:24:53.3256767Z",
+          "Microsoft.IdentityModel Version: 8.14.0.0. Date 06/01/2026 05:24:53. PII logging is OFF. See https://aka.ms/IdentityModel/PII for details. \r\nIDX10242: Security token: '[PII of type 'Microsoft.IdentityModel.JsonWebTokens.JsonWebToken' is hidden. For more details, see https://aka.ms/IdentityModel/PII.]' has a valid signature.",
+          1
+        ],
+        [
+          "2026-06-01T05:23:48.4002684Z",
+          "Content root path: C:\\home\\site\\wwwroot",
+          1
+        ],
+        [
+          "2026-06-01T05:23:48.4001309Z",
+          "Hosting environment: Staging",
+          1
+        ],
+        [
+          "2026-06-01T05:23:48.3907963Z",
+          "Application started. Press Ctrl+C to shut down.",
+          1
+        ],
+        [
+          "2026-06-01T05:23:47.6846351Z",
+          "No migrations were applied. The database is already up to date.",
+          1
+        ],
+        [
+          "2026-06-01T05:23:47.2352475Z",
+          "Acquiring an exclusive lock for migration application. See https://aka.ms/efcore-docs-migrations-lock for more information if this takes too long.",
+          1
+        ]
+      ]
+    }
+  ]
+}

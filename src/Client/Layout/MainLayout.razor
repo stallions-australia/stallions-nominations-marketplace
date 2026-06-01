@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject AuthenticationStateProvider AuthProvider
 @inject UserStateService UserState
+@implements IDisposable
 
 <div class="page-wrapper">
     <NavBar />
@@ -25,6 +26,20 @@
 @code {
     protected override async Task OnInitializedAsync()
     {
+        AuthProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await TryLoadUserAsync();
+    }
+
+    // Fires when MSAL resolves auth state after the redirect-back-from-login flow,
+    // which can happen after OnInitializedAsync has already run.
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> _)
+    {
+        await TryLoadUserAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TryLoadUserAsync()
+    {
         var authState = await AuthProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
         {
@@ -38,5 +53,14 @@
                 // The user will see the app in unauthenticated mode; they can refresh.
             }
         }
+        else
+        {
+            UserState.Clear();
+        }
+    }
+
+    public void Dispose()
+    {
+        AuthProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
     }
 }

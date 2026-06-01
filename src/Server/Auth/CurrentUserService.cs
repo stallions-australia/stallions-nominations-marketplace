@@ -17,8 +17,9 @@ public class CurrentUserService : ICurrentUserService
         ?? User?.FindFirst("oid")?.Value;
 
     public string? Email =>
-        User?.FindFirst("emails")?.Value        // B2C: email/password + Google
-        ?? User?.FindFirst("email")?.Value;     // fallback
+        User?.FindFirst("emails")?.Value              // B2C multi-value array claim
+        ?? User?.FindFirst("email")?.Value            // standard OIDC claim
+        ?? User?.FindFirst("preferred_username")?.Value; // Entra External ID access tokens
 
     public string? DisplayName =>
         User?.FindFirst("name")?.Value

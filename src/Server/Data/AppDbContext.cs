@@ -32,7 +32,7 @@ public class AppDbContext : DbContext
         {
             e.HasKey(u => u.Id);
             e.HasIndex(u => u.ObjectId).IsUnique();
-            e.HasIndex(u => u.Email).IsUnique();
+            e.HasIndex(u => u.Email).IsUnique().HasFilter("[Email] <> ''"); // allow multiple empty-email rows (token may not carry email claim)
             e.Property(u => u.Role).HasConversion<string>().HasMaxLength(20);
             e.Property(u => u.Status).HasConversion<string>().HasMaxLength(30);
             e.Property(u => u.Email).HasMaxLength(256).IsRequired();

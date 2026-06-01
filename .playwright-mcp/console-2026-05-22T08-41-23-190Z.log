@@ -1,0 +1,11 @@
+[    1398ms] [INFO] info: System.Net.Http.HttpClient.ListingApiService.LogicalHandler[100]
+      Start processing HTTP request GET https://app-stallions-noms-dev.azurewebsites.net/api/listings @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2
+[    1399ms] [INFO] info: System.Net.Http.HttpClient.ListingApiService.ClientHandler[100]
+      Sending HTTP request GET https://app-stallions-noms-dev.azurewebsites.net/api/listings @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2
+[    1455ms] [INFO] info: Microsoft.AspNetCore.Authorization.DefaultAuthorizationService[2]
+      Authorization failed. These requirements were not met:
+      DenyAnonymousAuthorizationRequirement: Requires an authenticated user. @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2
+[    1496ms] [INFO] info: System.Net.Http.HttpClient.ListingApiService.ClientHandler[101]
+      Received HTTP response headers after 91.6ms - 200 @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2
+[    1496ms] [INFO] info: System.Net.Http.HttpClient.ListingApiService.LogicalHandler[101]
+      End processing HTTP request after 102.5ms - 200 @ https://app-stallions-noms-dev.azurewebsites.net/_framework/dotnet.runtime.pu7sbjsy59.js:2

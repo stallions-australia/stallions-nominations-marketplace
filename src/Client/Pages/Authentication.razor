@@ -1,9 +1,35 @@
 @page "/authentication/{action}"
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@inject NavigationManager Navigation
 
-<RemoteAuthenticatorView Action="@Action" />
+@* For all actions except 'register', use the default MSAL handler. *@
+@if (!IsRegister)
+{
+    <RemoteAuthenticatorView Action="@Action" />
+}
+else
+{
+    <p>Redirecting to sign up…</p>
+}
 
 @code {
-    [Parameter]
-    public string? Action { get; set; }
+    [Parameter] public string? Action { get; set; }
+
+    private bool IsRegister => string.Equals(Action, "register", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        if (IsRegister)
+        {
+            // Entra External ID (CIAM) supports prompt=create to go straight to the
+            // sign-up screen, bypassing the "account doesn't exist" error page.
+            var options = new InteractiveRequestOptions
+            {
+                Interaction = InteractionType.SignIn,
+                ReturnUrl = "/",
+            };
+            options.TryAddAdditionalParameter("prompt", "create");
+            Navigation.NavigateToLogin("authentication/login", options);
+        }
+    }
 }
