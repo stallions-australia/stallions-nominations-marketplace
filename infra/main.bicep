@@ -91,7 +91,6 @@ module appservice './modules/appservice.bicep' = {
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     keyVaultUri: keyvault.outputs.keyVaultUri
     entraTenantId: entraTenantId
-    entraTenantName: entraTenantName
     entraApiClientId: entraApiClientId
     storageAccountName: storage.outputs.storageAccountName
   }

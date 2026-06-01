@@ -4,7 +4,6 @@ param tags object
 param appInsightsConnectionString string
 param keyVaultUri string
 param entraTenantId string
-param entraTenantName string
 param entraApiClientId string
 param storageAccountName string
 
@@ -67,7 +66,7 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         }
         {
           name: 'AzureAd__Instance'
-          value: 'https://${entraTenantName}.ciamlogin.com/'
+          value: 'https://${entraTenantId}.ciamlogin.com/'
         }
         {
           name: 'AzureAd__TenantId'
