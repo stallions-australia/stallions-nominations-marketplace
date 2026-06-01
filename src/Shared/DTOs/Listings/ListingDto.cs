@@ -20,6 +20,10 @@ public class ListingDto
     public Guid StudFarmId { get; set; }
     public string StudFarmName { get; set; } = string.Empty;
     // This property doubles as the STJ polymorphic discriminator — see comment above the class.
+    // JsonPropertyOrder(-1) ensures it is written before all other properties (order 0),
+    // so it appears first in the JSON output. STJ polymorphic deserialization requires the
+    // type discriminator to be the first property encountered in the JSON stream.
+    [JsonPropertyOrder(-1)]
     public string ListingType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public decimal? PlatformFeePercent { get; set; }  // null when caller is not Staff
