@@ -54,11 +54,12 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
           value: keyVaultUri
         }
         {
-          // Dev runs as Development so the Blazor WASM client loads appsettings.json (dev client ID).
+          // Dev runs as Staging so the Blazor WASM client loads only appsettings.json (dev client ID).
+          // Using 'Staging' avoids loading appsettings.Development.json (localhost ApiBaseUrl)
+          // and avoids loading appsettings.Production.json (prod client ID).
           // Prod runs as Production so it loads appsettings.Production.json (prod client ID).
-          // The dev/prod distinction maps directly to Entra External ID app registrations.
           name: 'ASPNETCORE_ENVIRONMENT'
-          value: isProduction ? 'Production' : 'Development'
+          value: isProduction ? 'Production' : 'Staging'
         }
         {
           name: 'ConnectionStrings__DefaultConnection'
