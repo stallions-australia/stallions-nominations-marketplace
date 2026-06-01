@@ -15,9 +15,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
-// Auth — Azure AD B2C JWT validation via Microsoft.Identity.Web
+// Auth — Microsoft Entra External ID JWT validation via Microsoft.Identity.Web
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAdB2C"));
+    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
 builder.Services.AddAuthorization(options =>
 {
     // DB-backed role policies — role and Active status checked against the Users table.

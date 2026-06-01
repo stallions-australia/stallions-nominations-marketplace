@@ -13,13 +13,14 @@ param sqlAdminLogin string = 'sqladmin'
 
 param developerIpAddress string = ''
 
-// Azure AD B2C — one tenant serves both environments.
+// Microsoft Entra External ID — one external tenant serves both environments.
 // Client IDs are not secrets; they are embedded in the public MSAL config.
-var b2cTenantId = 'YOUR_B2C_TENANT_ID'
-var b2cDomain   = 'stallionsaustralia.onmicrosoft.com'
-var b2cClientId = environmentName == 'prod'
-  ? 'YOUR_PROD_CLIENT_ID'
-  : 'YOUR_DEV_CLIENT_ID'
+// Fill these in after completing the Azure Portal setup (external tenant creation + app registrations).
+var entraTenantName  = 'YOUR_EXTERNAL_TENANT_NAME'   // subdomain only, e.g. 'stallionsnoms'
+var entraTenantId    = 'YOUR_EXTERNAL_TENANT_ID'      // GUID from external tenant overview
+var entraApiClientId = environmentName == 'prod'
+  ? 'YOUR_PROD_API_CLIENT_ID'
+  : 'YOUR_DEV_API_CLIENT_ID'
 
 var tags = {
   'azd-env-name': environmentName
@@ -89,9 +90,9 @@ module appservice './modules/appservice.bicep' = {
     tags: tags
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     keyVaultUri: keyvault.outputs.keyVaultUri
-    b2cTenantId: b2cTenantId
-    b2cDomain: b2cDomain
-    b2cClientId: b2cClientId
+    entraTenantId: entraTenantId
+    entraTenantName: entraTenantName
+    entraApiClientId: entraApiClientId
     storageAccountName: storage.outputs.storageAccountName
   }
 }

@@ -9,12 +9,12 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-// Auth — Azure AD B2C via MSAL. CustomUserAccount is a pass-through (no role claims in B2C tokens).
-// Roles are DB-backed: fetched from /api/users/me after login via UserStateService.
+// Auth — Microsoft Entra External ID via MSAL. CustomUserAccount is a pass-through (no role
+// claims in tokens). Roles are DB-backed: fetched from /api/users/me after login via UserStateService.
 builder.Services
     .AddMsalAuthentication<RemoteAuthenticationState, CustomUserAccount>(options =>
     {
-        builder.Configuration.Bind("AzureAdB2C", options.ProviderOptions.Authentication);
+        builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
         options.ProviderOptions.DefaultAccessTokenScopes.Add(builder.Configuration["ApiScope"]!);
     })
     .AddAccountClaimsPrincipalFactory<

@@ -3,9 +3,9 @@ param location string
 param tags object
 param appInsightsConnectionString string
 param keyVaultUri string
-param b2cTenantId string
-param b2cDomain string
-param b2cClientId string
+param entraTenantId string
+param entraTenantName string
+param entraApiClientId string
 param storageAccountName string
 
 var isProduction = environmentName == 'prod'
@@ -55,7 +55,7 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         }
         {
           // Always run as Production on Azure — dev/prod distinction is handled
-          // by separate resource groups and Entra app registrations, not the runtime env.
+          // by separate resource groups and app registrations, not the runtime env.
           name: 'ASPNETCORE_ENVIRONMENT'
           value: 'Production'
         }
@@ -64,24 +64,16 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
           value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/SqlConnectionString/)'
         }
         {
-          name: 'AzureAdB2C__Instance'
-          value: 'https://stallionsaustralia.b2clogin.com'
+          name: 'AzureAd__Instance'
+          value: 'https://${entraTenantName}.ciamlogin.com/'
         }
         {
-          name: 'AzureAdB2C__Domain'
-          value: b2cDomain
+          name: 'AzureAd__TenantId'
+          value: entraTenantId
         }
         {
-          name: 'AzureAdB2C__TenantId'
-          value: b2cTenantId
-        }
-        {
-          name: 'AzureAdB2C__ClientId'
-          value: b2cClientId
-        }
-        {
-          name: 'AzureAdB2C__SignUpSignInPolicyId'
-          value: 'B2C_1_susi'
+          name: 'AzureAd__ClientId'
+          value: entraApiClientId
         }
         {
           name: 'AZURE_STORAGE_ACCOUNT_NAME'
