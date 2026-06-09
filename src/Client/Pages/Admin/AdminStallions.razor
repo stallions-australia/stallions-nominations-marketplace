@@ -161,7 +161,7 @@ else if (_authorized != null)
 
     private async Task Load()
     {
-        _loading = true; _error = null;
+        _loading = true; _error = null; _addError = null;
         try
         {
             _stallions = await AdminApi.GetMyStallionsAsync();
