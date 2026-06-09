@@ -9,11 +9,13 @@ public class StudFarm
     public string? ContactPhone { get; set; }
     public string? ContactEmail { get; set; }
     public string? Address { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsActive { get; set; } = true;
+    public Guid? StudDirectoryId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
     public User User { get; set; } = null!;
+    public StudDirectory? StudDirectory { get; set; }
     public ICollection<Stallion> Stallions { get; set; } = new List<Stallion>();
     public ICollection<Listing> Listings { get; set; } = new List<Listing>();
 }

@@ -12,10 +12,12 @@ public class Stallion
     public string? RegistrationNumber { get; set; }
     public string? Description { get; set; }
     public bool IsActive { get; set; } = true;
+    public Guid? StallionDirectoryId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
     public StudFarm StudFarm { get; set; } = null!;
+    public StallionDirectory? StallionDirectory { get; set; }
     public ICollection<StallionImage> Images { get; set; } = new List<StallionImage>();
     public ICollection<Listing> Listings { get; set; } = new List<Listing>();
 }
