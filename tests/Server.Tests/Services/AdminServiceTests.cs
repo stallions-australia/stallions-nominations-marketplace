@@ -231,8 +231,8 @@ public class AdminServiceTests
 
         var result = await CreateSut().LinkStudFarmToDirectoryAsync(Guid.NewGuid(), Guid.NewGuid());
 
-        Assert.False(result.Succeeded);
-        Assert.Equal(404, result.HttpStatusCode);
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(404);
     }
 
     [Fact]
@@ -245,9 +245,11 @@ public class AdminServiceTests
 
         var result = await CreateSut().LinkStudFarmToDirectoryAsync(farm.Id, studDirId);
 
-        Assert.True(result.Succeeded);
-        Assert.Equal(studDirId, farm.StudDirectoryId);
+        result.Succeeded.Should().BeTrue();
+        farm.StudDirectoryId.Should().Be(studDirId);
         _studFarmRepoMock.Verify(r => r.UpdateAsync(farm), Times.Once);
+        _auditRepoMock.Verify(r => r.LogAsync("StudFarm", farm.Id, "LinkStudDirectory",
+            It.IsAny<Guid?>(), It.IsAny<string?>()), Times.Once);
     }
 
     // ── CreateStudFarm with StudDirectoryId ──────────────────────────────────
@@ -273,7 +275,7 @@ public class AdminServiceTests
 
         var result = await CreateSut().CreateStudFarmAsync(request);
 
-        Assert.True(result.Succeeded);
+        result.Succeeded.Should().BeTrue();
         _studFarmRepoMock.Verify(
             r => r.AddAsync(It.Is<StudFarm>(f => f.StudDirectoryId == studDirId)),
             Times.Once);
