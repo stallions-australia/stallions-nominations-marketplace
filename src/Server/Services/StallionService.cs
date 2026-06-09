@@ -110,15 +110,23 @@ public class StallionService : IStallionService
         if (stallion.StudFarmId != farm.Id)
             return ServiceResult<StallionDto>.Forbidden("You do not have permission to update this stallion.");
 
-        var name = request.Name.Trim();
-        if (string.IsNullOrEmpty(name))
-            return ServiceResult<StallionDto>.BadRequest("Stallion name cannot be empty.");
+        string? name = null;
+        if (!stallion.StallionDirectoryId.HasValue)
+        {
+            name = request.Name.Trim();
+            if (string.IsNullOrEmpty(name))
+                return ServiceResult<StallionDto>.BadRequest("Stallion name cannot be empty.");
+        }
 
-        stallion.Name = name;
-        stallion.YearOfBirth = request.YearOfBirth;
-        stallion.Colour = request.Colour;
-        stallion.Sire = request.Sire;
-        stallion.Dam = request.Dam;
+        if (!stallion.StallionDirectoryId.HasValue)
+        {
+            stallion.Name = name!;
+            stallion.YearOfBirth = request.YearOfBirth;
+            stallion.Colour = request.Colour;
+            stallion.Sire = request.Sire;
+            stallion.Dam = request.Dam;
+        }
+
         stallion.RegistrationNumber = request.RegistrationNumber;
         stallion.Description = request.Description;
 
