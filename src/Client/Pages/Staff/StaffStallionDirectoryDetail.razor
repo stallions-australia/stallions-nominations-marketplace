@@ -1,0 +1,180 @@
+@page "/staff/stallion-directory/new"
+@page "/staff/stallion-directory/{Id:guid}"
+@layout StaffLayout
+@attribute [Authorize]
+@inject DirectoryApiService DirectoryApi
+@inject NavigationManager Nav
+@inject UserStateService UserState
+
+<PageTitle>@(_isNew ? "New Stallion Directory Entry" : "Edit Stallion Directory Entry") — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">@(_isNew ? "New Stallion Directory Entry" : $"Edit: {_form.Name}")</h1>
+    <a href="/staff/stallion-directory" class="btn btn-outline btn-sm">← Back</a>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <div class="admin-form-card">
+        <EditForm Model="_form" OnValidSubmit="SubmitAsync">
+            <DataAnnotationsValidator />
+
+            <div class="form-group">
+                <label class="form-label">Stud <span class="required">*</span></label>
+                <select class="form-select" @bind="_form.StudDirectoryId">
+                    <option value="@Guid.Empty">— Select stud —</option>
+                    @foreach (var s in _studs)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Name <span class="required">*</span></label>
+                <InputText class="form-control" @bind-Value="_form.Name" />
+                <ValidationMessage For="() => _form.Name" />
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-4)">
+                <div class="form-group">
+                    <label class="form-label">Year of Birth</label>
+                    <InputNumber class="form-control" @bind-Value="_form.YearOfBirth" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Stallion ID (original)</label>
+                    <InputNumber class="form-control" @bind-Value="_form.StallionId" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Arion ID (0 if n/a)</label>
+                    <InputNumber class="form-control" @bind-Value="_form.ArionId" />
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+                <div class="form-group">
+                    <label class="form-label">Colour</label>
+                    <InputText class="form-control" @bind-Value="_form.Colour" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Height</label>
+                    <InputText class="form-control" @bind-Value="_form.Height" placeholder="e.g. 16.2hh" />
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+                <div class="form-group">
+                    <label class="form-label">Sire</label>
+                    <InputText class="form-control" @bind-Value="_form.SireName" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dam</label>
+                    <InputText class="form-control" @bind-Value="_form.DamName" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-check-label">
+                    <InputCheckbox @bind-Value="_form.IsActive" /> Active
+                </label>
+            </div>
+
+            @if (_error != null)
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            <div style="margin-top:var(--space-6);display:flex;gap:var(--space-3)">
+                <button type="submit" class="btn btn-gold" disabled="@_submitting">
+                    @(_submitting ? "Saving…" : (_isNew ? "Create Entry" : "Save Changes"))
+                </button>
+                <a href="/staff/stallion-directory" class="btn btn-outline">Cancel</a>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool _isNew => Id is null;
+    private bool _loading = true;
+    private bool _submitting;
+    private string? _error;
+    private List<StudDirectorySummaryDto> _studs = [];
+    private UpdateStallionDirectoryRequest _form = new() { Name = string.Empty, IsActive = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+
+        _studs = await DirectoryApi.GetStudDirectoriesAsync();
+
+        if (!_isNew)
+        {
+            try
+            {
+                var entry = await DirectoryApi.GetStallionDirectoryAsync(Id!.Value);
+                _form = new UpdateStallionDirectoryRequest
+                {
+                    StudDirectoryId = entry.StudDirectoryId,
+                    StallionId = entry.StallionId,
+                    ArionId = entry.ArionId,
+                    Name = entry.Name,
+                    YearOfBirth = entry.YearOfBirth,
+                    Colour = entry.Colour,
+                    Height = entry.Height,
+                    SireName = entry.SireName,
+                    DamName = entry.DamName,
+                    IsActive = entry.IsActive
+                };
+            }
+            catch (Exception ex)
+            {
+                _error = ex is ApiException ae ? ae.Message : "Failed to load entry.";
+            }
+        }
+        _loading = false;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_form.StudDirectoryId == Guid.Empty) { _error = "Please select a stud."; return; }
+        _submitting = true; _error = null;
+        try
+        {
+            if (_isNew)
+            {
+                var create = new CreateStallionDirectoryRequest
+                {
+                    StudDirectoryId = _form.StudDirectoryId,
+                    StallionId = _form.StallionId,
+                    ArionId = _form.ArionId,
+                    Name = _form.Name,
+                    YearOfBirth = _form.YearOfBirth,
+                    Colour = _form.Colour,
+                    Height = _form.Height,
+                    SireName = _form.SireName,
+                    DamName = _form.DamName,
+                    IsActive = _form.IsActive
+                };
+                await DirectoryApi.CreateStallionDirectoryAsync(create);
+            }
+            else
+            {
+                await DirectoryApi.UpdateStallionDirectoryAsync(Id!.Value, _form);
+            }
+            Nav.NavigateTo("/staff/stallion-directory");
+        }
+        catch (Exception ex)
+        {
+            _error = ex is ApiException ae ? ae.Message : "Failed to save entry.";
+        }
+        finally { _submitting = false; }
+    }
+}
