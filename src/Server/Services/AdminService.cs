@@ -12,6 +12,7 @@ public class AdminService : IAdminService
     private readonly IPurchaseRepository _purchaseRepo;
     private readonly IUserRepository _userRepo;
     private readonly IStudFarmRepository _studFarmRepo;
+    private readonly IStudDirectoryRepository _studDirRepo;
     private readonly IAuditLogRepository _auditRepo;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserService _users;
@@ -21,6 +22,7 @@ public class AdminService : IAdminService
         IPurchaseRepository purchaseRepo,
         IUserRepository userRepo,
         IStudFarmRepository studFarmRepo,
+        IStudDirectoryRepository studDirRepo,
         IAuditLogRepository auditRepo,
         ICurrentUserService currentUser,
         IUserService users)
@@ -29,6 +31,7 @@ public class AdminService : IAdminService
         _purchaseRepo = purchaseRepo;
         _userRepo = userRepo;
         _studFarmRepo = studFarmRepo;
+        _studDirRepo = studDirRepo;
         _auditRepo = auditRepo;
         _currentUser = currentUser;
         _users = users;
@@ -159,6 +162,13 @@ public class AdminService : IAdminService
         // Load the user manually (GetByIdAsync doesn't Include User)
         var user = await _userRepo.GetByIdAsync(farm.UserId);
 
+        string? studDirectoryName = null;
+        if (farm.StudDirectoryId.HasValue)
+        {
+            var dir = await _studDirRepo.GetByIdAsync(farm.StudDirectoryId.Value);
+            studDirectoryName = dir?.Name;
+        }
+
         var dto = new StudFarmSummaryDto
         {
             Id = farm.Id,
@@ -169,6 +179,7 @@ public class AdminService : IAdminService
             LinkedUserEmail = user?.Email ?? string.Empty,
             IsActive = farm.IsActive,
             StudDirectoryId = farm.StudDirectoryId,
+            StudDirectoryName = studDirectoryName,
             CreatedAt = farm.CreatedAt
         };
         return ServiceResult<StudFarmSummaryDto>.Ok(dto);
@@ -181,6 +192,10 @@ public class AdminService : IAdminService
 
         var farm = await _studFarmRepo.GetByIdAsync(farmId);
         if (farm == null) return ServiceResult.NotFound("Stud farm not found.");
+
+        var directory = await _studDirRepo.GetByIdAsync(studDirectoryId);
+        if (directory == null)
+            return ServiceResult.NotFound("Stud directory entry not found.");
 
         var caller = await _users.GetOrCreateCurrentUserAsync();
         var previous = farm.StudDirectoryId?.ToString() ?? "none";

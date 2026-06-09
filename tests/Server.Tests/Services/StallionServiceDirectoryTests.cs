@@ -4,6 +4,7 @@ using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Services;
 using Stallions.Shared.DTOs.Stallions;
+using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Tests.Services;
 
@@ -176,5 +177,82 @@ public class StallionServiceDirectoryTests
 
         result.Succeeded.Should().BeFalse();
         result.HttpStatusCode.Should().Be(403);
+    }
+
+    // ── UpdateAsync directory guard ──────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateAsync_WhenStallionIsDirectoryManaged_DoesNotOverrideCoreFields()
+    {
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = Guid.NewGuid(), UserId = caller.Id };
+        var directoryId = Guid.NewGuid();
+        var stallion = new Stallion
+        {
+            Id = Guid.NewGuid(),
+            StudFarmId = farm.Id,
+            StallionDirectoryId = directoryId,
+            Name = "OriginalName",
+            YearOfBirth = 2018,
+            Colour = "Bay",
+            Sire = "OriginalSire",
+            Dam = "OriginalDam"
+        };
+
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepo.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepo.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+
+        var request = new UpdateStallionRequest
+        {
+            Name = "HackedName",
+            YearOfBirth = 2000,
+            Colour = "Grey",
+            Sire = "HackedSire",
+            Dam = "HackedDam"
+        };
+
+        var result = await CreateSut().UpdateAsync(stallion.Id, request);
+
+        result.Succeeded.Should().BeTrue();
+        stallion.Name.Should().Be("OriginalName");
+        stallion.YearOfBirth.Should().Be(2018);
+        stallion.Colour.Should().Be("Bay");
+        stallion.Sire.Should().Be("OriginalSire");
+        stallion.Dam.Should().Be("OriginalDam");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenStallionIsNotDirectoryManaged_UpdatesCoreFields()
+    {
+        var caller = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
+        var farm = new StudFarm { Id = Guid.NewGuid(), UserId = caller.Id };
+        var stallion = new Stallion
+        {
+            Id = Guid.NewGuid(),
+            StudFarmId = farm.Id,
+            StallionDirectoryId = null, // not directory-managed
+            Name = "OldName",
+            YearOfBirth = 2018,
+            Colour = "Bay"
+        };
+
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepo.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _stallionRepo.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+
+        var request = new UpdateStallionRequest
+        {
+            Name = "NewName",
+            YearOfBirth = 2020,
+            Colour = "Chestnut"
+        };
+
+        var result = await CreateSut().UpdateAsync(stallion.Id, request);
+
+        result.Succeeded.Should().BeTrue();
+        stallion.Name.Should().Be("NewName");
+        stallion.YearOfBirth.Should().Be(2020);
+        stallion.Colour.Should().Be("Chestnut");
     }
 }

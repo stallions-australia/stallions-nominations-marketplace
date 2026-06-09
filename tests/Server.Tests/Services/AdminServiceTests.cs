@@ -15,6 +15,7 @@ public class AdminServiceTests
     private readonly Mock<IPurchaseRepository> _purchaseRepoMock = new();
     private readonly Mock<IUserRepository> _userRepoMock = new();
     private readonly Mock<IStudFarmRepository> _studFarmRepoMock = new();
+    private readonly Mock<IStudDirectoryRepository> _studDirRepoMock = new();
     private readonly Mock<IAuditLogRepository> _auditRepoMock = new();
     private readonly Mock<ICurrentUserService> _currentUserMock = new();
     private readonly Mock<IUserService> _userServiceMock = new();
@@ -24,6 +25,7 @@ public class AdminServiceTests
         _purchaseRepoMock.Object,
         _userRepoMock.Object,
         _studFarmRepoMock.Object,
+        _studDirRepoMock.Object,
         _auditRepoMock.Object,
         _currentUserMock.Object,
         _userServiceMock.Object);
@@ -241,6 +243,8 @@ public class AdminServiceTests
         var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Oak", StudDirectoryId = null };
         var studDirId = Guid.NewGuid();
         _studFarmRepoMock.Setup(r => r.GetByIdAsync(farm.Id)).ReturnsAsync(farm);
+        _studDirRepoMock.Setup(r => r.GetByIdAsync(studDirId))
+            .ReturnsAsync(new StudDirectory { Id = studDirId, Name = "Oak Directory" });
         _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid() });
 
         var result = await CreateSut().LinkStudFarmToDirectoryAsync(farm.Id, studDirId);
