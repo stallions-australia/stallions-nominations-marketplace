@@ -95,6 +95,30 @@ public class StaffApiService
                ?? throw new ApiException(500, "Empty response.");
     }
 
+    public virtual async Task<StudFarmSummaryDto> GetStudFarmAsync(Guid id)
+    {
+        var r = await _http.GetAsync($"api/admin/studfarms/{id}");
+        if (r.StatusCode == HttpStatusCode.NotFound)
+            throw new ApiException(404, "Stud farm not found.");
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, "Failed to load stud farm.");
+        return await r.Content.ReadFromJsonAsync<StudFarmSummaryDto>()
+               ?? throw new ApiException(500, "Empty response.");
+    }
+
+    public virtual async Task LinkStudFarmToDirectoryAsync(Guid farmId, Guid studDirectoryId)
+    {
+        var r = await _http.PutAsJsonAsync(
+            $"api/admin/studfarms/{farmId}/link-directory",
+            new { StudDirectoryId = studDirectoryId });
+        if (!r.IsSuccessStatusCode)
+        {
+            var msg = await r.Content.ReadAsStringAsync();
+            throw new ApiException((int)r.StatusCode, string.IsNullOrWhiteSpace(msg)
+                ? "Failed to link stud farm to directory." : msg);
+        }
+    }
+
     // ── Listings ───────────────────────────────────────────────────────────
 
     public virtual async Task<List<ListingStaffSummaryDto>> GetAllListingsAsync()

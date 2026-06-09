@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components.Forms;
+using Stallions.Shared.DTOs.Directory;
 using Stallions.Shared.DTOs.Enquiries;
 using Stallions.Shared.DTOs.Listings;
 using Stallions.Shared.DTOs.Seasons;
@@ -85,6 +86,28 @@ public class AdminApiService
         var r = await _http.PutAsync($"api/stallions/{stallionId}/images/{imageId}/primary", null);
         if (!r.IsSuccessStatusCode)
             throw new ApiException((int)r.StatusCode, "Failed to set primary image.");
+    }
+
+    public virtual async Task<AuthorizedStallionsDto> GetAuthorizedStallionsAsync()
+    {
+        var r = await _http.GetAsync("api/stallions/authorized");
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, "Failed to load authorized stallions.");
+        return await r.Content.ReadFromJsonAsync<AuthorizedStallionsDto>()
+               ?? throw new ApiException(500, "Empty response.");
+    }
+
+    public virtual async Task<StallionDto> AddFromDirectoryAsync(Guid directoryId)
+    {
+        var r = await _http.PostAsync($"api/stallions/add-from-directory/{directoryId}", null);
+        if (!r.IsSuccessStatusCode)
+        {
+            var msg = await r.Content.ReadAsStringAsync();
+            throw new ApiException((int)r.StatusCode, string.IsNullOrWhiteSpace(msg)
+                ? "Failed to add stallion from directory." : msg);
+        }
+        return await r.Content.ReadFromJsonAsync<StallionDto>()
+               ?? throw new ApiException(500, "Empty response.");
     }
 
     // ── Listings ───────────────────────────────────────────────────────────
