@@ -180,7 +180,7 @@ public class DirectoryService : IDirectoryService
         State = d.State,
         Website = d.Website,
         IsActive = d.IsActive,
-        StallionCount = d.Stallions.Count
+        StallionCount = d.Stallions?.Count ?? 0
     };
 
     private static StudDirectoryDto MapToStudDto(StudDirectory d) => new()

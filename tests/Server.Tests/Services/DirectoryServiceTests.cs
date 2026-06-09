@@ -103,4 +103,30 @@ public class DirectoryServiceTests
         result.Succeeded.Should().BeFalse();
         result.HttpStatusCode.Should().Be(404);
     }
+
+    [Fact]
+    public async Task GetStudDirectoriesAsync_ReturnsMappedList()
+    {
+        var entries = new List<StudDirectory>
+        {
+            new() { Id = Guid.NewGuid(), Name = "Active", IsActive = true, Stallions = new List<StallionDirectory>() },
+            new() { Id = Guid.NewGuid(), Name = "Inactive", IsActive = false, Stallions = new List<StallionDirectory>() }
+        };
+        _studRepo.Setup(r => r.GetAllAsync(true)).ReturnsAsync(entries);
+
+        var result = await CreateSut().GetStudDirectoriesAsync(includeInactive: true);
+
+        result.Succeeded.Should().BeTrue();
+        result.Value!.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task CreateStudDirectoryAsync_ReturnsBadRequest_WhenNameIsWhitespace()
+    {
+        var result = await CreateSut().CreateStudDirectoryAsync(
+            new CreateStudDirectoryRequest { Name = "   " });
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(400);
+    }
 }
