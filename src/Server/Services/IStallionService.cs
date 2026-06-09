@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Stallions.Shared.DTOs.Directory;
 using Stallions.Shared.DTOs.Stallions;
 
 namespace Stallions.Server.Services;
@@ -13,4 +14,7 @@ public interface IStallionService
     Task<ServiceResult<StallionDto>> UploadImageAsync(Guid stallionId, IFormFile file);
     Task<ServiceResult<StallionDto>> SetPrimaryImageAsync(Guid stallionId, Guid imageId);
     Task<ServiceResult> DeleteImageAsync(Guid stallionId, Guid imageId);
+    // Directory-gated methods
+    Task<ServiceResult<AuthorizedStallionsDto>> GetAuthorizedAsync();
+    Task<ServiceResult<StallionDto>> AddFromDirectoryAsync(Guid directoryId);
 }

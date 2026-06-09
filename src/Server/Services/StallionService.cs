@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Shared.DTOs.Directory;
 using Stallions.Shared.DTOs.Stallions;
 using Stallions.Shared.Enums;
 
@@ -10,17 +11,20 @@ public class StallionService : IStallionService
 {
     private readonly IStallionRepository _repo;
     private readonly IStudFarmRepository _farmRepo;
+    private readonly IStallionDirectoryRepository _directoryRepo;
     private readonly IUserService _users;
     private readonly IBlobStorageService _blobs;
 
     public StallionService(
         IStallionRepository repo,
         IStudFarmRepository farmRepo,
+        IStallionDirectoryRepository directoryRepo,
         IUserService users,
         IBlobStorageService blobs)
     {
         _repo = repo;
         _farmRepo = farmRepo;
+        _directoryRepo = directoryRepo;
         _users = users;
         _blobs = blobs;
     }
@@ -62,6 +66,11 @@ public class StallionService : IStallionService
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
         if (farm == null)
             return ServiceResult<StallionDto>.NotFound("No stud farm found for the current user.");
+
+        // Directory-managed farms must use AddFromDirectoryAsync instead.
+        if (farm.StudDirectoryId.HasValue)
+            return ServiceResult<StallionDto>.Forbidden(
+                "This farm is directory-managed. Use the 'Add from directory' flow to add stallions.");
 
         var name = request.Name.Trim();
         if (string.IsNullOrEmpty(name))
@@ -216,6 +225,101 @@ public class StallionService : IStallionService
         return ServiceResult.Ok();
     }
 
+    public async Task<ServiceResult<AuthorizedStallionsDto>> GetAuthorizedAsync()
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null)
+            return ServiceResult<AuthorizedStallionsDto>.Forbidden("Caller identity could not be resolved.");
+
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        if (farm == null)
+            return ServiceResult<AuthorizedStallionsDto>.NotFound("No stud farm found for the current user.");
+
+        if (!farm.StudDirectoryId.HasValue)
+        {
+            return ServiceResult<AuthorizedStallionsDto>.Ok(new AuthorizedStallionsDto
+            {
+                IsLinked = false,
+                FarmName = farm.Name
+            });
+        }
+
+        var dirEntries = await _directoryRepo.GetByStudDirectoryIdAsync(farm.StudDirectoryId.Value, activeOnly: true);
+        var existingStallions = await _repo.GetByStudFarmIdAsync(farm.Id);
+
+        var addedDirectoryIds = existingStallions
+            .Where(s => s.StallionDirectoryId.HasValue)
+            .Select(s => s.StallionDirectoryId!.Value)
+            .ToHashSet();
+
+        var available = dirEntries
+            .Where(d => !addedDirectoryIds.Contains(d.Id))
+            .Select(d => new StallionDirectorySummaryDto
+            {
+                Id = d.Id,
+                StallionId = d.StallionId,
+                ArionId = d.ArionId,
+                StudDirectoryId = d.StudDirectoryId,
+                StudName = d.StudDirectory?.Name ?? string.Empty,
+                Name = d.Name,
+                YearOfBirth = d.YearOfBirth,
+                Colour = d.Colour,
+                IsActive = d.IsActive
+            })
+            .ToList();
+
+        return ServiceResult<AuthorizedStallionsDto>.Ok(new AuthorizedStallionsDto
+        {
+            IsLinked = true,
+            FarmName = farm.Name,
+            Available = available
+        });
+    }
+
+    public async Task<ServiceResult<StallionDto>> AddFromDirectoryAsync(Guid directoryId)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null)
+            return ServiceResult<StallionDto>.Forbidden("Caller identity could not be resolved.");
+
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        if (farm == null)
+            return ServiceResult<StallionDto>.NotFound("No stud farm found for the current user.");
+
+        if (!farm.StudDirectoryId.HasValue)
+            return ServiceResult<StallionDto>.Forbidden("Your farm is not linked to the stallion directory.");
+
+        var entry = await _directoryRepo.GetByIdAsync(directoryId);
+        if (entry == null)
+            return ServiceResult<StallionDto>.NotFound("Stallion directory entry not found.");
+
+        // Security: the directory entry must belong to this farm's linked stud.
+        if (entry.StudDirectoryId != farm.StudDirectoryId.Value)
+            return ServiceResult<StallionDto>.Forbidden(
+                "This stallion does not belong to your stud's directory.");
+
+        // Prevent duplicate additions.
+        var existingStallions = await _repo.GetByStudFarmIdAsync(farm.Id);
+        var alreadyAdded = existingStallions.Any(s => s.StallionDirectoryId == directoryId);
+        if (alreadyAdded)
+            return ServiceResult<StallionDto>.Conflict("This stallion has already been added to your stable.");
+
+        // Snapshot the directory data — decoupled from this point on.
+        var stallion = new Stallion
+        {
+            StudFarmId = farm.Id,
+            StallionDirectoryId = entry.Id,
+            Name = entry.Name,
+            YearOfBirth = entry.YearOfBirth,
+            Colour = entry.Colour,
+            Sire = entry.SireName,
+            Dam = entry.DamName
+        };
+
+        var created = await _repo.AddAsync(stallion);
+        return ServiceResult<StallionDto>.Created(MapToDto(created));
+    }
+
     private static StallionSummaryDto MapToSummary(Stallion s) => new()
     {
         Id = s.Id,
@@ -241,6 +345,7 @@ public class StallionService : IStallionService
         RegistrationNumber = s.RegistrationNumber,
         Description = s.Description,
         IsActive = s.IsActive,
+        StallionDirectoryId = s.StallionDirectoryId,
         CreatedAt = s.CreatedAt,
         Images = s.Images.Select(img => new StallionImageDto
         {
