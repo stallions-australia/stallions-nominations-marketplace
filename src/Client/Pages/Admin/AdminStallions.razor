@@ -9,7 +9,11 @@
 
 <div class="admin-page-header">
     <h1>My Stallions</h1>
-    <a href="/admin/stallions/new" class="btn btn-primary">+ Add Stallion</a>
+    @* Free-form add is hidden when the farm is directory-managed *@
+    @if (_authorized != null && !_authorized.IsLinked)
+    {
+        <a href="/admin/stallions/new" class="btn btn-primary">+ Add Stallion</a>
+    }
 </div>
 
 @if (_loading)
@@ -20,52 +24,133 @@ else if (_error is not null)
 {
     <ErrorMessage Message="@_error" OnRetry="Load" />
 }
-else if (_stallions.Count == 0)
+else if (_authorized != null)
 {
-    <EmptyState Message="You haven't added any stallions yet." Icon="🐴">
-        <a href="/admin/stallions/new" class="btn btn-primary">Add Your First Stallion</a>
-    </EmptyState>
-}
-else
-{
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Year of Birth</th>
-                <th>Colour</th>
-                <th>Status</th>
-                <th>Total Listings</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var s in _stallions)
-            {
+    @* ── Farm not linked ──────────────────────────────────────────────────── *@
+    @if (!_authorized.IsLinked)
+    {
+        <div class="alert alert-warning">
+            <strong>Your stud farm hasn't been linked to the stallion directory yet.</strong>
+            Please contact Stallions Australia to have your farm linked.
+            Once linked, your authorized stallions will appear here.
+        </div>
+    }
+
+    @* ── Your stable ─────────────────────────────────────────────────────── *@
+    <h2 style="font-size:var(--font-size-lg);margin:var(--space-6) 0 var(--space-4)">Your Stable</h2>
+
+    @if (_stallions.Count == 0)
+    {
+        <EmptyState Message="You haven't added any stallions yet." Icon="🐴" />
+    }
+    else
+    {
+        <table class="admin-table">
+            <thead>
                 <tr>
-                    <td><strong>@s.Name</strong></td>
-                    <td>@(s.YearOfBirth?.ToString() ?? "—")</td>
-                    <td>@(s.Colour ?? "—")</td>
-                    <td>
-                        <span class="badge @(s.IsActive ? "badge-active" : "badge-cancelled")">
-                            @(s.IsActive ? "Active" : "Inactive")
-                        </span>
-                    </td>
-                    <td>@s.TotalListingCount</td>
-                    <td class="admin-table-actions">
-                        <a href="/admin/stallions/@s.Id" class="btn btn-sm btn-secondary">Edit</a>
-                        <a href="/admin/listings/new?stallionId=@s.Id" class="btn btn-sm btn-outline">+ Listing</a>
-                    </td>
+                    <th>Name</th>
+                    <th>Year of Birth</th>
+                    <th>Colour</th>
+                    <th>Status</th>
+                    <th>Total Listings</th>
+                    <th></th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var s in _stallions)
+                {
+                    <tr>
+                        <td><strong>@s.Name</strong></td>
+                        <td>@(s.YearOfBirth?.ToString() ?? "—")</td>
+                        <td>@(s.Colour ?? "—")</td>
+                        <td>
+                            <span class="badge @(s.IsActive ? "badge-active" : "badge-cancelled")">
+                                @(s.IsActive ? "Active" : "Inactive")
+                            </span>
+                        </td>
+                        <td>@s.TotalListingCount</td>
+                        <td class="admin-table-actions">
+                            <a href="/admin/stallions/@s.Id" class="btn btn-sm btn-secondary">Edit</a>
+                            <a href="/admin/listings/new?stallionId=@s.Id" class="btn btn-sm btn-outline">+ Listing</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @* ── Available to add (directory-linked farms only) ───────────────────── *@
+    @if (_authorized.IsLinked)
+    {
+        <h2 style="font-size:var(--font-size-lg);margin:var(--space-8) 0 var(--space-4)">
+            Available to Add
+        </h2>
+
+        @if (!_authorized.Available.Any())
+        {
+            <p style="color:var(--text-muted)">
+                All stallions in your stud directory have been added to your stable.
+            </p>
+        }
+        else
+        {
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Year</th>
+                        <th>Colour</th>
+                        <th>Sire</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in _authorized.Available)
+                    {
+                        <tr>
+                            <td><strong>@d.Name</strong></td>
+                            <td>@d.YearOfBirth</td>
+                            <td>@(d.Colour ?? "—")</td>
+                            <td>@("—")</td>
+                            <td class="admin-table-actions">
+                                <button class="btn btn-sm btn-primary"
+                                        disabled="@_adding.Contains(d.Id)"
+                                        @onclick="() => AddAsync(d.Id)">
+                                    @(_adding.Contains(d.Id) ? "Adding…" : "Add to Stable")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (_addError != null)
+        {
+            <div class="alert alert-error" style="margin-top:var(--space-4)">@_addError</div>
+        }
+
+        @* ── Missing a stallion? mailto ────────────────────────────────── *@
+        <div style="margin-top:var(--space-6)">
+            <a href="@_missingMailto" class="btn btn-outline btn-sm">
+                Missing a stallion?
+            </a>
+            <p style="font-size:var(--font-size-sm);color:var(--text-muted);margin-top:var(--space-2)">
+                If a stallion is missing from the list above, contact Stallions Australia
+                and we'll add it to the directory.
+            </p>
+        </div>
+    }
 }
 
 @code {
     private List<StallionSummaryDto> _stallions = [];
+    private AuthorizedStallionsDto? _authorized;
+    private readonly HashSet<Guid> _adding = [];
     private bool _loading = true;
     private string? _error;
+    private string? _addError;
+    private string _missingMailto = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -76,11 +161,20 @@ else
 
     private async Task Load()
     {
-        _loading = true;
-        _error = null;
+        _loading = true; _error = null;
         try
         {
             _stallions = await AdminApi.GetMyStallionsAsync();
+            _authorized = await AdminApi.GetAuthorizedStallionsAsync();
+
+            if (_authorized != null)
+            {
+                var subject = Uri.EscapeDataString("Missing Stallion – " + _authorized.FarmName);
+                var body = Uri.EscapeDataString("Hi,\n\nI’m missing the following stallion from my Available to Add list:\n\nStallion name: \nYear of birth: \n\nPlease add it to the directory.\n\nThanks");
+                _missingMailto = "mailto:nominations@stallionsaustralia.com.au" +
+                    "?subject=" + subject +
+                    "&body=" + body;
+            }
         }
         catch (ApiException ex)
         {
@@ -89,6 +183,25 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private async Task AddAsync(Guid directoryId)
+    {
+        _adding.Add(directoryId);
+        _addError = null;
+        try
+        {
+            await AdminApi.AddFromDirectoryAsync(directoryId);
+            await Load();
+        }
+        catch (ApiException ex)
+        {
+            _addError = ex.Message;
+        }
+        finally
+        {
+            _adding.Remove(directoryId);
         }
     }
 }
