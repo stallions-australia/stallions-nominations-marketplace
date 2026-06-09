@@ -61,4 +61,48 @@ public class StudDirectoryRepositoryTests
         Assert.NotEqual(Guid.Empty, added.Id);
         Assert.Equal("New Farm", (await db.StudDirectories.FindAsync(added.Id))!.Name);
     }
+
+    [Fact]
+    public async Task UpdateAsync_SetsUpdatedAtAndPersists()
+    {
+        var db = DbContextFactory.Create(nameof(UpdateAsync_SetsUpdatedAtAndPersists));
+        var entry = new StudDirectory { Name = "Farm", UpdatedAt = DateTime.UtcNow.AddDays(-1) };
+        db.StudDirectories.Add(entry);
+        await db.SaveChangesAsync();
+        var originalId = entry.Id;
+        var oldUpdatedAt = entry.UpdatedAt;
+
+        var repo = new StudDirectoryRepository(db);
+        entry.Name = "Farm Updated";
+        await repo.UpdateAsync(entry);
+
+        var fetched = await db.StudDirectories.FindAsync(originalId);
+        Assert.Equal("Farm Updated", fetched!.Name);
+        Assert.True(fetched.UpdatedAt > oldUpdatedAt);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_IncludesStallionNavigation()
+    {
+        var db = DbContextFactory.Create(nameof(GetByIdAsync_IncludesStallionNavigation));
+        var studDir = new StudDirectory { Name = "Test Farm" };
+        db.StudDirectories.Add(studDir);
+        await db.SaveChangesAsync();
+        db.StallionDirectories.Add(new StallionDirectory
+        {
+            Name = "Stallion A",
+            StudDirectoryId = studDir.Id,
+            StallionId = 1,
+            ArionId = 0,
+            YearOfBirth = 2018
+        });
+        await db.SaveChangesAsync();
+
+        var repo = new StudDirectoryRepository(db);
+        var result = await repo.GetByIdAsync(studDir.Id);
+
+        Assert.NotNull(result);
+        Assert.Single(result!.Stallions);
+        Assert.Equal("Stallion A", result.Stallions.First().Name);
+    }
 }
