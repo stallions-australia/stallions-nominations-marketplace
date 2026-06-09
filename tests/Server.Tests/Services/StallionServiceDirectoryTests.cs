@@ -129,6 +129,32 @@ public class StallionServiceDirectoryTests
     }
 
     [Fact]
+    public async Task AddFromDirectoryAsync_ReturnsNotFound_WhenDirectoryEntryIsInactive()
+    {
+        var caller = new User { Id = Guid.NewGuid() };
+        var studDirId = Guid.NewGuid();
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "X", UserId = caller.Id, StudDirectoryId = studDirId };
+        var dirEntry = new StallionDirectory
+        {
+            Id = Guid.NewGuid(),
+            StudDirectoryId = studDirId,
+            Name = "Retired", StallionId = 1, ArionId = 0, YearOfBirth = 2010,
+            IsActive = false,
+            StudDirectory = new StudDirectory { Name = "X" }
+        };
+
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepo.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        _directoryRepo.Setup(r => r.GetByIdAsync(dirEntry.Id)).ReturnsAsync(dirEntry);
+        _stallionRepo.Setup(r => r.GetByStudFarmIdAsync(farm.Id)).ReturnsAsync(new List<Stallion>());
+
+        var result = await CreateSut().AddFromDirectoryAsync(dirEntry.Id);
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(404);
+    }
+
+    [Fact]
     public async Task AddFromDirectoryAsync_ReturnsForbidden_WhenDirectoryEntryBelongsToDifferentStud()
     {
         var caller = new User { Id = Guid.NewGuid() };

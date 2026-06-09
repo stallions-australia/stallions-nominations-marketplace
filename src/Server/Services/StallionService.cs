@@ -298,6 +298,9 @@ public class StallionService : IStallionService
             return ServiceResult<StallionDto>.Forbidden(
                 "This stallion does not belong to your stud's directory.");
 
+        if (!entry.IsActive)
+            return ServiceResult<StallionDto>.NotFound("Stallion directory entry not found.");
+
         // Prevent duplicate additions.
         var existingStallions = await _repo.GetByStudFarmIdAsync(farm.Id);
         var alreadyAdded = existingStallions.Any(s => s.StallionDirectoryId == directoryId);

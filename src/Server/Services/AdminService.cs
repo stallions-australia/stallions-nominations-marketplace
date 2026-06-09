@@ -176,6 +176,9 @@ public class AdminService : IAdminService
 
     public async Task<ServiceResult> LinkStudFarmToDirectoryAsync(Guid farmId, Guid studDirectoryId)
     {
+        if (studDirectoryId == Guid.Empty)
+            return ServiceResult.BadRequest("StudDirectoryId must not be empty.");
+
         var farm = await _studFarmRepo.GetByIdAsync(farmId);
         if (farm == null) return ServiceResult.NotFound("Stud farm not found.");
 
@@ -208,6 +211,9 @@ public class AdminService : IAdminService
         if (existing != null)
             return ServiceResult<StudFarmSummaryDto>.BadRequest(
                 "This user already has a stud farm linked to their account.");
+
+        if (request.StudDirectoryId.HasValue && request.StudDirectoryId.Value == Guid.Empty)
+            return ServiceResult<StudFarmSummaryDto>.BadRequest("StudDirectoryId must not be empty.");
 
         var caller = await _users.GetOrCreateCurrentUserAsync();
 
