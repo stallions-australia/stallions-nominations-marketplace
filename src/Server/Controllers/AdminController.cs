@@ -75,4 +75,18 @@ public class AdminController : ControllerBase
         var r = await _admin.SetUserRoleAsync(id, request);
         return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
     }
+
+    [HttpGet("studfarms/{id:guid}")]
+    public async Task<IActionResult> GetStudFarm(Guid id)
+    {
+        var r = await _admin.GetStudFarmByIdAsync(id);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPut("studfarms/{id:guid}/link-directory")]
+    public async Task<IActionResult> LinkStudFarmToDirectory(Guid id, [FromBody] LinkStudDirectoryRequest request)
+    {
+        var r = await _admin.LinkStudFarmToDirectoryAsync(id, request.StudDirectoryId);
+        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
+    }
 }

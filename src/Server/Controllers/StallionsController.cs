@@ -77,4 +77,20 @@ public class StallionsController : ControllerBase
         var r = await _stallions.DeleteImageAsync(id, imageId);
         return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
     }
+
+    [HttpGet("authorized")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
+    public async Task<IActionResult> GetAuthorized()
+    {
+        var r = await _stallions.GetAuthorizedAsync();
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPost("add-from-directory/{directoryId:guid}")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
+    public async Task<IActionResult> AddFromDirectory(Guid directoryId)
+    {
+        var r = await _stallions.AddFromDirectoryAsync(directoryId);
+        return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
 }
