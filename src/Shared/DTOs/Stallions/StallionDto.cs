@@ -12,6 +12,8 @@ public class StallionDto
     public string? RegistrationNumber { get; set; }
     public string? Description { get; set; }
     public bool IsActive { get; set; }
+    public Guid? StallionDirectoryId { get; set; }
+    public bool IsDirectoryManaged => StallionDirectoryId.HasValue;
     public DateTime CreatedAt { get; set; }
     public List<StallionImageDto> Images { get; set; } = new();
 }

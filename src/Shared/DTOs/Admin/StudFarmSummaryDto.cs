@@ -9,5 +9,7 @@ public class StudFarmSummaryDto
     public string LinkedUserDisplayName { get; set; } = string.Empty;
     public string LinkedUserEmail { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
+    public Guid? StudDirectoryId { get; set; }
+    public string? StudDirectoryName { get; set; }
     public DateTime CreatedAt { get; set; }
 }

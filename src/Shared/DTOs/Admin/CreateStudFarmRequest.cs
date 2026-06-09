@@ -8,4 +8,5 @@ public class CreateStudFarmRequest
     public string? ContactPhone { get; set; }
     public string? ContactEmail { get; set; }
     public string? Address { get; set; }
+    public Guid? StudDirectoryId { get; set; }
 }
