@@ -77,7 +77,7 @@
             else
             {
                 <select class="form-select" @bind="_request.StudDirectoryId">
-                    <option value="">— None (link later) —</option>
+                    <option value="@((Guid?)null)">— None (link later) —</option>
                     @foreach (var d in _studDirectories)
                     {
                         <option value="@d.Id">@d.Name@(d.State != null ? $" ({d.State})" : "")</option>

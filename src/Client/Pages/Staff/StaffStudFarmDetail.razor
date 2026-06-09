@@ -108,7 +108,7 @@ else if (_farm != null)
 
     private async Task Load()
     {
-        _loading = true; _error = null; _loadFailed = false;
+        _loading = true; _error = null; _loadFailed = false; _linkSuccess = false;
         try
         {
             _farm = await StaffApi.GetStudFarmAsync(Id);
