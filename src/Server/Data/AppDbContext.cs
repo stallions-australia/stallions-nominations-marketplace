@@ -22,6 +22,8 @@ public class AppDbContext : DbContext
     public DbSet<Enquiry> Enquiries => Set<Enquiry>();
     public DbSet<EnquiryMessage> EnquiryMessages => Set<EnquiryMessage>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<StudDirectory> StudDirectories => Set<StudDirectory>();
+    public DbSet<StallionDirectory> StallionDirectories => Set<StallionDirectory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +62,12 @@ public class AppDbContext : DbContext
                 .WithOne(u => u.StudFarm)
                 .HasForeignKey<StudFarm>(f => f.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(f => f.StudDirectory)
+                .WithMany()
+                .HasForeignKey(f => f.StudDirectoryId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ── Stallions ────────────────────────────────────────────────────────
@@ -76,6 +84,12 @@ public class AppDbContext : DbContext
                 .WithMany(f => f.Stallions)
                 .HasForeignKey(s => s.StudFarmId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(s => s.StallionDirectory)
+                .WithMany()
+                .HasForeignKey(s => s.StallionDirectoryId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         // ── StallionImages ───────────────────────────────────────────────────
@@ -275,6 +289,37 @@ public class AppDbContext : DbContext
                 .WithMany(u => u.AuditLogs)
                 .HasForeignKey(a => a.UserId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ── StudDirectory ────────────────────────────────────────────────────
+        modelBuilder.Entity<StudDirectory>(e =>
+        {
+            e.HasKey(d => d.Id);
+            e.Property(d => d.Name).HasMaxLength(200).IsRequired();
+            e.Property(d => d.Website).HasMaxLength(500);
+            e.Property(d => d.Address).HasMaxLength(500);
+            e.Property(d => d.Town).HasMaxLength(200);
+            e.Property(d => d.State).HasMaxLength(100);
+            e.Property(d => d.Country).HasMaxLength(100);
+            e.Property(d => d.Phone).HasMaxLength(50);
+            e.Property(d => d.Email).HasMaxLength(256);
+            e.Property(d => d.LogoUrl).HasMaxLength(1000);
+        });
+
+        // ── StallionDirectory ────────────────────────────────────────────────
+        modelBuilder.Entity<StallionDirectory>(e =>
+        {
+            e.HasKey(d => d.Id);
+            e.Property(d => d.Name).HasMaxLength(200).IsRequired();
+            e.Property(d => d.Colour).HasMaxLength(50);
+            e.Property(d => d.Height).HasMaxLength(20);
+            e.Property(d => d.SireName).HasMaxLength(200);
+            e.Property(d => d.DamName).HasMaxLength(200);
+
+            e.HasOne(d => d.StudDirectory)
+                .WithMany(s => s.Stallions)
+                .HasForeignKey(d => d.StudDirectoryId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
