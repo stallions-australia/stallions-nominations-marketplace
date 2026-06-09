@@ -12,7 +12,7 @@ using Stallions.Server.Data;
 namespace Stallions.Server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260609064035_StallionAuthorization")]
+    [Migration("20260609064424_StallionAuthorization")]
     partial class StallionAuthorization
     {
         /// <inheritdoc />
@@ -490,6 +490,10 @@ namespace Stallions.Server.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ArionId");
+
+                    b.HasIndex("StallionId");
+
                     b.HasIndex("StudDirectoryId");
 
                     b.ToTable("StallionDirectories");
@@ -581,6 +585,8 @@ namespace Stallions.Server.Data.Migrations
                         .HasColumnType("nvarchar(500)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ArionStudId");
 
                     b.ToTable("StudDirectories");
                 });

@@ -487,6 +487,10 @@ namespace Stallions.Server.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ArionId");
+
+                    b.HasIndex("StallionId");
+
                     b.HasIndex("StudDirectoryId");
 
                     b.ToTable("StallionDirectories");
@@ -578,6 +582,8 @@ namespace Stallions.Server.Data.Migrations
                         .HasColumnType("nvarchar(500)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ArionStudId");
 
                     b.ToTable("StudDirectories");
                 });

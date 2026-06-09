@@ -304,6 +304,7 @@ public class AppDbContext : DbContext
             e.Property(d => d.Phone).HasMaxLength(50);
             e.Property(d => d.Email).HasMaxLength(256);
             e.Property(d => d.LogoUrl).HasMaxLength(1000);
+            e.HasIndex(d => d.ArionStudId);
         });
 
         // ── StallionDirectory ────────────────────────────────────────────────
@@ -315,6 +316,8 @@ public class AppDbContext : DbContext
             e.Property(d => d.Height).HasMaxLength(20);
             e.Property(d => d.SireName).HasMaxLength(200);
             e.Property(d => d.DamName).HasMaxLength(200);
+            e.HasIndex(d => d.StallionId);
+            e.HasIndex(d => d.ArionId);
 
             e.HasOne(d => d.StudDirectory)
                 .WithMany(s => s.Stallions)
