@@ -92,7 +92,11 @@ public class AdminApiService
     {
         var r = await _http.GetAsync("api/stallions/authorized");
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to load authorized stallions.");
+        {
+            var msg = await r.Content.ReadAsStringAsync();
+            throw new ApiException((int)r.StatusCode, string.IsNullOrWhiteSpace(msg)
+                ? "Failed to load authorized stallions." : msg);
+        }
         return await r.Content.ReadFromJsonAsync<AuthorizedStallionsDto>()
                ?? throw new ApiException(500, "Empty response.");
     }

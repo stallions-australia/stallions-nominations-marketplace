@@ -110,7 +110,7 @@ public class StaffApiService
     {
         var r = await _http.PutAsJsonAsync(
             $"api/admin/studfarms/{farmId}/link-directory",
-            new { StudDirectoryId = studDirectoryId });
+            new LinkStudDirectoryRequest { StudDirectoryId = studDirectoryId });
         if (!r.IsSuccessStatusCode)
         {
             var msg = await r.Content.ReadAsStringAsync();
