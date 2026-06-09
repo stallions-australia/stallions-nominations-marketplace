@@ -1,0 +1,207 @@
+@page "/staff/stud-directory/new"
+@page "/staff/stud-directory/{Id:guid}"
+@layout StaffLayout
+@attribute [Authorize]
+@inject DirectoryApiService DirectoryApi
+@inject NavigationManager Nav
+@inject UserStateService UserState
+
+<PageTitle>@(_isNew ? "New Stud Directory Entry" : "Edit Stud Directory Entry") — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">@(_isNew ? "New Stud Directory Entry" : $"Edit: {_form.Name}")</h1>
+    <a href="/staff/stud-directory" class="btn btn-outline btn-sm">← Back</a>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <div class="admin-form-card">
+        <EditForm Model="_form" OnValidSubmit="SubmitAsync">
+            <DataAnnotationsValidator />
+
+            <div class="form-group">
+                <label class="form-label">Name <span class="required">*</span></label>
+                <InputText class="form-control" @bind-Value="_form.Name" />
+                <ValidationMessage For="() => _form.Name" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Arion Stud ID</label>
+                <InputNumber class="form-control" @bind-Value="_form.ArionStudId" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Website</label>
+                <InputText class="form-control" @bind-Value="_form.Website" placeholder="https://" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Address</label>
+                <InputText class="form-control" @bind-Value="_form.Address" />
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+                <div class="form-group">
+                    <label class="form-label">Town</label>
+                    <InputText class="form-control" @bind-Value="_form.Town" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">State</label>
+                    <InputText class="form-control" @bind-Value="_form.State" placeholder="e.g. NSW" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Country</label>
+                <InputText class="form-control" @bind-Value="_form.Country" placeholder="Australia" />
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)">
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <InputText class="form-control" @bind-Value="_form.Phone" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <InputText class="form-control" @bind-Value="_form.Email" />
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Logo URL</label>
+                <InputText class="form-control" @bind-Value="_form.LogoUrl" placeholder="https://…" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-check-label">
+                    <InputCheckbox @bind-Value="_form.IsActive" /> Active
+                </label>
+            </div>
+
+            @if (_detail?.Stallions.Any() == true)
+            {
+                <hr style="margin:var(--space-6) 0" />
+                <h3 style="font-size:var(--font-size-base);margin:0 0 var(--space-4)">
+                    Stallions in this Stud Directory (@_detail.Stallions.Count)
+                </h3>
+                <table class="admin-table">
+                    <thead>
+                        <tr><th>Name</th><th>Year</th><th>Colour</th><th>Active</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in _detail.Stallions)
+                        {
+                            <tr>
+                                <td>@s.Name</td>
+                                <td>@s.YearOfBirth</td>
+                                <td>@(s.Colour ?? "—")</td>
+                                <td>
+                                    <span class="badge @(s.IsActive ? "badge-status-active" : "badge-status-suspended")">
+                                        @(s.IsActive ? "Active" : "Inactive")
+                                    </span>
+                                </td>
+                                <td><a href="/staff/stallion-directory/@s.Id" class="btn btn-sm btn-outline">Edit</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @if (_error != null)
+            {
+                <div class="alert alert-danger" style="margin-top:var(--space-4)">@_error</div>
+            }
+
+            <div style="margin-top:var(--space-6);display:flex;gap:var(--space-3)">
+                <button type="submit" class="btn btn-gold" disabled="@_submitting">
+                    @(_submitting ? "Saving…" : (_isNew ? "Create Entry" : "Save Changes"))
+                </button>
+                <a href="/staff/stud-directory" class="btn btn-outline">Cancel</a>
+            </div>
+        </EditForm>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool _isNew => Id is null;
+    private bool _loading = true;
+    private bool _submitting;
+    private string? _error;
+    private StudDirectoryDto? _detail;
+    private UpdateStudDirectoryRequest _form = new() { Name = string.Empty, IsActive = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+
+        if (!_isNew)
+        {
+            try
+            {
+                _detail = await DirectoryApi.GetStudDirectoryAsync(Id!.Value);
+                _form = new UpdateStudDirectoryRequest
+                {
+                    Name = _detail.Name,
+                    ArionStudId = _detail.ArionStudId,
+                    Website = _detail.Website,
+                    Address = _detail.Address,
+                    Town = _detail.Town,
+                    State = _detail.State,
+                    Country = _detail.Country,
+                    Phone = _detail.Phone,
+                    Email = _detail.Email,
+                    LogoUrl = _detail.LogoUrl,
+                    IsActive = _detail.IsActive
+                };
+            }
+            catch (Exception ex)
+            {
+                _error = ex is ApiException ae ? ae.Message : "Failed to load entry.";
+            }
+        }
+        _loading = false;
+    }
+
+    private async Task SubmitAsync()
+    {
+        _submitting = true; _error = null;
+        try
+        {
+            if (_isNew)
+            {
+                var create = new CreateStudDirectoryRequest
+                {
+                    Name = _form.Name,
+                    ArionStudId = _form.ArionStudId,
+                    Website = _form.Website,
+                    Address = _form.Address,
+                    Town = _form.Town,
+                    State = _form.State,
+                    Country = _form.Country,
+                    Phone = _form.Phone,
+                    Email = _form.Email,
+                    LogoUrl = _form.LogoUrl,
+                    IsActive = _form.IsActive
+                };
+                await DirectoryApi.CreateStudDirectoryAsync(create);
+            }
+            else
+            {
+                await DirectoryApi.UpdateStudDirectoryAsync(Id!.Value, _form);
+            }
+            Nav.NavigateTo("/staff/stud-directory");
+        }
+        catch (Exception ex)
+        {
+            _error = ex is ApiException ae ? ae.Message : "Failed to save entry.";
+        }
+        finally { _submitting = false; }
+    }
+}
