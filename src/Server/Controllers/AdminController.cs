@@ -68,4 +68,11 @@ public class AdminController : ControllerBase
         var r = await _admin.ForceListingStatusAsync(id, request);
         return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
     }
+
+    [HttpPut("users/{id:guid}/role")]
+    public async Task<IActionResult> SetUserRole(Guid id, [FromBody] SetUserRoleRequest request)
+    {
+        var r = await _admin.SetUserRoleAsync(id, request);
+        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
+    }
 }

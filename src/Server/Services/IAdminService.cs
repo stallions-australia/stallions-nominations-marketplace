@@ -12,4 +12,5 @@ public interface IAdminService
     Task<ServiceResult<StudFarmSummaryDto>> CreateStudFarmAsync(CreateStudFarmRequest request);
     Task<ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>> GetAllListingsStaffAsync();
     Task<ServiceResult> ForceListingStatusAsync(Guid listingId, ForceListingStatusRequest request);
+    Task<ServiceResult> SetUserRoleAsync(Guid userId, SetUserRoleRequest request);
 }

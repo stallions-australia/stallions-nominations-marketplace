@@ -247,4 +247,35 @@ public class AdminService : IAdminService
 
         return ServiceResult.Ok();
     }
+
+    public async Task<ServiceResult> SetUserRoleAsync(Guid userId, SetUserRoleRequest request)
+    {
+        if (!Enum.TryParse<UserRole>(request.Role, ignoreCase: true, out var newRole))
+            return ServiceResult.BadRequest($"'{request.Role}' is not a valid role.");
+
+        // Prevent demoting Staff accounts — that could lock someone out.
+        if (newRole == UserRole.Staff)
+            return ServiceResult.BadRequest("Cannot promote a user to Staff via this endpoint.");
+
+        var user = await _userRepo.GetByIdAsync(userId);
+        if (user == null) return ServiceResult.NotFound("User not found.");
+
+        // Don't allow changing your own role.
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller?.Id == userId)
+            return ServiceResult.BadRequest("You cannot change your own role.");
+
+        var previousRole = user.Role;
+        user.Role = newRole;
+        await _userRepo.UpdateAsync(user);
+
+        await _auditRepo.LogAsync(
+            "User",
+            userId,
+            "SetUserRole",
+            caller?.Id,
+            $"Role changed from {previousRole} to {newRole}");
+
+        return ServiceResult.Ok();
+    }
 }

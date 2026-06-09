@@ -61,6 +61,17 @@ public class StaffApiService
             throw new ApiException((int)r.StatusCode, "Failed to suspend user.");
     }
 
+    public virtual async Task SetUserRoleAsync(Guid id, string role)
+    {
+        var r = await _http.PutAsJsonAsync($"api/admin/users/{id}/role", new SetUserRoleRequest { Role = role });
+        if (!r.IsSuccessStatusCode)
+        {
+            var msg = await r.Content.ReadAsStringAsync();
+            throw new ApiException((int)r.StatusCode, string.IsNullOrWhiteSpace(msg)
+                ? "Failed to set user role." : msg);
+        }
+    }
+
     // ── Stud Farms ─────────────────────────────────────────────────────────
 
     public virtual async Task<List<StudFarmSummaryDto>> GetStudFarmsAsync()

@@ -58,6 +58,31 @@ else if (_user != null)
             <div class="alert alert-danger" style="margin-top:var(--space-4)">@_actionError</div>
         }
     </div>
+
+    <div class="admin-detail-card" style="margin-top:var(--space-5)">
+        <h2 style="font-size:var(--font-size-lg);margin:0 0 var(--space-4)">Change Role</h2>
+        <p style="color:var(--text-muted);font-size:var(--font-size-sm);margin:0 0 var(--space-4)">
+            To onboard a stud farm: set the user's role to <strong>StudFarmAdmin</strong>, then go to
+            <a href="/staff/studfarms/new">Stud Farms → Onboard New Stud Farm</a> to create their farm record.
+        </p>
+        <div style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap">
+            <select class="form-select" style="width:auto" @bind="_selectedRole">
+                <option value="Buyer">Buyer</option>
+                <option value="StudFarmAdmin">StudFarmAdmin</option>
+            </select>
+            <button class="btn btn-gold btn-sm" @onclick="SetRoleAsync" disabled="@(_busy || _selectedRole == _user.Role)">
+                @(_busy ? "Saving…" : "Set Role")
+            </button>
+        </div>
+        @if (_roleError != null)
+        {
+            <div class="alert alert-danger" style="margin-top:var(--space-4)">@_roleError</div>
+        }
+        @if (_roleSuccess)
+        {
+            <div class="alert alert-success" style="margin-top:var(--space-4)">Role updated successfully.</div>
+        }
+    </div>
 }
 
 @code {
@@ -67,7 +92,10 @@ else if (_user != null)
     private bool _loading = true;
     private string? _error;
     private string? _actionError;
+    private string? _roleError;
+    private bool _roleSuccess;
     private bool _busy;
+    private string _selectedRole = "Buyer";
 
     protected override async Task OnInitializedAsync()
     {
@@ -79,7 +107,11 @@ else if (_user != null)
     private async Task Load()
     {
         _loading = true; _error = null;
-        try { _user = await StaffApi.GetUserAsync(Id); }
+        try
+        {
+            _user = await StaffApi.GetUserAsync(Id);
+            _selectedRole = _user.Role;
+        }
         catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load user."; }
         finally { _loading = false; }
     }
@@ -97,6 +129,19 @@ else if (_user != null)
         _busy = true; _actionError = null;
         try { await StaffApi.SuspendUserAsync(Id); await Load(); }
         catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to suspend user."; }
+        finally { _busy = false; }
+    }
+
+    private async Task SetRoleAsync()
+    {
+        _busy = true; _roleError = null; _roleSuccess = false;
+        try
+        {
+            await StaffApi.SetUserRoleAsync(Id, _selectedRole);
+            _roleSuccess = true;
+            await Load();
+        }
+        catch (Exception ex) { _roleError = ex is ApiException ae ? ae.Message : "Failed to set role."; }
         finally { _busy = false; }
     }
 }
