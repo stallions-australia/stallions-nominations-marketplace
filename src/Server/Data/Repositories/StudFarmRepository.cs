@@ -17,6 +17,7 @@ public class StudFarmRepository : IStudFarmRepository
     public async Task<IReadOnlyList<StudFarm>> GetAllAsync() =>
         await _db.StudFarms
             .Include(f => f.User)
+            .Include(f => f.StudDirectory)
             .OrderBy(f => f.Name)
             .ToListAsync();
 

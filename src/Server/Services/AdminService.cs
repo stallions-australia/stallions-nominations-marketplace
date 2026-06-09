@@ -143,9 +143,55 @@ public class AdminService : IAdminService
             LinkedUserDisplayName = f.User?.DisplayName ?? string.Empty,
             LinkedUserEmail = f.User?.Email ?? string.Empty,
             IsActive = f.IsActive,
+            StudDirectoryId = f.StudDirectoryId,
+            StudDirectoryName = f.StudDirectory?.Name,
             CreatedAt = f.CreatedAt
         }).ToList();
         return ServiceResult<IReadOnlyList<StudFarmSummaryDto>>.Ok(dtos);
+    }
+
+    public async Task<ServiceResult<StudFarmSummaryDto>> GetStudFarmByIdAsync(Guid id)
+    {
+        var farm = await _studFarmRepo.GetByIdAsync(id);
+        if (farm == null)
+            return ServiceResult<StudFarmSummaryDto>.NotFound("Stud farm not found.");
+
+        // Load the user manually (GetByIdAsync doesn't Include User)
+        var user = await _userRepo.GetByIdAsync(farm.UserId);
+
+        var dto = new StudFarmSummaryDto
+        {
+            Id = farm.Id,
+            Name = farm.Name,
+            ABN = farm.ABN,
+            ContactEmail = farm.ContactEmail,
+            LinkedUserDisplayName = user?.DisplayName ?? string.Empty,
+            LinkedUserEmail = user?.Email ?? string.Empty,
+            IsActive = farm.IsActive,
+            StudDirectoryId = farm.StudDirectoryId,
+            CreatedAt = farm.CreatedAt
+        };
+        return ServiceResult<StudFarmSummaryDto>.Ok(dto);
+    }
+
+    public async Task<ServiceResult> LinkStudFarmToDirectoryAsync(Guid farmId, Guid studDirectoryId)
+    {
+        var farm = await _studFarmRepo.GetByIdAsync(farmId);
+        if (farm == null) return ServiceResult.NotFound("Stud farm not found.");
+
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        var previous = farm.StudDirectoryId?.ToString() ?? "none";
+        farm.StudDirectoryId = studDirectoryId;
+        await _studFarmRepo.UpdateAsync(farm);
+
+        await _auditRepo.LogAsync(
+            "StudFarm",
+            farmId,
+            "LinkStudDirectory",
+            caller?.Id,
+            $"StudDirectoryId changed from {previous} to {studDirectoryId}");
+
+        return ServiceResult.Ok();
     }
 
     public async Task<ServiceResult<StudFarmSummaryDto>> CreateStudFarmAsync(CreateStudFarmRequest request)
@@ -172,7 +218,8 @@ public class AdminService : IAdminService
             ABN = request.ABN,
             ContactPhone = request.ContactPhone,
             ContactEmail = request.ContactEmail,
-            Address = request.Address
+            Address = request.Address,
+            StudDirectoryId = request.StudDirectoryId
         };
 
         farm = await _studFarmRepo.AddAsync(farm);
@@ -193,6 +240,7 @@ public class AdminService : IAdminService
             LinkedUserDisplayName = user.DisplayName,
             LinkedUserEmail = user.Email,
             IsActive = farm.IsActive,
+            StudDirectoryId = farm.StudDirectoryId,
             CreatedAt = farm.CreatedAt
         };
         return ServiceResult<StudFarmSummaryDto>.Ok(dto);
