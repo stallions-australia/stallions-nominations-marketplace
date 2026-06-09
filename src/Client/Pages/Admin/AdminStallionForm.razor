@@ -24,33 +24,76 @@ else
             <DataAnnotationsValidator />
 
             <div class="form-section">
-                <div class="form-section-title">Basic Details</div>
+                <div class="form-section-title">
+                    Basic Details
+                    @if (_isDirectoryManaged)
+                    {
+                        <span style="font-size:var(--font-size-sm);font-weight:normal;color:var(--text-muted);margin-left:var(--space-2)">
+                            (sourced from Stallions Australia directory — read-only)
+                        </span>
+                    }
+                </div>
 
                 <div class="form-group">
                     <label class="form-label">Name <span class="required">*</span></label>
-                    <InputText class="form-input" @bind-Value="_model.Name" />
-                    <ValidationMessage For="() => _model.Name" />
+                    @if (_isDirectoryManaged)
+                    {
+                        <p class="form-control" style="background:var(--bg-subtle)">@_model.Name</p>
+                    }
+                    else
+                    {
+                        <InputText class="form-input" @bind-Value="_model.Name" />
+                        <ValidationMessage For="() => _model.Name" />
+                    }
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Year of Birth</label>
-                        <InputNumber class="form-input" @bind-Value="_model.YearOfBirth" />
+                        @if (_isDirectoryManaged)
+                        {
+                            <p class="form-control" style="background:var(--bg-subtle)">@(_model.YearOfBirth?.ToString() ?? "—")</p>
+                        }
+                        else
+                        {
+                            <InputNumber class="form-input" @bind-Value="_model.YearOfBirth" />
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Colour</label>
-                        <InputText class="form-input" @bind-Value="_model.Colour" placeholder="e.g. Bay, Chestnut" />
+                        @if (_isDirectoryManaged)
+                        {
+                            <p class="form-control" style="background:var(--bg-subtle)">@(_model.Colour ?? "—")</p>
+                        }
+                        else
+                        {
+                            <InputText class="form-input" @bind-Value="_model.Colour" placeholder="e.g. Bay, Chestnut" />
+                        }
                     </div>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Sire</label>
-                        <InputText class="form-input" @bind-Value="_model.Sire" />
+                        @if (_isDirectoryManaged)
+                        {
+                            <p class="form-control" style="background:var(--bg-subtle)">@(_model.Sire ?? "—")</p>
+                        }
+                        else
+                        {
+                            <InputText class="form-input" @bind-Value="_model.Sire" />
+                        }
                     </div>
                     <div class="form-group">
                         <label class="form-label">Dam</label>
-                        <InputText class="form-input" @bind-Value="_model.Dam" />
+                        @if (_isDirectoryManaged)
+                        {
+                            <p class="form-control" style="background:var(--bg-subtle)">@(_model.Dam ?? "—")</p>
+                        }
+                        else
+                        {
+                            <InputText class="form-input" @bind-Value="_model.Dam" />
+                        }
                     </div>
                 </div>
 
@@ -156,6 +199,7 @@ else
 
     private UpdateStallionRequest _model = new() { Name = string.Empty };
     private StallionDto? _stallion;
+    private bool _isDirectoryManaged;
     private bool _isNew => Id is null;
     private bool _isActive = true;
     private bool _loading = true;
@@ -174,6 +218,7 @@ else
             try
             {
                 _stallion = await AdminApi.GetStallionAsync(Id!.Value);
+                _isDirectoryManaged = _stallion.StallionDirectoryId.HasValue;
                 _model = new UpdateStallionRequest
                 {
                     Name = _stallion.Name,
