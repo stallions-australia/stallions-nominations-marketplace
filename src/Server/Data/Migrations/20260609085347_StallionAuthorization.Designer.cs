@@ -12,7 +12,7 @@ using Stallions.Server.Data;
 namespace Stallions.Server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260609064424_StallionAuthorization")]
+    [Migration("20260609085347_StallionAuthorization")]
     partial class StallionAuthorization
     {
         /// <inheritdoc />
