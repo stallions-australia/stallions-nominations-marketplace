@@ -17,6 +17,10 @@
 {
     <p>Loading…</p>
 }
+else if (_loadFailed)
+{
+    <div class="alert alert-danger">@_error</div>
+}
 else
 {
     <div class="admin-form-card">
@@ -103,6 +107,7 @@ else
 
     private bool _isNew => Id is null;
     private bool _loading = true;
+    private bool _loadFailed;
     private bool _submitting;
     private string? _error;
     private List<StudDirectorySummaryDto> _studs = [];
@@ -113,7 +118,8 @@ else
         await UserState.LoadAsync();
         if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
 
-        _studs = await DirectoryApi.GetStudDirectoriesAsync();
+        try { _studs = await DirectoryApi.GetStudDirectoriesAsync(); }
+        catch { /* non-fatal — stud dropdown will be empty; Guid.Empty guard in submit covers this */ }
 
         if (!_isNew)
         {
@@ -137,6 +143,7 @@ else
             catch (Exception ex)
             {
                 _error = ex is ApiException ae ? ae.Message : "Failed to load entry.";
+                _loadFailed = true;
             }
         }
         _loading = false;
