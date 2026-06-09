@@ -1,0 +1,143 @@
+@page "/staff/studfarms/{Id:guid}"
+@layout StaffLayout
+@attribute [Authorize]
+@inject StaffApiService StaffApi
+@inject DirectoryApiService DirectoryApi
+@inject NavigationManager Nav
+@inject UserStateService UserState
+
+<PageTitle>Stud Farm Detail — Staff Admin</PageTitle>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_loadFailed)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_farm != null)
+{
+    <div class="admin-page-header">
+        <div>
+            <h1 class="admin-page-title">@_farm.Name</h1>
+            <p style="color:var(--text-muted);margin:0">@_farm.LinkedUserDisplayName · @_farm.LinkedUserEmail</p>
+        </div>
+        <a href="/staff/studfarms" class="btn btn-outline btn-sm">← Back to Stud Farms</a>
+    </div>
+
+    <div class="admin-detail-card">
+        <dl class="admin-dl">
+            <dt>ABN</dt>
+            <dd>@(_farm.ABN ?? "—")</dd>
+            <dt>Contact Email</dt>
+            <dd>@(_farm.ContactEmail ?? "—")</dd>
+            <dt>Status</dt>
+            <dd>
+                <span class="badge @(_farm.IsActive ? "badge-status-active" : "badge-status-suspended")">
+                    @(_farm.IsActive ? "Active" : "Inactive")
+                </span>
+            </dd>
+            <dt>Created</dt>
+            <dd>@_farm.CreatedAt.ToString("d MMMM yyyy")</dd>
+        </dl>
+    </div>
+
+    <div class="admin-detail-card" style="margin-top:var(--space-5)">
+        <h2 style="font-size:var(--font-size-lg);margin:0 0 var(--space-4)">Stallion Directory Link</h2>
+
+        @if (_farm.StudDirectoryId.HasValue)
+        {
+            <p style="color:var(--text-muted);font-size:var(--font-size-sm);margin:0 0 var(--space-4)">
+                This farm is currently linked to <strong>@(_farm.StudDirectoryName ?? _farm.StudDirectoryId.ToString())</strong>.
+                You can reassign it below.
+            </p>
+        }
+        else
+        {
+            <p style="color:var(--text-muted);font-size:var(--font-size-sm);margin:0 0 var(--space-4)">
+                This farm is not yet linked to a stud directory entry. Linking it will enable the stud admin's
+                authorized stallion list and hide the free-form add button.
+            </p>
+        }
+
+        <div style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap">
+            <select class="form-select" style="width:auto" @bind="_selectedDirectoryId">
+                <option value="@Guid.Empty">— Select stud directory entry —</option>
+                @foreach (var d in _directories)
+                {
+                    <option value="@d.Id">@d.Name@(d.State != null ? $" ({d.State})" : "")</option>
+                }
+            </select>
+            <button class="btn btn-gold btn-sm" @onclick="LinkAsync"
+                    disabled="@(_linking || _selectedDirectoryId == Guid.Empty)">
+                @(_linking ? "Saving…" : "Link to Directory")
+            </button>
+        </div>
+
+        @if (_linkSuccess)
+        {
+            <div class="alert alert-success" style="margin-top:var(--space-4)">Directory linked successfully.</div>
+        }
+        @if (_linkError != null)
+        {
+            <div class="alert alert-danger" style="margin-top:var(--space-4)">@_linkError</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private StudFarmSummaryDto? _farm;
+    private List<StudDirectorySummaryDto> _directories = [];
+    private Guid _selectedDirectoryId = Guid.Empty;
+    private bool _loading = true;
+    private bool _loadFailed;
+    private bool _linking;
+    private bool _linkSuccess;
+    private string? _error;
+    private string? _linkError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true; _error = null; _loadFailed = false;
+        try
+        {
+            _farm = await StaffApi.GetStudFarmAsync(Id);
+            try { _directories = await DirectoryApi.GetStudDirectoriesAsync(); }
+            catch { /* non-fatal — dropdown will be empty */ }
+            if (_farm.StudDirectoryId.HasValue)
+                _selectedDirectoryId = _farm.StudDirectoryId.Value;
+        }
+        catch (Exception ex)
+        {
+            _error = ex is ApiException ae ? ae.Message : "Failed to load farm.";
+            _loadFailed = true;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task LinkAsync()
+    {
+        _linking = true; _linkError = null; _linkSuccess = false;
+        try
+        {
+            await StaffApi.LinkStudFarmToDirectoryAsync(Id, _selectedDirectoryId);
+            _linkSuccess = true;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            _linkError = ex is ApiException ae ? ae.Message : "Failed to link directory.";
+        }
+        finally { _linking = false; }
+    }
+}

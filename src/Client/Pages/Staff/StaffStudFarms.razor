@@ -36,15 +36,17 @@ else
                 <th>ABN</th>
                 <th>Contact Email</th>
                 <th>Linked User</th>
+                <th>Directory</th>
                 <th>Active</th>
                 <th>Created</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
             @foreach (var f in _farms)
             {
                 <tr>
-                    <td>@f.Name</td>
+                    <td><strong>@f.Name</strong></td>
                     <td>@(f.ABN ?? "—")</td>
                     <td>@(f.ContactEmail ?? "—")</td>
                     <td>
@@ -52,11 +54,24 @@ else
                         <div style="font-size:var(--font-size-sm);color:var(--text-muted)">@f.LinkedUserEmail</div>
                     </td>
                     <td>
+                        @if (f.StudDirectoryId.HasValue)
+                        {
+                            <span class="badge badge-status-active">@(f.StudDirectoryName ?? "Linked")</span>
+                        }
+                        else
+                        {
+                            <span class="badge badge-status-suspended">Not linked</span>
+                        }
+                    </td>
+                    <td>
                         <span class="badge @(f.IsActive ? "badge-status-active" : "badge-status-suspended")">
                             @(f.IsActive ? "Active" : "Inactive")
                         </span>
                     </td>
                     <td>@f.CreatedAt.ToString("d MMM yyyy")</td>
+                    <td class="admin-table-actions">
+                        <a href="/staff/studfarms/@f.Id" class="btn btn-sm btn-outline">Detail</a>
+                    </td>
                 </tr>
             }
         </tbody>

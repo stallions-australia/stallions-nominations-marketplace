@@ -2,6 +2,7 @@
 @layout StaffLayout
 @attribute [Authorize]
 @inject StaffApiService StaffApi
+@inject DirectoryApiService DirectoryApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
 
@@ -67,6 +68,28 @@
                            placeholder="Street, Town, State, Postcode" />
         </div>
 
+        <div class="form-group">
+            <label class="form-label">Link to Stud Directory</label>
+            @if (_loadingDirectories)
+            {
+                <p style="font-size:var(--font-size-sm);color:var(--text-muted)">Loading directory…</p>
+            }
+            else
+            {
+                <select class="form-select" @bind="_request.StudDirectoryId">
+                    <option value="">— None (link later) —</option>
+                    @foreach (var d in _studDirectories)
+                    {
+                        <option value="@d.Id">@d.Name@(d.State != null ? $" ({d.State})" : "")</option>
+                    }
+                </select>
+                <p style="font-size:var(--font-size-sm);color:var(--text-muted);margin-top:var(--space-1)">
+                    Linking the farm to its directory entry enables the stud admin's authorized stallion list.
+                    Can be set later from the farm's detail page.
+                </p>
+            }
+        </div>
+
         @if (_error != null)
         {
             <div class="alert alert-danger">@_error</div>
@@ -84,7 +107,9 @@
 @code {
     private readonly CreateStudFarmRequest _request = new();
     private List<UserDto> _studFarmAdmins = [];
+    private List<StudDirectorySummaryDto> _studDirectories = [];
     private bool _loadingUsers = true;
+    private bool _loadingDirectories = true;
     private bool _submitting;
     private string? _error;
 
@@ -95,6 +120,9 @@
         try { _studFarmAdmins = await StaffApi.GetStudFarmAdminsAsync(); }
         catch { /* Non-fatal — page will show warning state */ }
         finally { _loadingUsers = false; }
+        try { _studDirectories = await DirectoryApi.GetStudDirectoriesAsync(); }
+        catch { /* non-fatal — dropdown will be empty */ }
+        finally { _loadingDirectories = false; }
     }
 
     private async Task SubmitAsync()
