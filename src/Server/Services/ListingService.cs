@@ -42,6 +42,26 @@ public class ListingService : IListingService
         return ServiceResult<ListingDto>.Ok(MapToDto(listing, isStaff));
     }
 
+    public async Task<ServiceResult<ListingDto>> GetMineByIdAsync(Guid id)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null)
+            return ServiceResult<ListingDto>.Forbidden("Caller identity could not be resolved.");
+
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        if (farm == null)
+            return ServiceResult<ListingDto>.NotFound("No stud farm found for the current user.");
+
+        var listing = await _listingRepo.GetByIdAsync(id);
+        if (listing == null)
+            return ServiceResult<ListingDto>.NotFound("Listing not found.");
+
+        if (listing.StudFarmId != farm.Id)
+            return ServiceResult<ListingDto>.Forbidden("You do not have permission to view this listing.");
+
+        return ServiceResult<ListingDto>.Ok(MapToDto(listing, true));
+    }
+
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetMineAsync()
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();

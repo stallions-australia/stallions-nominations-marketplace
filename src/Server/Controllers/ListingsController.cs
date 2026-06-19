@@ -34,6 +34,14 @@ public class ListingsController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpGet("mine/{id:guid}")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
+    public async Task<IActionResult> GetMineById(Guid id)
+    {
+        var r = await _listings.GetMineByIdAsync(id);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpGet("mine")]
     [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> GetMine()

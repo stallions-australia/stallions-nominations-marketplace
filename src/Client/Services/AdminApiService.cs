@@ -126,11 +126,11 @@ public class AdminApiService
 
     public virtual async Task<ListingDto> GetListingAsync(Guid id)
     {
-        var r = await _http.GetAsync($"api/listings/{id}");
+        var r = await _http.GetAsync($"api/listings/mine/{id}");
         if (r.StatusCode == HttpStatusCode.NotFound)
             throw new ApiException(404, "Listing not found.");
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to load listing.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to load listing."));
         return await r.Content.ReadFromJsonAsync<ListingDto>()
                ?? throw new ApiException(500, "Empty response.");
     }
@@ -139,7 +139,7 @@ public class AdminApiService
     {
         var r = await _http.PostAsJsonAsync("api/listings/fixed-price", request);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to create listing.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to create listing."));
         return await r.Content.ReadFromJsonAsync<ListingDto>()
                ?? throw new ApiException(500, "Empty response.");
     }
@@ -148,7 +148,7 @@ public class AdminApiService
     {
         var r = await _http.PostAsJsonAsync("api/listings/auction", request);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to create listing.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to create listing."));
         return await r.Content.ReadFromJsonAsync<ListingDto>()
                ?? throw new ApiException(500, "Empty response.");
     }
@@ -157,7 +157,7 @@ public class AdminApiService
     {
         var r = await _http.PutAsJsonAsync($"api/listings/{id}", request);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to update listing.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to update listing."));
         return await r.Content.ReadFromJsonAsync<ListingDto>()
                ?? throw new ApiException(500, "Empty response.");
     }
@@ -166,21 +166,27 @@ public class AdminApiService
     {
         var r = await _http.PostAsync($"api/listings/{id}/publish", null);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to publish listing.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to publish listing."));
     }
 
     public virtual async Task UnpublishListingAsync(Guid id)
     {
         var r = await _http.PostAsync($"api/listings/{id}/unpublish", null);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to unpublish listing.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to unpublish listing."));
     }
 
     public virtual async Task CloseListingAsync(Guid id)
     {
         var r = await _http.PostAsync($"api/listings/{id}/close", null);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to close listing.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to close listing."));
+    }
+
+    private static async Task<string> ReadError(HttpResponseMessage r, string fallback)
+    {
+        var body = await r.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(body) ? fallback : body.Trim('"');
     }
 
     // ── Enquiries ──────────────────────────────────────────────────────────
