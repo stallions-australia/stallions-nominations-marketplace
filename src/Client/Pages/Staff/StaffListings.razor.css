@@ -33,3 +33,41 @@
     gap: var(--space-3);
     margin-top: var(--space-5);
 }
+
+.badge-fee-required {
+    background: #fef3c7;
+    color: #92400e;
+    margin-left: var(--space-2);
+    font-size: var(--font-size-xs);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.btn-fee-required {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-xs);
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-fee-required:hover {
+    background: #fde68a;
+    border-color: #f59e0b;
+}
+
+.fee-set {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.fee-set:hover {
+    color: var(--text-primary);
+}

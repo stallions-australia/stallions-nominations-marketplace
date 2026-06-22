@@ -47,7 +47,13 @@ else
                     <td>@l.StallionName</td>
                     <td>@l.StudFarmName</td>
                     <td><span class="badge badge-type-@l.ListingType.ToLowerInvariant()">@l.ListingType</span></td>
-                    <td><span class="badge badge-status-@l.Status.ToLowerInvariant()">@l.Status</span></td>
+                    <td>
+                        <span class="badge badge-status-@l.Status.ToLowerInvariant()">@l.Status</span>
+                        @if (l.Status == "Draft" && !l.PlatformFeePercent.HasValue)
+                        {
+                            <span class="badge badge-fee-required" title="Platform fee must be set before this listing can be published">Fee required</span>
+                        }
+                    </td>
                     <td>@(l.PriceIncGst.HasValue ? l.PriceIncGst.Value.ToString("C") : "—")</td>
                     <td>
                         @if (_editingFeeId == l.Id)
@@ -56,15 +62,21 @@ else
                                 <input type="number" class="form-control" style="width:80px"
                                        @bind="_editingFeeValue" min="0" max="100" step="0.1" />
                                 <button class="btn btn-sm btn-gold" @onclick="() => SaveFeeAsync(l.Id)"
-                                        disabled="@_busy">✓</button>
-                                <button class="btn btn-sm btn-outline" @onclick="CancelFeeEdit">✕</button>
+                                        disabled="@_busy">Save</button>
+                                <button class="btn btn-sm btn-outline" @onclick="CancelFeeEdit">Cancel</button>
                             </div>
+                        }
+                        else if (!l.PlatformFeePercent.HasValue)
+                        {
+                            <button class="btn btn-sm btn-fee-required" @onclick="() => StartFeeEdit(l)">
+                                Set fee
+                            </button>
                         }
                         else
                         {
-                            <span style="cursor:pointer;text-decoration:underline dotted"
-                                  @onclick="() => StartFeeEdit(l)">
-                                @(l.PlatformFeePercent.HasValue ? $"{l.PlatformFeePercent:0.##}%" : "—")
+                            <span class="fee-set" @onclick="() => StartFeeEdit(l)"
+                                  title="Click to edit">
+                                @($"{l.PlatformFeePercent:0.##}%") ✎
                             </span>
                         }
                     </td>
