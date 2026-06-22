@@ -15,6 +15,7 @@ public class BidServiceTests
     private readonly Mock<IBidRepository> _bidRepoMock = new();
     private readonly Mock<IListingRepository> _listingRepoMock = new();
     private readonly Mock<IUserService> _usersMock = new();
+    private readonly Mock<ITermsRepository> _termsRepoMock = new();
 
     private static AppDbContext CreateInMemoryDb()
     {
@@ -25,7 +26,8 @@ public class BidServiceTests
         return new AppDbContext(options);
     }
 
-    private BidService CreateSut() => new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, CreateInMemoryDb());
+    private BidService CreateSut() =>
+        new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, CreateInMemoryDb(), _termsRepoMock.Object);
 
     private static User ActiveBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
@@ -99,5 +101,40 @@ public class BidServiceTests
         result.Succeeded.Should().BeTrue();
         _bidRepoMock.Verify(r => r.UpdateAsync(It.Is<Bid>(b =>
             b.Id == previous.Id && b.Status == BidStatus.Outbid)), Times.Once);
+    }
+
+    [Fact]
+    public async Task PlaceBid_WhenTermsPublishedAndBuyerHasNotAccepted_ReturnsBadRequest()
+    {
+        var buyer = ActiveBuyer();                       // AcceptedTermsVersion = null
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction();
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+        _termsRepoMock.Setup(t => t.GetCurrentAsync())
+            .ReturnsAsync(new TermsDocument { Version = 2, Body = "x" });
+
+        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 1000m });
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Contain("Terms");
+    }
+
+    [Fact]
+    public async Task PlaceBid_WhenBuyerAcceptedCurrentTerms_Succeeds()
+    {
+        var buyer = ActiveBuyer();
+        buyer.AcceptedTermsVersion = 2;
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction(startingPrice: 1000m);
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync((Bid?)null);
+        _bidRepoMock.Setup(r => r.AddAsync(It.IsAny<Bid>())).ReturnsAsync((Bid b) => b);
+        _termsRepoMock.Setup(t => t.GetCurrentAsync())
+            .ReturnsAsync(new TermsDocument { Version = 2, Body = "x" });
+
+        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 1000m });
+
+        result.Succeeded.Should().BeTrue();
     }
 }

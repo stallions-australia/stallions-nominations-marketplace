@@ -13,13 +13,16 @@ public class BidService : IBidService
     private readonly IListingRepository _listingRepo;
     private readonly IUserService _users;
     private readonly AppDbContext _db;
+    private readonly ITermsRepository _termsRepo;
 
-    public BidService(IBidRepository bidRepo, IListingRepository listingRepo, IUserService users, AppDbContext db)
+    public BidService(IBidRepository bidRepo, IListingRepository listingRepo,
+        IUserService users, AppDbContext db, ITermsRepository termsRepo)
     {
         _bidRepo = bidRepo;
         _listingRepo = listingRepo;
         _users = users;
         _db = db;
+        _termsRepo = termsRepo;
     }
 
     public async Task<ServiceResult<CurrentBidDto>> GetCurrentBidAsync(Guid auctionListingId)
@@ -41,6 +44,12 @@ public class BidService : IBidService
 
         if (caller.Status != UserStatus.Active)
             return ServiceResult<BidDto>.Forbidden("Your account must be verified before you can bid.");
+
+        // Buyer must have accepted the current T&C. If none is published, the gate is skipped.
+        var currentTerms = await _termsRepo.GetCurrentAsync();
+        if (currentTerms != null && caller.AcceptedTermsVersion != currentTerms.Version)
+            return ServiceResult<BidDto>.BadRequest(
+                "You must accept the current Terms & Conditions before placing a bid.");
 
         var listing = await _listingRepo.GetAuctionByIdAsync(auctionListingId);
         if (listing == null)
