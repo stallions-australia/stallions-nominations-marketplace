@@ -16,6 +16,11 @@ public class AppRenderTests : TestContext
         var httpClient = new HttpClient { BaseAddress = new Uri("http://localhost/") };
         Services.AddScoped(_ => new UserApiService(httpClient));
         Services.AddScoped<UserStateService>();
+
+        var termsMock = new Mock<TermsApiService>(MockBehavior.Loose,
+            new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        termsMock.Setup(s => s.GetCurrentAsync()).ReturnsAsync((Stallions.Shared.DTOs.Terms.TermsDocumentDto?)null);
+        Services.AddScoped(_ => termsMock.Object);
     }
 
     [Fact]

@@ -38,6 +38,13 @@ public class ListingDetailTests : TestContext
             userApiMock.Setup(s => s.GetMeAsync()).ReturnsAsync((UserDto?)null);
         }
 
+        Services.AddSingleton(userApiMock.Object);
+
+        var termsMock = new Mock<TermsApiService>(MockBehavior.Loose,
+            new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        termsMock.Setup(s => s.GetCurrentAsync()).ReturnsAsync((Stallions.Shared.DTOs.Terms.TermsDocumentDto?)null);
+        Services.AddSingleton(termsMock.Object);
+
         var userState = new UserStateService(userApiMock.Object);
         userState.LoadAsync().GetAwaiter().GetResult();
         Services.AddSingleton(userState);

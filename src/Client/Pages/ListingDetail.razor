@@ -3,6 +3,7 @@
 @inject BidApiService BidApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
+@inject UserApiService UserApi
 
 <PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
 
@@ -71,7 +72,7 @@ else
                                         <input class="form-input" type="number" step="25"
                                                min="@(GetDisplayPrice() + auction.MinimumBidIncrement)"
                                                @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
-                                        <button class="btn btn-gold" @onclick="PlaceBid" disabled="@_bidBusy">
+                                        <button class="btn btn-gold" @onclick="StartBid" disabled="@_bidBusy">
                                             @(_bidBusy ? "Placing…" : "Place bid")
                                         </button>
                                     </div>
@@ -133,6 +134,11 @@ else
     </div>
 }
 
+@if (_showBidConfirm)
+{
+    <BidConfirmationModal OnConfirm="ConfirmBidAndPlace" OnCancel="() => _showBidConfirm = false" />
+}
+
 @code {
     [Parameter] public Guid Id { get; set; }
 
@@ -187,7 +193,38 @@ else
     private static string FormatPrice(decimal amount) =>
         amount.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("en-AU"));
 
-    private async Task PlaceBid()
+    private bool _showBidConfirm;
+
+    // Called by the "Place bid" button — gates on the first-bid confirmation.
+    private void StartBid()
+    {
+        _bidError = null;
+        if (UserState.SuppressBidConfirmation)
+        {
+            _ = DoPlaceBidAsync();
+        }
+        else
+        {
+            _showBidConfirm = true;
+        }
+    }
+
+    private async Task ConfirmBidAndPlace(bool dontShowAgain)
+    {
+        _showBidConfirm = false;
+        if (dontShowAgain)
+        {
+            try
+            {
+                await UserApi.SuppressBidConfirmationAsync();
+                UserState.MarkBidConfirmationSuppressed();
+            }
+            catch { /* non-fatal — proceed with the bid regardless */ }
+        }
+        await DoPlaceBidAsync();
+    }
+
+    private async Task DoPlaceBidAsync()
     {
         _bidError = null;
         _bidSuccess = false;
@@ -201,7 +238,17 @@ else
         }
         catch (ApiException ex)
         {
-            _bidError = ex.Message;
+            if (ex.Message.Contains("Terms & Conditions"))
+            {
+                // Server rejected because a newer T&C needs acceptance. Refresh state so the
+                // layout gate re-prompts; tell the buyer what to do.
+                _bidError = "Please accept the latest Terms & Conditions, then try again.";
+                await UserState.LoadAsync();
+            }
+            else
+            {
+                _bidError = ex.Message;
+            }
         }
         finally
         {
