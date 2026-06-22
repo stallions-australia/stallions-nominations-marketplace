@@ -1,0 +1,93 @@
+@page "/staff/terms"
+@layout StaffLayout
+@attribute [Authorize]
+@inject TermsApiService TermsApi
+@inject UserStateService UserState
+@inject NavigationManager Nav
+
+<PageTitle>Terms &amp; Conditions — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Terms &amp; Conditions</h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <p class="text-secondary text-sm">
+        Current version: <strong>@(_current?.Version.ToString() ?? "none published")</strong>
+        @if (_current is not null) { <text> · published @_current.CreatedAt.ToString("d MMM yyyy")</text> }
+    </p>
+
+    <div class="terms-editor">
+        <label class="form-label">Body (Markdown)</label>
+        <textarea class="form-control" rows="16"
+                  value="@_body"
+                  @oninput="OnBodyInput"></textarea>
+    </div>
+
+    <div class="terms-preview">
+        <label class="form-label">Preview</label>
+        <div class="terms-preview-box">@((MarkupString)_preview)</div>
+    </div>
+
+    @if (_error is not null) { <div class="alert alert-danger">@_error</div> }
+    @if (_published) { <div class="alert alert-success">New version published.</div> }
+
+    <button class="btn btn-gold" @onclick="Publish" disabled="@_busy">
+        @(_busy ? "Publishing…" : "Publish new version")
+    </button>
+}
+
+@code {
+    private TermsDocumentDto? _current;
+    private string _body = string.Empty;
+    private string _preview = string.Empty;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _published;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _loading = true; _error = null;
+        try
+        {
+            _current = await TermsApi.GetCurrentAsync();
+            _body = _current?.Body ?? string.Empty;
+            UpdatePreview();
+        }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load Terms."; }
+        finally { _loading = false; }
+    }
+
+    private void OnBodyInput(ChangeEventArgs e)
+    {
+        _body = e.Value?.ToString() ?? string.Empty;
+        UpdatePreview();
+    }
+
+    private void UpdatePreview() => _preview = Markdig.Markdown.ToHtml(_body ?? string.Empty);
+
+    private async Task Publish()
+    {
+        _busy = true; _error = null; _published = false;
+        try
+        {
+            _current = await TermsApi.PublishAsync(_body);
+            _published = true;
+        }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to publish."; }
+        finally { _busy = false; }
+    }
+}
