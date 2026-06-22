@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Stallions.Server.Auth;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Shared.DTOs.Terms;
 using Stallions.Shared.DTOs.Users;
 using Stallions.Shared.Enums;
 
@@ -12,12 +13,15 @@ public class UserService : IUserService
     private readonly IUserRepository _repo;
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditLogRepository _auditRepo;
+    private readonly ITermsRepository _terms;
 
-    public UserService(IUserRepository repo, ICurrentUserService currentUser, IAuditLogRepository auditRepo)
+    public UserService(IUserRepository repo, ICurrentUserService currentUser,
+        IAuditLogRepository auditRepo, ITermsRepository terms)
     {
         _repo = repo;
         _currentUser = currentUser;
         _auditRepo = auditRepo;
+        _terms = terms;
     }
 
     public async Task<User?> GetOrCreateCurrentUserAsync()
@@ -132,6 +136,34 @@ public class UserService : IUserService
         return ServiceResult.Ok();
     }
 
+    public async Task<ServiceResult> AcceptTermsAsync(AcceptTermsRequest request)
+    {
+        var user = await GetOrCreateCurrentUserAsync();
+        if (user == null) return ServiceResult.Forbidden();
+
+        var current = await _terms.GetCurrentAsync();
+        if (current == null)
+            return ServiceResult.BadRequest("No Terms & Conditions are currently published.");
+        if (request.Version != current.Version)
+            return ServiceResult.BadRequest("The Terms & Conditions have changed. Please review the latest version.");
+
+        user.AcceptedTermsVersion = current.Version;
+        user.AcceptedTermsAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(user);
+        await _auditRepo.LogAsync("User", user.Id, "TermsAccepted", user.Id,
+            $"{{\"Version\":{current.Version}}}");
+        return ServiceResult.Ok();
+    }
+
+    public async Task<ServiceResult> SuppressBidConfirmationAsync()
+    {
+        var user = await GetOrCreateCurrentUserAsync();
+        if (user == null) return ServiceResult.Forbidden();
+        user.SuppressBidConfirmation = true;
+        await _repo.UpdateAsync(user);
+        return ServiceResult.Ok();
+    }
+
     private static UserDto MapToDto(User u) => new()
     {
         Id = u.Id,
@@ -140,6 +172,8 @@ public class UserService : IUserService
         Role = u.Role.ToString(),
         Status = u.Status.ToString(),
         CreatedAt = u.CreatedAt,
-        VerifiedAt = u.VerifiedAt
+        VerifiedAt = u.VerifiedAt,
+        AcceptedTermsVersion = u.AcceptedTermsVersion,
+        SuppressBidConfirmation = u.SuppressBidConfirmation
     };
 }

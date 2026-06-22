@@ -14,7 +14,9 @@ public class UserServiceTests
     private readonly Mock<IUserRepository> _repoMock = new();
     private readonly Mock<ICurrentUserService> _currentUserMock = new();
     private readonly Mock<IAuditLogRepository> _auditRepoMock = new();
-    private UserService CreateSut() => new(_repoMock.Object, _currentUserMock.Object, _auditRepoMock.Object);
+    private readonly Mock<ITermsRepository> _termsRepoMock = new();
+    private UserService CreateSut() =>
+        new(_repoMock.Object, _currentUserMock.Object, _auditRepoMock.Object, _termsRepoMock.Object);
 
     [Fact]
     public async Task GetCurrentUser_WhenUserExists_ReturnsDto()

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stallions.Server.Services;
+using Stallions.Shared.DTOs.Terms;
 using Stallions.Shared.DTOs.Users;
 using Stallions.Shared.Enums;
 
@@ -27,6 +28,22 @@ public class UsersController : ControllerBase
     {
         var r = await _users.UpdateCurrentUserAsync(request);
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPost("me/accept-terms")]
+    [Authorize]
+    public async Task<IActionResult> AcceptTerms([FromBody] AcceptTermsRequest request)
+    {
+        var r = await _users.AcceptTermsAsync(request);
+        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPost("me/suppress-bid-confirmation")]
+    [Authorize]
+    public async Task<IActionResult> SuppressBidConfirmation()
+    {
+        var r = await _users.SuppressBidConfirmationAsync();
+        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
     }
 
     [HttpGet]
