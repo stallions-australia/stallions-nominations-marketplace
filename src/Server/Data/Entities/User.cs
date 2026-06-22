@@ -14,6 +14,11 @@ public class User
     public DateTime? VerifiedAt { get; set; }
     public Guid? VerifiedByUserId { get; set; }
 
+    // T&C acceptance + bid-confirmation onboarding
+    public int? AcceptedTermsVersion { get; set; }
+    public DateTime? AcceptedTermsAt { get; set; }
+    public bool SuppressBidConfirmation { get; set; }
+
     // Navigation properties
     public User? VerifiedBy { get; set; }
     public StudFarm? StudFarm { get; set; }

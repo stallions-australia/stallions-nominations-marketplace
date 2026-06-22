@@ -24,6 +24,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<StudDirectory> StudDirectories => Set<StudDirectory>();
     public DbSet<StallionDirectory> StallionDirectories => Set<StallionDirectory>();
+    public DbSet<TermsDocument> TermsDocuments => Set<TermsDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -322,6 +323,18 @@ public class AppDbContext : DbContext
             e.HasOne(d => d.StudDirectory)
                 .WithMany(s => s.Stallions)
                 .HasForeignKey(d => d.StudDirectoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── TermsDocument ──────────────────────────────────────────────────────
+        modelBuilder.Entity<TermsDocument>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Body).IsRequired();
+            e.HasIndex(t => t.Version).IsUnique();
+            e.HasOne(t => t.CreatedBy)
+                .WithMany()
+                .HasForeignKey(t => t.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }
