@@ -1,0 +1,20 @@
+.terms-welcome { margin-bottom: var(--space-4); }
+
+.terms-body {
+    max-height: 45vh;
+    overflow-y: auto;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.terms-agree {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    margin-bottom: var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+.terms-actions { display: flex; justify-content: flex-end; }

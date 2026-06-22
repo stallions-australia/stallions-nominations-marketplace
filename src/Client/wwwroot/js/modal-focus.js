@@ -29,3 +29,11 @@ window.modalFocus = {
         if (element && element.focus) element.focus();
     }
 };
+
+// Detect whether a scroll container has been scrolled to (near) its bottom.
+window.termsScroll = {
+    atBottom: function (el) {
+        if (!el) return true;
+        return el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+    }
+};

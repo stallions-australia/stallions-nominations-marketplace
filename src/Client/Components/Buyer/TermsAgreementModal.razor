@@ -1,0 +1,60 @@
+@inject IJSRuntime JS
+
+<Modal IsOpen="true" Title="Welcome — Terms & Conditions" CloseOnBackdrop="false" OnClose="NoOp">
+    <div class="terms-welcome">
+        <p>Before you can bid on a nomination, please read and agree to the Stallions Australia
+           Terms &amp; Conditions below. Scroll to the bottom to continue.</p>
+    </div>
+    <div class="terms-body" @ref="_scrollRef" @onscroll="OnScroll">
+        @((MarkupString)_html)
+    </div>
+    <label class="terms-agree">
+        <input type="checkbox" @bind="_checked" disabled="@(!_scrolledToEnd)" />
+        <span>I have read and agree to the Terms &amp; Conditions@(_scrolledToEnd ? "" : " (scroll to the end to enable)").</span>
+    </label>
+    @if (_error is not null) { <ErrorMessage Message="@_error" /> }
+    <div class="terms-actions">
+        <button class="btn btn-gold" disabled="@(!_checked || _busy)" @onclick="Agree">
+            @(_busy ? "Saving…" : "Agree and continue")
+        </button>
+    </div>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public TermsDocumentDto Terms { get; set; } = default!;
+    [Parameter] public EventCallback OnAccepted { get; set; }
+
+    private ElementReference _scrollRef;
+    private string _html = string.Empty;
+    private bool _scrolledToEnd;
+    private bool _checked;
+    private bool _busy;
+    private string? _error;
+
+    protected override void OnParametersSet() =>
+        _html = Markdig.Markdown.ToHtml(Terms.Body ?? string.Empty);
+
+    private async Task OnScroll()
+    {
+        // Detect scroll-to-bottom (within a small tolerance) via JS measurement.
+        try
+        {
+            _scrolledToEnd = await JS.InvokeAsync<bool>("termsScroll.atBottom", _scrollRef);
+            StateHasChanged();
+        }
+        catch { _scrolledToEnd = true; /* fail open in environments without JS */ }
+    }
+
+    private async Task Agree()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            await OnAccepted.InvokeAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void NoOp() { /* blocking modal — no dismiss without agreeing */ }
+}
