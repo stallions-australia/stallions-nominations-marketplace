@@ -9,4 +9,6 @@ public class UserDto
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime? VerifiedAt { get; set; }
+    public int? AcceptedTermsVersion { get; set; }
+    public bool SuppressBidConfirmation { get; set; }
 }
