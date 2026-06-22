@@ -102,6 +102,7 @@ builder.Services.AddScoped<IEnquiryRepository, EnquiryRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IStudDirectoryRepository, StudDirectoryRepository>();
 builder.Services.AddScoped<IStallionDirectoryRepository, StallionDirectoryRepository>();
+builder.Services.AddScoped<ITermsRepository, TermsRepository>();
 
 // Blob Storage (uses DefaultAzureCredential; requires AZURE_STORAGE_ACCOUNT_NAME in appsettings.Development.json)
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
@@ -117,6 +118,7 @@ builder.Services.AddScoped<INominationBindingService, NominationBindingService>(
 builder.Services.AddScoped<IEnquiryService, EnquiryService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IDirectoryService, DirectoryService>();
+builder.Services.AddScoped<ITermsService, TermsService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>
