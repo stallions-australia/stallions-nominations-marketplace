@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
@@ -143,46 +144,53 @@ public class CheckoutService : ICheckoutService
         if (purchase.Status != PurchaseStatus.Pending)
             return ServiceResult.BadRequest("Purchase is not in Pending status.");
 
-        using var tx = await _db.Database.BeginTransactionAsync();
-        try
+        // The DbContext is configured with EnableRetryOnFailure, so a user-initiated
+        // transaction must be executed through the retrying execution strategy as a
+        // single retriable unit (EF Core throws otherwise).
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            purchase.Status = PurchaseStatus.Completed;
-            purchase.PaidAt = DateTime.UtcNow;
-            await _purchaseRepo.UpdateAsync(purchase);
-
-            var binding = new NominationBinding
+            using var tx = await _db.Database.BeginTransactionAsync();
+            try
             {
-                PurchaseId = purchase.Id,
-                Status = BindingStatus.PendingAcknowledgement
-            };
-            await _bindingRepo.AddAsync(binding);
+                purchase.Status = PurchaseStatus.Completed;
+                purchase.PaidAt = DateTime.UtcNow;
+                await _purchaseRepo.UpdateAsync(purchase);
 
-            var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
-            if (listing is FixedPriceListing fpl)
-            {
-                fpl.QuantityRemaining--;
-                if (fpl.QuantityRemaining <= 0) { fpl.Status = ListingStatus.Sold; fpl.ClosedAt = DateTime.UtcNow; }
-                await _listingRepo.UpdateAsync(fpl);
+                var binding = new NominationBinding
+                {
+                    PurchaseId = purchase.Id,
+                    Status = BindingStatus.PendingAcknowledgement
+                };
+                await _bindingRepo.AddAsync(binding);
+
+                var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
+                if (listing is FixedPriceListing fpl)
+                {
+                    fpl.QuantityRemaining--;
+                    if (fpl.QuantityRemaining <= 0) { fpl.Status = ListingStatus.Sold; fpl.ClosedAt = DateTime.UtcNow; }
+                    await _listingRepo.UpdateAsync(fpl);
+                }
+                else if (listing is AuctionListing al)
+                {
+                    al.WinningBidId = purchase.BidId;
+                    al.Status = ListingStatus.Sold;
+                    al.ClosedAt = DateTime.UtcNow;
+                    await _listingRepo.UpdateAsync(al);
+                }
+
+                await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseCompleted", null,
+                    $"{{\"PlatformFeeIncGst\":{purchase.PlatformFeeIncGst}}}");
+
+                await tx.CommitAsync();
+                return ServiceResult.Ok();
             }
-            else if (listing is AuctionListing al)
+            catch
             {
-                al.WinningBidId = purchase.BidId;
-                al.Status = ListingStatus.Sold;
-                al.ClosedAt = DateTime.UtcNow;
-                await _listingRepo.UpdateAsync(al);
+                await tx.RollbackAsync();
+                throw;
             }
-
-            await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseCompleted", null,
-                $"{{\"PlatformFeeIncGst\":{purchase.PlatformFeeIncGst}}}");
-
-            await tx.CommitAsync();
-            return ServiceResult.Ok();
-        }
-        catch
-        {
-            await tx.RollbackAsync();
-            throw;
-        }
+        });
     }
 
     public async Task<ServiceResult<IReadOnlyList<PurchaseDto>>> GetPurchasesAsync()

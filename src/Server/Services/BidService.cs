@@ -52,45 +52,53 @@ public class BidService : IBidService
         if (listing.EndDateTime <= DateTime.UtcNow)
             return ServiceResult<BidDto>.BadRequest("This auction has ended.");
 
-        // Transactional section: re-read, validate, and mutate atomically
-        using var tx = await _db.Database.BeginTransactionAsync();
-        try
+        // Transactional section: re-read, validate, and mutate atomically.
+        // The DbContext is configured with EnableRetryOnFailure, so a user-initiated
+        // transaction must be executed through the retrying execution strategy as a
+        // single retriable unit (EF Core throws otherwise). The whole block re-reads
+        // fresh state on each attempt, so a retry is safe.
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            var highest = await _bidRepo.GetHighestBidAsync(auctionListingId);
-            var minimumRequired = highest != null
-                ? highest.AmountIncGst + listing.MinimumBidIncrement
-                : listing.StartingPrice;
-
-            if (request.AmountIncGst < minimumRequired)
-                return ServiceResult<BidDto>.BadRequest(
-                    $"Bid must be at least ${minimumRequired:N2} (minimum increment: ${listing.MinimumBidIncrement:N2}).");
-
-            if (highest != null && highest.BuyerUserId == caller.Id)
-                return ServiceResult<BidDto>.BadRequest("You already hold the highest bid on this auction.");
-
-            if (highest != null)
+            using var tx = await _db.Database.BeginTransactionAsync();
+            try
             {
-                highest.Status = BidStatus.Outbid;
-                await _bidRepo.UpdateAsync(highest);
+                var highest = await _bidRepo.GetHighestBidAsync(auctionListingId);
+                var minimumRequired = highest != null
+                    ? highest.AmountIncGst + listing.MinimumBidIncrement
+                    : listing.StartingPrice;
+
+                if (request.AmountIncGst < minimumRequired)
+                    return ServiceResult<BidDto>.BadRequest(
+                        $"Bid must be at least ${minimumRequired:N2} (minimum increment: ${listing.MinimumBidIncrement:N2}).");
+
+                if (highest != null && highest.BuyerUserId == caller.Id)
+                    return ServiceResult<BidDto>.BadRequest("You already hold the highest bid on this auction.");
+
+                if (highest != null)
+                {
+                    highest.Status = BidStatus.Outbid;
+                    await _bidRepo.UpdateAsync(highest);
+                }
+
+                var bid = new Bid
+                {
+                    AuctionListingId = auctionListingId,
+                    BuyerUserId = caller.Id,
+                    AmountIncGst = request.AmountIncGst,
+                    Status = BidStatus.Active
+                };
+
+                var created = await _bidRepo.AddAsync(bid);
+                await tx.CommitAsync();
+                return ServiceResult<BidDto>.Created(MapToDto(created));
             }
-
-            var bid = new Bid
+            catch
             {
-                AuctionListingId = auctionListingId,
-                BuyerUserId = caller.Id,
-                AmountIncGst = request.AmountIncGst,
-                Status = BidStatus.Active
-            };
-
-            var created = await _bidRepo.AddAsync(bid);
-            await tx.CommitAsync();
-            return ServiceResult<BidDto>.Created(MapToDto(created));
-        }
-        catch
-        {
-            await tx.RollbackAsync();
-            throw;
-        }
+                await tx.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     public async Task<ServiceResult<IReadOnlyList<BidDto>>> GetHistoryAsync(Guid auctionListingId)
