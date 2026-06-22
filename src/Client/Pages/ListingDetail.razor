@@ -60,7 +60,7 @@ else
 
                     <AuthorizeView>
                         <Authorized>
-                            @if (UserState.IsBuyer)
+                            @if (UserState.IsBuyer && UserState.IsVerified)
                             {
                                 <div class="bid-form">
                                     <p class="bid-form-hint">
@@ -77,6 +77,13 @@ else
                                     </div>
                                     @if (_bidError is not null) { <ErrorMessage Message="@_bidError" /> }
                                     @if (_bidSuccess)           { <p class="text-success">&#10003; Bid placed!</p> }
+                                </div>
+                            }
+                            else if (UserState.IsBuyer && UserState.IsPendingVerification)
+                            {
+                                <div class="pending-verification-notice">
+                                    <p><strong>Account verification pending</strong></p>
+                                    <p>Your registration is awaiting approval from Stallions Australia. You'll be able to bid once your account has been verified. Please contact <a href="mailto:info@stallionsaustralia.com.au">info@stallionsaustralia.com.au</a> if you have any questions.</p>
                                 </div>
                             }
                         </Authorized>

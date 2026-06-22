@@ -51,14 +51,20 @@ public class StaffApiService
     {
         var r = await _http.PostAsync($"api/users/{id}/verify", null);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to verify user.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to verify user."));
     }
 
     public virtual async Task SuspendUserAsync(Guid id)
     {
         var r = await _http.PostAsync($"api/users/{id}/suspend", null);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to suspend user.");
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to suspend user."));
+    }
+
+    private static async Task<string> ReadError(HttpResponseMessage r, string fallback)
+    {
+        var body = await r.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(body) ? fallback : body.Trim('"');
     }
 
     public virtual async Task SetUserRoleAsync(Guid id, string role)

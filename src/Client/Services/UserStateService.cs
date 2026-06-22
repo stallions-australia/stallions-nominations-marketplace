@@ -18,10 +18,13 @@ public class UserStateService
 
     public UserDto? CurrentUser { get; private set; }
 
-    public string? Role => CurrentUser?.Role;
+    public string? Role   => CurrentUser?.Role;
+    public string? Status => CurrentUser?.Status;
     public bool IsStaff        => Role == "Staff";
     public bool IsStudFarmAdmin => Role == "StudFarmAdmin";
     public bool IsBuyer        => Role == "Buyer";
+    public bool IsVerified     => Status == "Active";
+    public bool IsPendingVerification => Status == "PendingVerification";
     public bool IsLoaded       => CurrentUser is not null;
 
     /// <summary>

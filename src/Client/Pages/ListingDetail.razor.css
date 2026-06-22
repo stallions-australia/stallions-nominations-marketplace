@@ -98,6 +98,23 @@
     flex: 1;
 }
 
+.pending-verification-notice {
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    font-size: var(--font-size-sm);
+    color: #78350f;
+}
+
+.pending-verification-notice p {
+    margin: 0 0 var(--space-2);
+}
+
+.pending-verification-notice p:last-child {
+    margin-bottom: 0;
+}
+
 .listing-qty-label {
     margin-bottom: var(--space-2);
 }
