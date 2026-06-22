@@ -53,6 +53,8 @@ builder.Services.AddHttpClient<StaffApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 builder.Services.AddHttpClient<DirectoryApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
+builder.Services.AddHttpClient<TermsApiService>(c => c.BaseAddress = apiBase)
+    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 
 builder.Services.AddScoped<UserStateService>();
 
