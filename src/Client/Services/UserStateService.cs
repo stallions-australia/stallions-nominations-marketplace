@@ -27,6 +27,33 @@ public class UserStateService
     public bool IsPendingVerification => Status == "PendingVerification";
     public bool IsLoaded       => CurrentUser is not null;
 
+    public int? AcceptedTermsVersion => CurrentUser?.AcceptedTermsVersion;
+    public bool SuppressBidConfirmation => CurrentUser?.SuppressBidConfirmation ?? false;
+
+    /// <summary>True when this verified buyer must accept a newer T&C version.</summary>
+    public bool NeedsTermsAcceptance(int currentVersion) =>
+        IsBuyer && IsVerified && (AcceptedTermsVersion is null || AcceptedTermsVersion < currentVersion);
+
+    /// <summary>Update cached state after a successful accept-terms call (avoids a full reload).</summary>
+    public void MarkTermsAccepted(int version)
+    {
+        if (CurrentUser is not null)
+        {
+            CurrentUser.AcceptedTermsVersion = version;
+            OnChange?.Invoke();
+        }
+    }
+
+    /// <summary>Update cached state after a successful suppress-bid-confirmation call.</summary>
+    public void MarkBidConfirmationSuppressed()
+    {
+        if (CurrentUser is not null)
+        {
+            CurrentUser.SuppressBidConfirmation = true;
+            OnChange?.Invoke();
+        }
+    }
+
     /// <summary>
     /// Raised whenever CurrentUser changes (loaded or cleared).
     /// Components subscribe and call StateHasChanged in response.
