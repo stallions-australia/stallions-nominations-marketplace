@@ -1,0 +1,35 @@
+<Modal IsOpen="true" Title="Confirm your bid" CloseOnBackdrop="false" OnClose="Cancel">
+    <div class="bid-confirm-body">
+        <p><strong>This bid is legally binding.</strong> By confirming, you commit to purchasing
+           this nomination at your bid price if you win the auction. Winning bidders must provide
+           mare details and pay the platform fee to complete the purchase.</p>
+        <label class="bid-confirm-skip">
+            <input type="checkbox" @bind="_dontShowAgain" />
+            <span>Don't show this message again.</span>
+        </label>
+    </div>
+    <div class="bid-confirm-actions">
+        <button class="btn btn-outline" @onclick="Cancel" disabled="@_busy">Cancel</button>
+        <button class="btn btn-gold" @onclick="Confirm" disabled="@_busy">
+            @(_busy ? "Placing…" : "Confirm bid")
+        </button>
+    </div>
+</Modal>
+
+@code {
+    /// <summary>Invoked when the buyer confirms; argument = whether to suppress future confirmations.</summary>
+    [Parameter] public EventCallback<bool> OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private bool _dontShowAgain;
+    private bool _busy;
+
+    private async Task Confirm()
+    {
+        _busy = true;
+        await OnConfirm.InvokeAsync(_dontShowAgain);
+        _busy = false;
+    }
+
+    private async Task Cancel() => await OnCancel.InvokeAsync();
+}
