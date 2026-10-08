@@ -10,3 +10,6 @@ obj/
 # Local dev secrets
 src/Server/appsettings.Development.json
 
+
+# Claude Code worktrees (local only)
+.claude/worktrees/
