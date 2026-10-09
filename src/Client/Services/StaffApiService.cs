@@ -145,6 +145,36 @@ public class StaffApiService
         return await r.Content.ReadFromJsonAsync<List<SeasonDto>>() ?? [];
     }
 
+    public virtual async Task<SeasonDto?> CreateSeasonAsync(CreateSeasonRequest request)
+    {
+        var r = await _http.PostAsJsonAsync("api/seasons", request);
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
+        return await r.Content.ReadFromJsonAsync<SeasonDto>();
+    }
+
+    public virtual async Task<SeasonDto?> UpdateSeasonAsync(Guid id, UpdateSeasonRequest request)
+    {
+        var r = await _http.PutAsJsonAsync($"api/seasons/{id}", request);
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
+        return await r.Content.ReadFromJsonAsync<SeasonDto>();
+    }
+
+    public virtual async Task OpenSeasonAsync(Guid id)
+    {
+        var r = await _http.PostAsync($"api/seasons/{id}/open", null);
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
+    }
+
+    public virtual async Task CloseSeasonAsync(Guid id)
+    {
+        var r = await _http.PostAsync($"api/seasons/{id}/close", null);
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
+    }
+
     public virtual async Task<List<ListingStaffSummaryDto>> GetAllListingsAsync()
     {
         var r = await _http.GetAsync("api/admin/listings");

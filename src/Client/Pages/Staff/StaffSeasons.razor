@@ -1,0 +1,243 @@
+@page "/staff/seasons"
+@layout StaffLayout
+@attribute [Authorize]
+@inject StaffApiService StaffApi
+@inject UserStateService UserState
+@inject NavigationManager Nav
+
+<PageTitle>Seasons — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Seasons</h1>
+    <button class="btn btn-gold" @onclick="OpenCreate">+ New season</button>
+</div>
+
+<p class="text-secondary text-sm">
+    Only one season can be open at a time. Studs can create listings only in the open season, and
+    listing fees are paid per stallion for a season. Opening and closing are manual.
+</p>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_seasons.Count == 0)
+{
+    <div class="admin-empty-state"><p>No seasons yet. Create the first one.</p></div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Season</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Status</th>
+                <th>Opened</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in _seasons)
+            {
+                <tr class="season-row">
+                    <td>@s.Name</td>
+                    <td>@s.StartDate.ToString("d MMM yyyy")</td>
+                    <td>@s.EndDate.ToString("d MMM yyyy")</td>
+                    <td>
+                        <span class="badge @(s.IsOpen ? "badge-active" : "badge-cancelled")">@(s.IsOpen ? "Open" : "Closed")</span>
+                    </td>
+                    <td>@(s.OpenedAt.HasValue ? s.OpenedAt.Value.ToLocalTime().ToString("d MMM yyyy") : "—")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline" @onclick="() => OpenEdit(s)">Edit</button>
+                        @if (s.IsOpen)
+                        {
+                            <button class="btn btn-sm btn-outline" @onclick="() => AskClose(s)">Close</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-gold" @onclick="() => AskOpen(s)">Open</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@* ── Create / edit ────────────────────────────────────────────────────── *@
+<Modal IsOpen="@_editOpen" Title="@(_editing is null ? "New season" : $"Edit {_editing.Name}")" OnClose="CloseModals">
+    <div class="form-group">
+        <label class="form-label" for="season-name">Name</label>
+        <input id="season-name" class="form-input" @bind="_formName" placeholder="e.g. 2026 Season" />
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="season-start">Start date</label>
+        <input id="season-start" type="date" class="form-input" @bind="_formStart" />
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="season-end">End date</label>
+        <input id="season-end" type="date" class="form-input" @bind="_formEnd" />
+    </div>
+    @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_busy">@(_busy ? "Saving…" : "Save")</button>
+        <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@* ── Open / close confirmation ────────────────────────────────────────── *@
+<Modal IsOpen="@(_confirmFor is not null)" Title="@(_confirmOpen ? $"Open {_confirmFor?.Name}" : $"Close {_confirmFor?.Name}")" OnClose="CloseModals">
+    @if (_confirmOpen && _alreadyOpen is not null)
+    {
+        <p>@_alreadyOpen.Name is currently open. Only one season can be open at a time —
+           Close @_alreadyOpen.Name first, then open @_confirmFor?.Name.</p>
+        <div class="form-actions">
+            <button class="btn btn-outline" @onclick="CloseModals">OK</button>
+        </div>
+    }
+    else
+    {
+        @if (_confirmOpen)
+        {
+            <p>Studs will be able to create listings in @_confirmFor?.Name. Stallions will need a paid
+               or waived listing fee for @_confirmFor?.Name before those listings can be published.</p>
+        }
+        else
+        {
+            <p>Studs won't be able to create new listings in @_confirmFor?.Name.
+               Existing listings, auctions and listing fees are not affected.</p>
+        }
+        @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+        <div class="form-actions">
+            <button class="btn btn-gold" @onclick="ConfirmAsync" disabled="@_busy">
+                @(_busy ? "Saving…" : _confirmOpen ? "Open season" : "Close season")
+            </button>
+            <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+        </div>
+    }
+</Modal>
+
+@code {
+    private List<SeasonDto> _seasons = [];
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _modalError;
+
+    private bool _editOpen;
+    private SeasonDto? _editing;              // null = creating
+    private string _formName = string.Empty;
+    private DateOnly _formStart;
+    private DateOnly _formEnd;
+
+    private SeasonDto? _confirmFor;
+    private bool _confirmOpen;                // true = opening, false = closing
+    private SeasonDto? _alreadyOpen;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _seasons = (await StaffApi.GetSeasonsAsync() ?? [])
+                .OrderByDescending(s => s.StartDate).ToList();
+        }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load seasons."; }
+        finally { _loading = false; }
+    }
+
+    private void OpenCreate()
+    {
+        CloseModals();
+        _editing = null;
+        _formName = string.Empty;
+        var latest = _seasons.OrderByDescending(s => s.EndDate).FirstOrDefault();
+        // Suggest the season after the latest one (same dates a year on).
+        _formStart = latest?.StartDate.AddYears(1) ?? DateOnly.FromDateTime(DateTime.Today);
+        _formEnd = latest?.EndDate.AddYears(1) ?? _formStart.AddMonths(6);
+        _editOpen = true;
+    }
+
+    private void OpenEdit(SeasonDto s)
+    {
+        CloseModals();
+        _editing = s;
+        _formName = s.Name;
+        _formStart = s.StartDate;
+        _formEnd = s.EndDate;
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_formName)) { _modalError = "A season name is required."; return; }
+        if (_formEnd <= _formStart) { _modalError = "End date must be after the start date."; return; }
+
+        _busy = true;
+        try
+        {
+            if (_editing is null)
+                await StaffApi.CreateSeasonAsync(new CreateSeasonRequest
+                    { Name = _formName.Trim(), StartDate = _formStart, EndDate = _formEnd });
+            else
+                await StaffApi.UpdateSeasonAsync(_editing.Id, new UpdateSeasonRequest
+                    { Name = _formName.Trim(), StartDate = _formStart, EndDate = _formEnd });
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to save season."; }
+        finally { _busy = false; }
+    }
+
+    private void AskOpen(SeasonDto s)
+    {
+        CloseModals();
+        _confirmFor = s;
+        _confirmOpen = true;
+        _alreadyOpen = _seasons.FirstOrDefault(x => x.IsOpen && x.Id != s.Id);
+    }
+
+    private void AskClose(SeasonDto s)
+    {
+        CloseModals();
+        _confirmFor = s;
+        _confirmOpen = false;
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_confirmFor is null) return;
+        _busy = true; _modalError = null;
+        try
+        {
+            if (_confirmOpen) await StaffApi.OpenSeasonAsync(_confirmFor.Id);
+            else await StaffApi.CloseSeasonAsync(_confirmFor.Id);
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to update season."; }
+        finally { _busy = false; }
+    }
+
+    private void CloseModals()
+    {
+        _editOpen = false;
+        _confirmFor = null;
+        _alreadyOpen = null;
+        _modalError = null;
+    }
+}
