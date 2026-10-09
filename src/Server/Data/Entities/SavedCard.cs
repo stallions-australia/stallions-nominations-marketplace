@@ -23,5 +23,6 @@ public class SavedCard
 
     /// <summary>A card is usable until the last day of its expiry month.</summary>
     public bool IsValidOn(DateOnly date) =>
-        date <= new DateOnly(ExpYear, ExpMonth, DateTime.DaysInMonth(ExpYear, ExpMonth));
+        ExpMonth is >= 1 and <= 12 && ExpYear is >= 1 and <= 9998
+        && date <= new DateOnly(ExpYear, ExpMonth, DateTime.DaysInMonth(ExpYear, ExpMonth));
 }

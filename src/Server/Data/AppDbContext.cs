@@ -44,7 +44,8 @@ public class AppDbContext : DbContext
             e.Property(u => u.Email).HasMaxLength(256).IsRequired();
             e.Property(u => u.DisplayName).HasMaxLength(200).IsRequired();
             e.Property(u => u.ObjectId).HasMaxLength(36).IsRequired();
-            e.Property(u => u.PaymentCustomerId).HasMaxLength(100);
+            e.Property(u => u.PaymentCustomerId).HasMaxLength(255);
+            e.Property(u => u.PaymentCustomerProvider).HasMaxLength(20);
 
             e.HasOne(u => u.VerifiedBy)
                 .WithMany()
@@ -400,8 +401,8 @@ public class AppDbContext : DbContext
             e.HasKey(c => c.Id);
             e.HasIndex(c => c.UserId).IsUnique();
             e.Property(c => c.Provider).HasMaxLength(20).IsRequired();
-            e.Property(c => c.ProviderCustomerId).HasMaxLength(100).IsRequired();
-            e.Property(c => c.ProviderPaymentMethodId).HasMaxLength(100).IsRequired();
+            e.Property(c => c.ProviderCustomerId).HasMaxLength(255).IsRequired();
+            e.Property(c => c.ProviderPaymentMethodId).HasMaxLength(255).IsRequired();
             e.Property(c => c.Brand).HasMaxLength(30).IsRequired();
             e.Property(c => c.Last4).HasMaxLength(4).IsRequired();
 
