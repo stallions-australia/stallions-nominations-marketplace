@@ -25,6 +25,10 @@
                     }
                     <NavLink href="/my-bids"      class="nav-link">My Bids</NavLink>
                     <NavLink href="/my-purchases" class="nav-link">My Purchases</NavLink>
+                    @if (UserState.IsBuyer)
+                    {
+                        <NavLink href="/account/card" class="nav-link">Payment card</NavLink>
+                    }
                     <NavLink href="/enquiries"    class="nav-link">Messages</NavLink>
                     <button class="btn btn-outline btn-sm" @onclick="SignOut">Sign out</button>
                 </Authorized>
@@ -60,6 +64,10 @@
                     }
                     <NavLink href="/my-bids"      class="drawer-link" @onclick="CloseDrawer">My Bids</NavLink>
                     <NavLink href="/my-purchases" class="drawer-link" @onclick="CloseDrawer">My Purchases</NavLink>
+                    @if (UserState.IsBuyer)
+                    {
+                        <NavLink href="/account/card" class="drawer-link" @onclick="CloseDrawer">Payment card</NavLink>
+                    }
                     <NavLink href="/enquiries"    class="drawer-link" @onclick="CloseDrawer">Messages</NavLink>
                     <button class="btn btn-outline btn-full" @onclick="SignOut">Sign out</button>
                 </Authorized>

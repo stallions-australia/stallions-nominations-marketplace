@@ -19,6 +19,7 @@ public class DisclosuresController : ControllerBase
     public IActionResult GetBuyerFee() => Ok(new BuyerFeeDisclosureDto
     {
         BuyerFeeExplanation = _options.Value.BuyerFeeExplanation,
-        BalanceArrangement = _options.Value.StudFarmBalanceArrangement
+        BalanceArrangement = _options.Value.StudFarmBalanceArrangement,
+        SavedCardExplanation = _options.Value.SavedCardExplanation
     });
 }

@@ -8,4 +8,6 @@ public class BuyerFeeDisclosureDto
 {
     public string BuyerFeeExplanation { get; set; } = string.Empty;
     public string BalanceArrangement { get; set; } = string.Empty;
+    /// <summary>What the buyer's saved card is (and isn't) charged for — shown on the card page.</summary>
+    public string SavedCardExplanation { get; set; } = string.Empty;
 }

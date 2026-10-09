@@ -8,13 +8,15 @@ using Stallions.Client.Services;
 using Stallions.Shared.DTOs.Bids;
 using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.DTOs.Listings;
+using Stallions.Shared.DTOs.Payments;
 using Stallions.Shared.DTOs.Users;
 
 namespace Stallions.Client.Tests.Pages;
 
 public class ListingDetailTests : TestContext
 {
-    private void RegisterServices(ListingDto listing, string? role = null, List<PublicBidDto>? history = null)
+    private void RegisterServices(ListingDto listing, string? role = null, List<PublicBidDto>? history = null,
+        SavedCardDto? card = null)
     {
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
@@ -56,6 +58,11 @@ public class ListingDetailTests : TestContext
         var userState = new UserStateService(userApiMock.Object);
         userState.LoadAsync().GetAwaiter().GetResult();
         Services.AddSingleton(userState);
+
+        var paymentsMock = new Mock<PaymentsApiService>(MockBehavior.Loose,
+            new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        paymentsMock.Setup(s => s.GetMyCardAsync()).ReturnsAsync(card);
+        Services.AddSingleton(paymentsMock.Object);
     }
 
     [Fact]
@@ -159,5 +166,44 @@ public class ListingDetailTests : TestContext
 
         cut.WaitForAssertion(() => cut.FindAll(".bid-history-row").Should().HaveCount(2));
         cut.Markup.Should().Contain("Bidder 1").And.Contain("Bidder 2").And.Contain("$1,200");
+    }
+    [Fact]
+    public void VerifiedBuyerWithoutACard_SeesSaveACardInsteadOfTheBidForm()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ActiveAuction();
+        RegisterServices(listing, role: "Buyer", card: null);
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Find("a[href='/account/card']").TextContent.Should().Contain("Save a card to bid"));
+        cut.FindAll(".bid-form").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void VerifiedBuyerWithAnExpiredCard_SeesSaveACardInsteadOfTheBidForm()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ActiveAuction();
+        RegisterServices(listing, role: "Buyer",
+            card: new SavedCardDto { Brand = "visa", Last4 = "4242", ExpMonth = 1, ExpYear = 2020, IsValid = false });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Find("a[href='/account/card']").TextContent.Should().Contain("Save a card to bid"));
+        cut.FindAll(".bid-form").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void VerifiedBuyerWithAValidCard_SeesTheBidForm()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ActiveAuction();
+        RegisterServices(listing, role: "Buyer",
+            card: new SavedCardDto { Brand = "visa", Last4 = "4242", ExpMonth = 8, ExpYear = 2028, IsValid = true });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.FindAll(".bid-form").Should().ContainSingle());
     }
 }
