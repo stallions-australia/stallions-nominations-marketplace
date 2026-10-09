@@ -45,17 +45,19 @@ public class CheckoutServiceTests
     private static User VerifiedBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
 
+    private static AuctionListing EndedAuction(decimal? feePercent) => new()
+    {
+        Id = Guid.NewGuid(), Status = ListingStatus.Active,
+        PlatformFeePercent = feePercent,
+        EndDateTime = DateTime.UtcNow.AddHours(-1)
+    };
+
     [Fact]
     public async Task Initiate_WhenMareMissing_ReturnsBadRequest()
     {
         var buyer = VerifiedBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var listing = new FixedPriceListing
-        {
-            Id = Guid.NewGuid(), Status = ListingStatus.Active,
-            PlatformFeePercent = 2.5m, PriceIncGst = 10000m,
-            Quantity = 5, QuantityRemaining = 5
-        };
+        var listing = EndedAuction(feePercent: 2.5m);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
         var result = await CreateSut().InitiateCheckoutAsync(listing.Id,
@@ -70,12 +72,7 @@ public class CheckoutServiceTests
     {
         var buyer = VerifiedBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var listing = new FixedPriceListing
-        {
-            Id = Guid.NewGuid(), Status = ListingStatus.Active,
-            PlatformFeePercent = null, PriceIncGst = 10000m,
-            Quantity = 5, QuantityRemaining = 5
-        };
+        var listing = EndedAuction(feePercent: null);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
         var result = await CreateSut().InitiateCheckoutAsync(listing.Id,
@@ -91,13 +88,12 @@ public class CheckoutServiceTests
         // $10,000 at 2.5% fee: FeeIncGst=$250, FeeGst=$250/11=$22.73, FeeExGst=$227.27
         var buyer = VerifiedBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var listing = new FixedPriceListing
-        {
-            Id = Guid.NewGuid(), Status = ListingStatus.Active,
-            PlatformFeePercent = 2.5m, PriceIncGst = 10000m,
-            Quantity = 5, QuantityRemaining = 5
-        };
+        var listing = EndedAuction(feePercent: 2.5m);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(listing.Id)).ReturnsAsync(new Bid
+        {
+            Id = Guid.NewGuid(), AuctionListingId = listing.Id, BuyerUserId = buyer.Id, AmountIncGst = 10000m
+        });
         Purchase? captured = null;
         _purchaseRepoMock.Setup(r => r.AddAsync(It.IsAny<Purchase>()))
             .Callback<Purchase>(p => captured = p)
@@ -129,10 +125,10 @@ public class CheckoutServiceTests
     [Fact]
     public async Task Complete_WhenValid_CreatesNominationBinding()
     {
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), Status = ListingStatus.Active,
-            QuantityRemaining = 3, Quantity = 5
+            EndDateTime = DateTime.UtcNow.AddHours(-1)
         };
         var purchase = new Purchase
         {

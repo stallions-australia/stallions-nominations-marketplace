@@ -23,9 +23,7 @@ else
         <div class="listing-hero-placeholder"></div>
         <div class="listing-hero-overlay"></div>
         <div class="listing-hero-text container">
-            <span class="badge @(_listing.ListingType == "Auction" ? "badge-auction" : "badge-buynow")">
-                @(_listing.ListingType == "Auction" ? "Auction" : "Buy Now")
-            </span>
+            <span class="badge badge-auction">@_listing.ListingType</span>
             <h1 class="listing-hero-name">@_listing.StallionName</h1>
             <p class="listing-hero-farm">
                 <a href="/studfarms/@_listing.StudFarmId">@_listing.StudFarmName</a>
@@ -95,23 +93,6 @@ else
                 </div>
             }
 
-            @if (_listing is FixedPriceListingDto fp)
-            {
-                <div class="listing-fp-block">
-                    <p class="listing-qty-label text-secondary text-sm">@fp.QuantityRemaining nominations remaining</p>
-                    <AuthorizeView>
-                        <Authorized>
-                            @if (UserState.IsBuyer)
-                            {
-                                <a href="/checkout/@_listing.Id" class="btn btn-gold btn-full">Purchase nomination</a>
-                            }
-                        </Authorized>
-                        <NotAuthorized>
-                            <a href="authentication/login" class="btn btn-gold btn-full">Sign in to purchase</a>
-                        </NotAuthorized>
-                    </AuthorizeView>
-                </div>
-            }
 
             <div class="listing-enquire">
                 <AuthorizeView>
@@ -180,7 +161,6 @@ else
         {
             AuctionListingDto al when al.CurrentHighestBidIncGst.HasValue => al.CurrentHighestBidIncGst.Value,
             AuctionListingDto al => al.StartingPrice,
-            FixedPriceListingDto fp => fp.PriceIncGst,
             _ => 0m
         };
     }

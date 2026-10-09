@@ -42,8 +42,8 @@ public class ListingApiService
             // Use source-generated context options so the [JsonPolymorphic] /
             // [JsonDerivedType] discriminator is resolved at compile time, not via
             // reflection. Without this, IL trimming in a Release Blazor WASM build
-            // strips the reflection members needed to discover AuctionListingDto /
-            // FixedPriceListingDto at runtime.
+            // strips the reflection members needed to discover AuctionListingDto
+            // at runtime.
             return await response.Content.ReadFromJsonAsync<ListingDto>(
                        StallionsJsonContext.Default.Options)
                    ?? throw new ApiException(500, "Empty response from server.");

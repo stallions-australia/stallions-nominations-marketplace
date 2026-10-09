@@ -107,7 +107,7 @@ public class EnquiryServiceTests
         var buyer = ActiveBuyer();
         var farmId = Guid.NewGuid();
         var studFarm = new StudFarm { Id = farmId, UserId = Guid.NewGuid() };
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = farmId, Status = ListingStatus.Active };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = farmId, Status = ListingStatus.Active };
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
         _studFarmRepoMock.Setup(r => r.GetByIdAsync(farmId)).ReturnsAsync(studFarm);
@@ -137,7 +137,7 @@ public class EnquiryServiceTests
     public async Task Create_WhenListingNotActive_ReturnsBadRequest()
     {
         var buyer = ActiveBuyer();
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid(), Status = ListingStatus.Draft };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid(), Status = ListingStatus.Draft };
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -153,7 +153,7 @@ public class EnquiryServiceTests
         var buyer = ActiveBuyer();
         var farmId = Guid.NewGuid();
         var studFarm = new StudFarm { Id = farmId, UserId = Guid.NewGuid() };
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = farmId, Status = ListingStatus.Active };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = farmId, Status = ListingStatus.Active };
         var existing = new Enquiry { Id = Guid.NewGuid(), ListingId = listing.Id, BuyerUserId = buyer.Id, Status = EnquiryStatus.Open, Messages = new List<EnquiryMessage>() };
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
@@ -172,12 +172,12 @@ public class EnquiryServiceTests
         var admin = ActiveFarmAdmin();
         var stallion = new Stallion { Id = Guid.NewGuid(), Name = "Sunline II" };
         var season = new Season { Id = Guid.NewGuid(), Name = "2025 Season" };
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(),
             StudFarmId = Guid.NewGuid(),
             Status = ListingStatus.Active,
-            PriceIncGst = 10_000m,
+            StartingPrice = 10_000m,
             Stallion = stallion,
             Season = season
         };
@@ -212,6 +212,6 @@ public class EnquiryServiceTests
         summary.BuyerName.Should().Be("Jane Buyer");
         summary.IsUnread.Should().BeTrue();
         summary.ListingTitle.Should().Contain("Sunline II");
-        summary.ListingTitle.Should().Contain("Fixed Price");
+        summary.ListingTitle.Should().Contain("Auction");
     }
 }

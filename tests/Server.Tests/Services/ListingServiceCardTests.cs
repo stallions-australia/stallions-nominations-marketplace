@@ -24,40 +24,6 @@ public class ListingServiceCardTests
         _mockUsers.Object);
 
     [Fact]
-    public async Task GetListingCardsAsync_FixedPrice_PopulatesStudFarmNameAndQuantity()
-    {
-        var studFarm = new StudFarm { Id = Guid.NewGuid(), Name = "Coolmore Australia" };
-        var stallion = new Stallion
-        {
-            Id = Guid.NewGuid(), Name = "Fastnet Rock",
-            Images = new List<StallionImage>()
-        };
-        var listing = new FixedPriceListing
-        {
-            Id = Guid.NewGuid(),
-            StudFarm = studFarm, StudFarmId = studFarm.Id,
-            Stallion = stallion, StallionId = stallion.Id,
-            Season = new Season { Name = "2025 Season" },
-            PriceIncGst = 8000m, Quantity = 5, QuantityRemaining = 4,
-            Status = ListingStatus.Active, ListingType = ListingType.FixedPrice
-        };
-
-        _mockListingRepo
-            .Setup(r => r.GetActiveAsync(null, null, null))
-            .ReturnsAsync(new List<Listing> { listing });
-
-        var result = await CreateSut().GetListingCardsAsync(null, null, null);
-
-        result.Succeeded.Should().BeTrue();
-        result.Value.Should().HaveCount(1);
-        var card = result.Value![0];
-        card.StudFarmName.Should().Be("Coolmore Australia");
-        card.QuantityRemaining.Should().Be(4);
-        card.PriceIncGst.Should().Be(8000m);
-        card.ListingType.Should().Be("FixedPrice");
-    }
-
-    [Fact]
     public async Task GetListingCardsAsync_Auction_IncludesBidCountAndHighestBid()
     {
         var studFarm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield Stud" };

@@ -51,14 +51,14 @@ public class ListingServiceTests
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
         _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Draft,
-            PlatformFeePercent = 2.5m, PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10
+            PlatformFeePercent = 2.5m, StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
-        await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { PriceIncGst = 9000m });
+        await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { StartingPrice = 9000m });
 
         _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l => l.PlatformFeePercent == 2.5m)), Times.Once);
     }
@@ -69,10 +69,10 @@ public class ListingServiceTests
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
         _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Cancelled,
-            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10
+            StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -83,17 +83,17 @@ public class ListingServiceTests
     }
 
     [Fact]
-    public async Task UpdateListingAsync_AllowsDescriptionEdit_OnActiveFixedPriceListing()
+    public async Task UpdateListingAsync_AllowsDescriptionEdit_OnActiveAuctionListing()
     {
         // Active listing (PublishedAt set) — description should be editable
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
         _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
             PublishedAt = DateTime.UtcNow.AddDays(-1),
-            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10,
+            StartingPrice = 8000m,
             Description = "Old description"
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
@@ -111,11 +111,11 @@ public class ListingServiceTests
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
         _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Draft,
             PublishedAt = DateTime.UtcNow.AddDays(-1),   // was published — T&C now locked
-            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10,
+            StartingPrice = 8000m,
             TermsAndConditions = "Original T&C"
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
@@ -128,39 +128,17 @@ public class ListingServiceTests
     }
 
     [Fact]
-    public async Task UpdateListingAsync_AllowsQuantityEdit_OnActiveFixedPriceListing()
-    {
-        // Active listing, Quantity=20, QuantityRemaining=18 (2 sold)
-        var caller = FarmUser(); var farm = FarmFor(caller);
-        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
-        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new FixedPriceListing
-        {
-            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
-            PublishedAt = DateTime.UtcNow.AddDays(-1),
-            PriceIncGst = 8000m, Quantity = 20, QuantityRemaining = 18
-        };
-        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
-
-        var result = await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { Quantity = 25 });
-
-        result.Succeeded.Should().BeTrue();
-        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<FixedPriceListing>(l =>
-            l.Quantity == 25 && l.QuantityRemaining == 23)), Times.Once);
-    }
-
-    [Fact]
     public async Task UnpublishListingAsync_SetsStatusToDraft_DoesNotClearPublishedAt()
     {
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
         _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
         var publishedAt = DateTime.UtcNow.AddDays(-1);
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
             PublishedAt = publishedAt,
-            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10
+            StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -177,10 +155,10 @@ public class ListingServiceTests
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
         _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
-            PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10
+            StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -197,10 +175,10 @@ public class ListingServiceTests
         var caller = FarmUser(); var farm = FarmFor(caller);
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
         _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new FixedPriceListing
+        var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Draft,
-            PlatformFeePercent = null, PriceIncGst = 8000m, Quantity = 10, QuantityRemaining = 10
+            PlatformFeePercent = null, StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 

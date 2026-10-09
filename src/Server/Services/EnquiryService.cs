@@ -158,8 +158,6 @@ public class EnquiryService : IEnquiryService
 
     private static string BuildListingTitle(Listing? listing) => listing switch
     {
-        FixedPriceListing fpl =>
-            $"{fpl.Stallion?.Name} — Fixed Price ${fpl.PriceIncGst:N0} ({fpl.Season?.Name})",
         AuctionListing al =>
             $"{al.Stallion?.Name} — Auction from ${al.StartingPrice:N0} ({al.Season?.Name})",
         _ => string.Empty

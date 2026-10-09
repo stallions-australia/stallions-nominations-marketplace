@@ -4,12 +4,11 @@ namespace Stallions.Shared.DTOs.Listings;
 
 // STJ (.NET 9) intentionally allows the TypeDiscriminatorPropertyName ("listingType") to match
 // an existing property (ListingType below). STJ reuses that property as the discriminator — it
-// does NOT throw. The values written by [JsonDerivedType] ("Auction", "FixedPrice") match the
+// does NOT throw. The values written by [JsonDerivedType] ("Auction") match the
 // enum .ToString() values set in MapToDto, so serialization and deserialization round-trip correctly.
 // See: ListingDtoSerializationTests for verification.
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "listingType")]
 [JsonDerivedType(typeof(AuctionListingDto), "Auction")]
-[JsonDerivedType(typeof(FixedPriceListingDto), "FixedPrice")]
 public class ListingDto
 {
     public Guid Id { get; set; }

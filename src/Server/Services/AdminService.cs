@@ -52,7 +52,6 @@ public class AdminService : IAdminService
         {
             ActiveListingCount = activeListings.Count,
             AuctionListingCount = activeListings.Count(l => l.ListingType == ListingType.Auction),
-            FixedPriceListingCount = activeListings.Count(l => l.ListingType == ListingType.FixedPrice),
             RecentPurchaseCount = recentCompleted.Count,
             RecentFeeRevenueIncGst = recentCompleted.Sum(p => p.PlatformFeeIncGst),
             PendingVerificationCount = pendingUsers.Count
@@ -274,7 +273,6 @@ public class AdminService : IAdminService
         {
             decimal? price = l switch
             {
-                FixedPriceListing fp => fp.PriceIncGst,
                 AuctionListing al => al.StartingPrice,
                 _ => null
             };

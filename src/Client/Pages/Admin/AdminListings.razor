@@ -64,22 +64,14 @@ else
                                 <td>@listing.ListingType</td>
                                 <td>@listing.SeasonName</td>
                                 <td>
-                                    @if (listing is FixedPriceListingDto fp)
-                                    {
-                                        <text>$@fp.PriceIncGst.ToString("N0")</text>
-                                    }
-                                    else if (listing is AuctionListingDto al)
+                                    @if (listing is AuctionListingDto al)
                                     {
                                         <text>from $@al.StartingPrice.ToString("N0")</text>
                                     }
                                 </td>
                                 <td><span class="badge @BadgeClass(listing.Status)">@listing.Status</span></td>
                                 <td>
-                                    @if (listing is FixedPriceListingDto fp2)
-                                    {
-                                        <text>@fp2.QuantityRemaining / @fp2.Quantity remaining</text>
-                                    }
-                                    else if (listing is AuctionListingDto al2)
+                                    @if (listing is AuctionListingDto al2)
                                     {
                                         <text>Ends @al2.EndDateTime.ToLocalTime().ToString("dd MMM yyyy")</text>
                                     }

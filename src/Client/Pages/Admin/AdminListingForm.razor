@@ -46,19 +46,7 @@ else
         @if (_selectedStallionId != Guid.Empty)
         {
             <div class="form-section">
-                <div class="form-section-title">Step 2 — Listing Type</div>
-                <div class="type-toggle">
-                    <button type="button"
-                            class="btn @(_type == "FixedPrice" ? "btn-primary" : "btn-outline")"
-                            @onclick='() => _type = "FixedPrice"'>Fixed Price</button>
-                    <button type="button"
-                            class="btn @(_type == "Auction" ? "btn-primary" : "btn-outline")"
-                            @onclick='() => _type = "Auction"'>Auction</button>
-                </div>
-            </div>
-
-            <div class="form-section">
-                <div class="form-section-title">Step 3 — Season</div>
+                <div class="form-section-title">Step 2 — Season</div>
                 <div class="form-group">
                     <label class="form-label">Season <span class="required">*</span></label>
                     <select class="form-input" @bind="_selectedSeasonId">
@@ -71,59 +59,37 @@ else
                 </div>
             </div>
 
-            @if (_type == "FixedPrice")
-            {
-                <div class="form-section">
-                    <div class="form-section-title">Fixed Price Details</div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Price (inc. GST) <span class="required">*</span></label>
-                            <div class="input-prefix">
-                                <span>$</span>
-                                <input type="number" class="form-input" @bind="_fpPrice" min="1" step="100" />
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Quantity <span class="required">*</span></label>
-                            <input type="number" class="form-input" @bind="_fpQuantity" min="1" />
-                        </div>
-                    </div>
-                </div>
-            }
-            else if (_type == "Auction")
-            {
-                <div class="form-section">
-                    <div class="form-section-title">Auction Details</div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Starting Price (inc. GST) <span class="required">*</span></label>
-                            <div class="input-prefix">
-                                <span>$</span>
-                                <input type="number" class="form-input" @bind="_auctionStartPrice" min="1" step="100" />
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">End Date &amp; Time <span class="required">*</span></label>
-                            <input type="datetime-local" class="form-input" @bind="_auctionEndDate" />
+            <div class="form-section">
+                <div class="form-section-title">Auction Details</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Starting Price (inc. GST) <span class="required">*</span></label>
+                        <div class="input-prefix">
+                            <span>$</span>
+                            <input type="number" class="form-input" @bind="_auctionStartPrice" min="1" step="100" />
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-check-label">
-                            <input type="checkbox" @bind="_noReserve" /> No reserve
-                        </label>
+                        <label class="form-label">End Date &amp; Time <span class="required">*</span></label>
+                        <input type="datetime-local" class="form-input" @bind="_auctionEndDate" />
                     </div>
-                    @if (!_noReserve)
-                    {
-                        <div class="form-group">
-                            <label class="form-label">Reserve Price (inc. GST)</label>
-                            <div class="input-prefix">
-                                <span>$</span>
-                                <input type="number" class="form-input" @bind="_auctionReserve" min="0" step="100" />
-                            </div>
-                        </div>
-                    }
                 </div>
-            }
+                <div class="form-group">
+                    <label class="form-check-label">
+                        <input type="checkbox" @bind="_noReserve" /> No reserve
+                    </label>
+                </div>
+                @if (!_noReserve)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Reserve Price (inc. GST)</label>
+                        <div class="input-prefix">
+                            <span>$</span>
+                            <input type="number" class="form-input" @bind="_auctionReserve" min="0" step="100" />
+                        </div>
+                    </div>
+                }
+            </div>
 
             <div class="form-section">
                 <div class="form-section-title">Terms &amp; Conditions</div>
@@ -167,14 +133,9 @@ else
     private List<SeasonDto> _seasons = [];
     private Guid _selectedStallionId;
     private Guid _selectedSeasonId;
-    private string _type = "FixedPrice";
     private bool _loading = true;
     private bool _saving;
     private string? _error;
-
-    // Fixed price fields
-    private decimal _fpPrice;
-    private int _fpQuantity = 1;
 
     // Auction fields
     private decimal _auctionStartPrice;
@@ -231,37 +192,19 @@ else
         _saving = true;
         try
         {
-            ListingDto created;
-            if (_type == "FixedPrice")
+            if (_auctionStartPrice <= 0)       { _error = "Please enter a starting price."; return; }
+            if (_auctionEndDate <= DateTime.Now) { _error = "End date must be in the future."; return; }
+            var created = await AdminApi.CreateAuctionListingAsync(new CreateAuctionListingRequest
             {
-                if (_fpPrice <= 0)    { _error = "Please enter a price."; return; }
-                if (_fpQuantity <= 0) { _error = "Quantity must be at least 1."; return; }
-                created = await AdminApi.CreateFixedPriceListingAsync(new CreateFixedPriceListingRequest
-                {
-                    StallionId         = _selectedStallionId,
-                    SeasonId           = _selectedSeasonId,
-                    PriceIncGst        = _fpPrice,
-                    Quantity           = _fpQuantity,
-                    TermsAndConditions = _termsAndConditions.Trim(),
-                    Description        = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim()
-                });
-            }
-            else
-            {
-                if (_auctionStartPrice <= 0)       { _error = "Please enter a starting price."; return; }
-                if (_auctionEndDate <= DateTime.Now) { _error = "End date must be in the future."; return; }
-                created = await AdminApi.CreateAuctionListingAsync(new CreateAuctionListingRequest
-                {
-                    StallionId         = _selectedStallionId,
-                    SeasonId           = _selectedSeasonId,
-                    StartingPrice      = _auctionStartPrice,
-                    ReservePrice       = _noReserve ? null : _auctionReserve,
-                    IsNoReserve        = _noReserve,
-                    EndDateTime        = _auctionEndDate.ToUniversalTime(),
-                    TermsAndConditions = _termsAndConditions.Trim(),
-                    Description        = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim()
-                });
-            }
+                StallionId         = _selectedStallionId,
+                SeasonId           = _selectedSeasonId,
+                StartingPrice      = _auctionStartPrice,
+                ReservePrice       = _noReserve ? null : _auctionReserve,
+                IsNoReserve        = _noReserve,
+                EndDateTime        = _auctionEndDate.ToUniversalTime(),
+                TermsAndConditions = _termsAndConditions.Trim(),
+                Description        = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim()
+            });
             Nav.NavigateTo($"/admin/listings/{created.Id}");
         }
         catch (ApiException ex)

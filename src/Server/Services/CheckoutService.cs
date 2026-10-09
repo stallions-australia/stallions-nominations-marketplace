@@ -67,14 +67,7 @@ public class CheckoutService : ICheckoutService
         decimal totalPrice;
         Guid? bidId = null;
 
-        if (listing is FixedPriceListing fpl)
-        {
-            if (fpl.QuantityRemaining <= 0)
-                return ServiceResult<CheckoutResponse>.BadRequest("This listing is sold out.");
-
-            totalPrice = fpl.PriceIncGst;
-        }
-        else if (listing is AuctionListing auction)
+        if (listing is AuctionListing auction)
         {
             var winningBid = await _bidRepo.GetHighestBidAsync(auction.Id);
             if (listing is AuctionListing auctionListing && auctionListing.EndDateTime > DateTime.UtcNow)
@@ -165,13 +158,7 @@ public class CheckoutService : ICheckoutService
                 await _bindingRepo.AddAsync(binding);
 
                 var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
-                if (listing is FixedPriceListing fpl)
-                {
-                    fpl.QuantityRemaining--;
-                    if (fpl.QuantityRemaining <= 0) { fpl.Status = ListingStatus.Sold; fpl.ClosedAt = DateTime.UtcNow; }
-                    await _listingRepo.UpdateAsync(fpl);
-                }
-                else if (listing is AuctionListing al)
+                if (listing is AuctionListing al)
                 {
                     al.WinningBidId = purchase.BidId;
                     al.Status = ListingStatus.Sold;

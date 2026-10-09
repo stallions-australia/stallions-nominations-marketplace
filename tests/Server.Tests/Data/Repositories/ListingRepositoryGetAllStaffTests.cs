@@ -32,25 +32,23 @@ public class ListingRepositoryGetAllStaffTests
     }
 
     [Fact]
-    public async Task GetAllStaffAsync_ReturnsBothFixedPriceAndAuctionListings_WithNavigations()
+    public async Task GetAllStaffAsync_ReturnsAllListings_WithNavigations()
     {
         await using var db = DbContextFactory.Create(
-            nameof(GetAllStaffAsync_ReturnsBothFixedPriceAndAuctionListings_WithNavigations));
+            nameof(GetAllStaffAsync_ReturnsAllListings_WithNavigations));
 
         var (_, farm1, stallion1, season1) = SeedCommon(db, "A");
         var (_, farm2, stallion2, season2) = SeedCommon(db, "B");
 
-        var fixedListing = new FixedPriceListing
+        var firstListing = new AuctionListing
         {
             Id = Guid.NewGuid(),
             StallionId = stallion1.Id,
             SeasonId = season1.Id,
             StudFarmId = farm1.Id,
-            ListingType = ListingType.FixedPrice,
+            ListingType = ListingType.Auction,
             Status = ListingStatus.Active,
-            PriceIncGst = 8000m,
-            Quantity = 10,
-            QuantityRemaining = 10
+            EndDateTime = DateTime.UtcNow.AddDays(3)
         };
         var auctionListing = new AuctionListing
         {
@@ -64,7 +62,7 @@ public class ListingRepositoryGetAllStaffTests
             EndDateTime = DateTime.UtcNow.AddDays(7)
         };
 
-        db.FixedPriceListings.Add(fixedListing);
+        db.AuctionListings.Add(firstListing);
         db.AuctionListings.Add(auctionListing);
         await db.SaveChangesAsync();
 
@@ -73,7 +71,7 @@ public class ListingRepositoryGetAllStaffTests
 
         result.Should().HaveCount(2);
 
-        var fp = result.Should().ContainSingle(l => l.Id == fixedListing.Id).Subject;
+        var fp = result.Should().ContainSingle(l => l.Id == firstListing.Id).Subject;
         fp.Stallion.Should().NotBeNull();
         fp.Stallion.Name.Should().Be("Stallion A");
         fp.StudFarm.Should().NotBeNull();

@@ -129,51 +129,6 @@ public class ListingService : IListingService
         return ServiceResult<ListingDto>.Created(MapToDto(created, true));
     }
 
-    public async Task<ServiceResult<ListingDto>> CreateFixedPriceListingAsync(CreateFixedPriceListingRequest request)
-    {
-        var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null)
-            return ServiceResult<ListingDto>.Forbidden("Caller identity could not be resolved.");
-
-        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
-        if (farm == null)
-            return ServiceResult<ListingDto>.Forbidden("No stud farm found for the current user.");
-
-        var stallion = await _stallionRepo.GetByIdAsync(request.StallionId);
-        if (stallion == null || !stallion.IsActive)
-            return ServiceResult<ListingDto>.BadRequest("Stallion not found or is inactive.");
-        if (stallion.StudFarmId != farm.Id)
-            return ServiceResult<ListingDto>.BadRequest("Stallion does not belong to your stud farm.");
-
-        var season = await _seasonRepo.GetByIdAsync(request.SeasonId);
-        if (season == null)
-            return ServiceResult<ListingDto>.NotFound("Season not found.");
-        if (!season.IsOpen)
-            return ServiceResult<ListingDto>.BadRequest("The selected season is not open for listings.");
-
-        if (request.Quantity <= 0)
-            return ServiceResult<ListingDto>.BadRequest("Quantity must be greater than zero.");
-        if (request.PriceIncGst <= 0)
-            return ServiceResult<ListingDto>.BadRequest("Price must be greater than zero.");
-
-        var listing = new FixedPriceListing
-        {
-            StallionId = request.StallionId,
-            SeasonId = request.SeasonId,
-            StudFarmId = farm.Id,
-            ListingType = ListingType.FixedPrice,
-            Status = ListingStatus.Draft,
-            Description = request.Description,
-            TermsAndConditions = request.TermsAndConditions,
-            PriceIncGst = request.PriceIncGst,
-            Quantity = request.Quantity,
-            QuantityRemaining = request.Quantity
-        };
-
-        var created = await _listingRepo.AddAsync(listing);
-        return ServiceResult<ListingDto>.Created(MapToDto(created, true));
-    }
-
     public async Task<ServiceResult<ListingDto>> UpdateListingAsync(Guid id, UpdateListingRequest request)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
@@ -220,28 +175,8 @@ public class ListingService : IListingService
                 if (request.MinimumBidIncrement.HasValue) al.MinimumBidIncrement = request.MinimumBidIncrement.Value;
                 if (request.EndDateTime.HasValue) al.EndDateTime = request.EndDateTime.Value;
             }
-            else if (listing is FixedPriceListing fpl)
-            {
-                if (request.PriceIncGst.HasValue) fpl.PriceIncGst = request.PriceIncGst.Value;
-                if (request.Quantity.HasValue)
-                {
-                    fpl.Quantity = request.Quantity.Value;
-                    fpl.QuantityRemaining = request.Quantity.Value;
-                }
-            }
         }
-        else
-        {
-            // Only safe edits — listing has been published at least once.
-            // For fixed price: quantity can be adjusted (preserving sold count).
-            if (listing is FixedPriceListing fpl && request.Quantity.HasValue)
-            {
-                var soldCount = fpl.Quantity - fpl.QuantityRemaining;
-                fpl.Quantity = request.Quantity.Value;
-                fpl.QuantityRemaining = Math.Max(0, request.Quantity.Value - soldCount);
-            }
-            // Auction listings: description only (already handled above).
-        }
+        // Once published, only the description is editable (already handled above).
 
         await _listingRepo.UpdateAsync(listing);
         return ServiceResult<ListingDto>.Ok(MapToDto(listing, true));
@@ -369,50 +304,26 @@ public class ListingService : IListingService
         if (listing.Status != ListingStatus.Expired)
             return ServiceResult<ListingDto>.BadRequest("Only Expired listings can be relisted.");
 
-        Listing newListing;
+        if (listing is not AuctionListing al)
+            return ServiceResult<ListingDto>.BadRequest("Only auction listings can be relisted.");
 
-        if (listing is AuctionListing al)
+        // PlatformFeePercent is NOT carried over — must be set again by staff before publishing.
+        // TermsAndConditions is NOT carried over — new listing requires fresh T&C acceptance.
+        var newListing = new AuctionListing
         {
-            // PlatformFeePercent is NOT carried over — must be set again by staff before publishing.
-            // TermsAndConditions is NOT carried over — new listing requires fresh T&C acceptance.
-            newListing = new AuctionListing
-            {
-                StallionId = al.StallionId,
-                SeasonId = al.SeasonId,
-                StudFarmId = al.StudFarmId,
-                ListingType = ListingType.Auction,
-                Status = ListingStatus.Draft,
-                PlatformFeePercent = null,
-                Description = al.Description,
-                StartingPrice = al.StartingPrice,
-                ReservePrice = al.ReservePrice,
-                IsNoReserve = al.IsNoReserve,
-                MinimumBidIncrement = al.MinimumBidIncrement,
-                EndDateTime = DateTime.UtcNow.AddDays(7) // Stale end date not carried over — admin must update before publishing
-            };
-        }
-        else if (listing is FixedPriceListing fpl)
-        {
-            // PlatformFeePercent is NOT carried over — must be set again by staff before publishing.
-            // TermsAndConditions is NOT carried over — new listing requires fresh T&C acceptance.
-            newListing = new FixedPriceListing
-            {
-                StallionId = fpl.StallionId,
-                SeasonId = fpl.SeasonId,
-                StudFarmId = fpl.StudFarmId,
-                ListingType = ListingType.FixedPrice,
-                Status = ListingStatus.Draft,
-                PlatformFeePercent = null,
-                Description = fpl.Description,
-                PriceIncGst = fpl.PriceIncGst,
-                Quantity = fpl.Quantity,
-                QuantityRemaining = fpl.Quantity
-            };
-        }
-        else
-        {
-            throw new InvalidOperationException($"Unknown listing type: {listing.GetType().Name}");
-        }
+            StallionId = al.StallionId,
+            SeasonId = al.SeasonId,
+            StudFarmId = al.StudFarmId,
+            ListingType = ListingType.Auction,
+            Status = ListingStatus.Draft,
+            PlatformFeePercent = null,
+            Description = al.Description,
+            StartingPrice = al.StartingPrice,
+            ReservePrice = al.ReservePrice,
+            IsNoReserve = al.IsNoReserve,
+            MinimumBidIncrement = al.MinimumBidIncrement,
+            EndDateTime = DateTime.UtcNow.AddDays(7) // Stale end date not carried over — admin must update before publishing
+        };
 
         var created = await _listingRepo.AddAsync(newListing);
         return ServiceResult<ListingDto>.Created(MapToDto(created, true));
@@ -423,9 +334,8 @@ public class ListingService : IListingService
     {
         ListingType? listingType = type switch
         {
-            "Auction"    => ListingType.Auction,
-            "FixedPrice" => ListingType.FixedPrice,
-            _            => null
+            "Auction" => ListingType.Auction,
+            _         => null
         };
 
         var listings = await _listingRepo.GetActiveAsync(seasonId, studFarmId, listingType);
@@ -473,24 +383,6 @@ public class ListingService : IListingService
             };
         }
 
-        if (l is FixedPriceListing fpl)
-        {
-            return new ListingCardDto
-            {
-                Id               = fpl.Id,
-                ListingType      = "FixedPrice",
-                StallionId       = fpl.StallionId,
-                StallionName     = fpl.Stallion?.Name ?? string.Empty,
-                PrimaryImagePath = primaryImage,
-                StudFarmId       = fpl.StudFarmId,
-                StudFarmName     = fpl.StudFarm?.Name ?? string.Empty,
-                SeasonName       = fpl.Season?.Name,
-                PriceIncGst      = fpl.PriceIncGst,
-                QuantityRemaining = fpl.QuantityRemaining,
-                TotalQuantity    = fpl.Quantity
-            };
-        }
-
         throw new InvalidOperationException($"Unknown listing type: {l.GetType().Name}");
     }
 
@@ -518,27 +410,6 @@ public class ListingService : IListingService
             IsNoReserve = al.IsNoReserve,
             MinimumBidIncrement = al.MinimumBidIncrement,
             EndDateTime = al.EndDateTime
-        },
-        FixedPriceListing fpl => new FixedPriceListingDto
-        {
-            Id = fpl.Id,
-            StallionId = fpl.StallionId,
-            StallionName = fpl.Stallion?.Name ?? string.Empty,
-            SeasonId = fpl.SeasonId,
-            SeasonName = fpl.Season?.Name ?? string.Empty,
-            StudFarmId = fpl.StudFarmId,
-            StudFarmName = fpl.StudFarm?.Name ?? string.Empty,
-            ListingType = fpl.ListingType.ToString(),
-            Status = fpl.Status.ToString(),
-            PlatformFeePercent = isStaff ? fpl.PlatformFeePercent : null,
-            CreatedAt = fpl.CreatedAt,
-            PublishedAt = fpl.PublishedAt,
-            ClosedAt = fpl.ClosedAt,
-            Description = fpl.Description,
-            TermsAndConditions = fpl.TermsAndConditions,
-            PriceIncGst = fpl.PriceIncGst,
-            Quantity = fpl.Quantity,
-            QuantityRemaining = fpl.QuantityRemaining
         },
         _ => throw new InvalidOperationException($"Unknown listing type: {l.GetType().Name}")
     };

@@ -60,8 +60,7 @@
     color: var(--text-muted);
 }
 
-.listing-auction-block,
-.listing-fp-block {
+.listing-auction-block {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -115,9 +114,6 @@
     margin-bottom: 0;
 }
 
-.listing-qty-label {
-    margin-bottom: var(--space-2);
-}
 
 .listing-enquire {
     margin-top: var(--space-4);

@@ -15,7 +15,6 @@ public class AppDbContext : DbContext
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Listing> Listings => Set<Listing>();
     public DbSet<AuctionListing> AuctionListings => Set<AuctionListing>();
-    public DbSet<FixedPriceListing> FixedPriceListings => Set<FixedPriceListing>();
     public DbSet<Bid> Bids => Set<Bid>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
     public DbSet<NominationBinding> NominationBindings => Set<NominationBinding>();
@@ -157,13 +156,6 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(a => a.WinningBidId)
                 .OnDelete(DeleteBehavior.NoAction);
-        });
-
-        // ── FixedPriceListings (TPT child) ───────────────────────────────────
-        modelBuilder.Entity<FixedPriceListing>(e =>
-        {
-            e.ToTable("FixedPriceListings");
-            e.Property(f => f.PriceIncGst).HasPrecision(12, 2);
         });
 
         // ── Bids ─────────────────────────────────────────────────────────────

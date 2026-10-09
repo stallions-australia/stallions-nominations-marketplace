@@ -51,23 +51,6 @@ public class ListingDetailTests : TestContext
     }
 
     [Fact]
-    public void ListingDetail_FixedPrice_ShowsPurchaseLink()
-    {
-        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
-        var listing = new FixedPriceListingDto
-        {
-            Id = Guid.NewGuid(), StallionName = "Fastnet Rock", StudFarmName = "Coolmore",
-            ListingType = "FixedPrice", Status = "Active",
-            PriceIncGst = 8000m, QuantityRemaining = 3, Quantity = 10
-        };
-        RegisterServices(listing, role: "Buyer");
-
-        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
-
-        cut.WaitForAssertion(() => cut.Find("a[href*='checkout']").Should().NotBeNull());
-    }
-
-    [Fact]
     public void ListingDetail_Auction_Unauthenticated_ShowsSignInPrompt()
     {
         this.AddTestAuthorization(); // anonymous

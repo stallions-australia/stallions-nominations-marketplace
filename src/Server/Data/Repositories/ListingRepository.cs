@@ -20,10 +20,6 @@ public class ListingRepository : IListingRepository
         await _db.AuctionListings.Include(l => l.Stallion).ThenInclude(s => s.Images)
             .FirstOrDefaultAsync(l => l.Id == id);
 
-    public async Task<FixedPriceListing?> GetFixedPriceByIdAsync(Guid id) =>
-        await _db.FixedPriceListings.Include(l => l.Stallion).ThenInclude(s => s.Images)
-            .FirstOrDefaultAsync(l => l.Id == id);
-
     public async Task<IReadOnlyList<Listing>> GetActiveAsync(
         Guid? seasonId = null, Guid? studFarmId = null, ListingType? type = null)
     {

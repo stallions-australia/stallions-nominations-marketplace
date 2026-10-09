@@ -35,11 +35,11 @@ public class CheckoutTests : TestContext
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         listingMock.Setup(s => s.GetByIdAsync(It.IsAny<Guid>()))
-            .ReturnsAsync(new FixedPriceListingDto
+            .ReturnsAsync(new AuctionListingDto
             {
                 Id = Guid.NewGuid(), StallionName = "Fastnet Rock", StudFarmName = "Coolmore",
-                ListingType = "FixedPrice", Status = "Active",
-                PriceIncGst = 10000m, QuantityRemaining = 3, Quantity = 10
+                ListingType = "Auction", Status = "Active",
+                EndDateTime = DateTime.UtcNow.AddHours(-1)
             });
         Services.AddSingleton(listingMock.Object);
         Services.AddSingleton(new Mock<CheckoutApiService>(MockBehavior.Loose,
@@ -65,11 +65,11 @@ public class CheckoutTests : TestContext
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         listingMock.Setup(s => s.GetByIdAsync(listingId))
-            .ReturnsAsync(new FixedPriceListingDto
+            .ReturnsAsync(new AuctionListingDto
             {
                 Id = listingId, StallionName = "Fastnet Rock",
-                ListingType = "FixedPrice", Status = "Active",
-                PriceIncGst = 10000m, QuantityRemaining = 3, Quantity = 10
+                ListingType = "Auction", Status = "Active",
+                EndDateTime = DateTime.UtcNow.AddHours(-1)
             });
         Services.AddSingleton(listingMock.Object);
 

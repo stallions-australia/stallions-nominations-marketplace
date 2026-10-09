@@ -26,7 +26,7 @@ public class HomeTests : TestContext
         this.AddTestAuthorization();
         var cards = new List<ListingCardDto>
         {
-            new() { Id = Guid.NewGuid(), StallionName = "Fastnet Rock", ListingType = "FixedPrice", PriceIncGst = 8000m }
+            new() { Id = Guid.NewGuid(), StallionName = "Fastnet Rock", ListingType = "Auction", PriceIncGst = 8000m }
         };
         SetupService(cards);
 

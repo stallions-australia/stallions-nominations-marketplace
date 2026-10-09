@@ -58,14 +58,6 @@ public class ListingsController : ControllerBase
         return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
-    [HttpPost("fixed-price")]
-    [Authorize(Policy = "StudFarmAdminOnly")]
-    public async Task<IActionResult> CreateFixedPrice([FromBody] CreateFixedPriceListingRequest request)
-    {
-        var r = await _listings.CreateFixedPriceListingAsync(request);
-        return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
-    }
-
     [HttpPut("{id:guid}")]
     [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateListingRequest request)

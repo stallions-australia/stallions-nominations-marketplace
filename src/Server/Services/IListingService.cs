@@ -11,7 +11,6 @@ public interface IListingService
     Task<ServiceResult<ListingDto>> GetMineByIdAsync(Guid id);
     Task<ServiceResult<IReadOnlyList<ListingDto>>> GetMineAsync();
     Task<ServiceResult<ListingDto>> CreateAuctionListingAsync(CreateAuctionListingRequest request);
-    Task<ServiceResult<ListingDto>> CreateFixedPriceListingAsync(CreateFixedPriceListingRequest request);
     Task<ServiceResult<ListingDto>> UpdateListingAsync(Guid id, UpdateListingRequest request);
     Task<ServiceResult> PublishListingAsync(Guid id);
     Task<ServiceResult> UnpublishListingAsync(Guid id);

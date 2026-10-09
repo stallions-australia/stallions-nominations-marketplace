@@ -67,44 +67,6 @@ else
             </dl>
         </div>
 
-        @* ── Fixed price fields ──────────────────────────────────────────── *@
-        @if (_listing is FixedPriceListingDto fp)
-        {
-            <div class="form-section">
-                <div class="form-section-title">Fixed Price</div>
-                <dl class="detail-list">
-                    <dt>Price (inc. GST)</dt>
-                    <dd>
-                        @if (_neverPublished)
-                        {
-                            <input type="number" class="form-input" style="width:180px"
-                                   @bind="_editPrice" min="1" step="100" />
-                        }
-                        else
-                        {
-                            <span>$@fp.PriceIncGst.ToString("N0")</span>
-                            <span class="lock-notice" style="margin-left:var(--space-2)">🔒 locked</span>
-                        }
-                    </dd>
-                    <dt>Quantity</dt>
-                    <dd>
-                        @if (_listing.Status != "Cancelled" && _listing.Status != "Sold")
-                        {
-                            <input type="number" class="form-input" style="width:100px"
-                                   @bind="_editQuantity" min="@(fp.Quantity - fp.QuantityRemaining)" />
-                            <span class="form-hint" style="display:inline;margin-left:var(--space-2)">
-                                @fp.QuantityRemaining remaining of @fp.Quantity total
-                            </span>
-                        }
-                        else
-                        {
-                            <span>@fp.QuantityRemaining / @fp.Quantity</span>
-                        }
-                    </dd>
-                </dl>
-            </div>
-        }
-
         @* ── Auction fields ──────────────────────────────────────────────── *@
         @if (_listing is AuctionListingDto al)
         {
@@ -206,8 +168,6 @@ else
     private string? _error;
 
     // Edit fields — populated from _listing on load
-    private decimal _editPrice;
-    private int _editQuantity;
     private decimal _editAuctionStart;
     private DateTime _editAuctionEnd;
     private string _editTerms = string.Empty;
@@ -244,12 +204,7 @@ else
 
     private void PopulateEditFields()
     {
-        if (_listing is FixedPriceListingDto fp)
-        {
-            _editPrice    = fp.PriceIncGst;
-            _editQuantity = fp.Quantity;
-        }
-        else if (_listing is AuctionListingDto al)
+        if (_listing is AuctionListingDto al)
         {
             _editAuctionStart = al.StartingPrice;
             _editAuctionEnd   = al.EndDateTime.ToLocalTime();
@@ -269,13 +224,7 @@ else
                 TermsAndConditions = _neverPublished ? _editTerms : null
             };
 
-            if (_listing is FixedPriceListingDto)
-            {
-                if (_neverPublished)
-                    request.PriceIncGst = _editPrice;
-                request.Quantity = _editQuantity;
-            }
-            else if (_listing is AuctionListingDto && _neverPublished)
+            if (_listing is AuctionListingDto && _neverPublished)
             {
                 request.StartingPrice = _editAuctionStart;
                 request.EndDateTime   = _editAuctionEnd.ToUniversalTime();
