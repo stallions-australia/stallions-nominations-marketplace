@@ -24,6 +24,12 @@
 >   rethrows. `ReleaseAsync` clears the change tracker first. Each claim records `CompletedAt` via
 >   `MarkCompletedAsync`; an incomplete claim older than 10 minutes (a crash mid-processing) can be
 >   re-claimed by the provider's retry.
+> - After the Task 3 review: `ClaimAsync` returns `ClaimResult { Claimed, AlreadyCompleted, InProgress }`;
+>   the processor runs claim + writes + completion in one transaction (`ITransactionRunner` /
+>   `EfTransactionRunner`), detaches a replaced card only after commit, audits card payments it can't
+>   apply (`ListingFeeDuplicatePayment`, `ListingFeePaymentForUnknownSubscription`), and returns
+>   `PaymentEventOutcome.InProgress` (webhook → 409). Amounts in cents always go through
+>   `PaymentAmounts.ToCents`.
 
 ---
 
@@ -1008,7 +1014,7 @@ public class FakePaymentProvider : IPaymentProvider
         Guid subscriptionId, decimal amountIncGst, string description, string? payerEmail,
         string successUrl, string cancelUrl) =>
         Task.FromResult(Start(new FakeSession(NewId(), false, null, null, subscriptionId,
-            (long)Math.Round(amountIncGst * 100m, MidpointRounding.AwayFromZero), description, successUrl, cancelUrl)));
+            PaymentAmounts.ToCents(amountIncGst), description, successUrl, cancelUrl)));
 
     public Task<PaymentEvent> ParseWebhookAsync(string rawBody, string? signatureHeader) =>
         throw new NotSupportedException("The fake payment provider has no webhook; approve sessions on its page.");
@@ -1138,6 +1144,8 @@ public static class PaymentServiceCollectionExtensions
             services.AddSingleton<IPaymentProvider>(sp => sp.GetRequiredService<FakePaymentProvider>());
         }
 
+        // One database transaction per payment event (claim + writes + completion).
+        services.AddScoped<Stallions.Server.Data.ITransactionRunner, Stallions.Server.Data.EfTransactionRunner>();
         services.AddScoped<IPaymentEventProcessor, PaymentEventProcessor>();
         return services;
     }
@@ -1468,7 +1476,7 @@ public class StripePaymentProvider : IPaymentProvider
                     PriceData = new SessionLineItemPriceDataOptions
                     {
                         Currency = "aud",
-                        UnitAmount = (long)Math.Round(amountIncGst * 100m, MidpointRounding.AwayFromZero),
+                        UnitAmount = PaymentAmounts.ToCents(amountIncGst),
                         ProductData = new SessionLineItemPriceDataProductDataOptions { Name = description }
                     }
                 }
@@ -1770,6 +1778,19 @@ public class PaymentsControllerWebhookTests
     }
 
     [Fact]
+    public async Task EventStillInProgress_Returns409SoStripeRetries()
+    {
+        _provider.SetupGet(p => p.Name).Returns("Stripe");
+        var evt = new UnhandledPaymentEvent("evt_1", "x");
+        _provider.Setup(p => p.ParseWebhookAsync(It.IsAny<string>(), It.IsAny<string?>())).ReturnsAsync(evt);
+        _processor.Setup(p => p.ProcessAsync(evt)).ReturnsAsync(PaymentEventOutcome.InProgress);
+
+        var result = await CreateSut("{}", "sig").StripeWebhook();
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
     public async Task WhenProviderIsNotStripe_Returns404()
     {
         _provider.SetupGet(p => p.Name).Returns("Fake");
@@ -1934,8 +1955,11 @@ public class PaymentsController : ControllerBase
             return BadRequest("Invalid signature.");
         }
 
-        await _processor.ProcessAsync(paymentEvent);
-        return Ok();
+        var outcome = await _processor.ProcessAsync(paymentEvent);
+        // Another delivery of this event is mid-processing: a non-2xx makes Stripe retry later.
+        return outcome == PaymentEventOutcome.InProgress
+            ? StatusCode(StatusCodes.Status409Conflict, "Event is still being processed; retry later.")
+            : Ok();
     }
 }
 ```
