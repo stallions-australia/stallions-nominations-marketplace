@@ -11,6 +11,16 @@
 **Spec:** `docs/superpowers/specs/2026-10-09-v2-phase2-payments-design.md`. Read it and CLAUDE.md first.
 **Branch:** `feature/v2-phase2-payments` (already created from master).
 
+> **Amendments after the Task 1–2 reviews (2026-10-09):**
+> - `appsettings.Development.json` is gitignored, so the local `Payments:Provider=Fake` default
+>   lives in `src/Server/Properties/launchSettings.json` (both profiles).
+> - Provider ids are `nvarchar(255)`; `User` also stores `PaymentCustomerProvider` so a customer id
+>   or card from another provider (e.g. the dev fake) is never reused or treated as valid.
+> - `SavedCard.IsValidOn` returns false (doesn't throw) for an impossible month/year.
+> - Idempotency is claim-first: `IProcessedPaymentEventRepository.TryClaimAsync` inserts the event
+>   id (false = already claimed, including a concurrent duplicate) and `ReleaseAsync` removes it when
+>   processing fails so the provider's retry is processed. Tasks 3 and 6 below reflect this.
+
 ---
 
 ## Ground rules
@@ -617,7 +627,9 @@ public class PaymentEventProcessorTests : IDisposable
         card.UserId.Should().Be(_buyer.Id);
         card.Last4.Should().Be("4242");
         card.Provider.Should().Be("Fake");
-        (await _db.Users.SingleAsync(u => u.Id == _buyer.Id)).PaymentCustomerId.Should().Be("cus_1");
+        var user = await _db.Users.SingleAsync(u => u.Id == _buyer.Id);
+        user.PaymentCustomerId.Should().Be("cus_1");
+        user.PaymentCustomerProvider.Should().Be("Fake");
         (await _db.AuditLogs.SingleAsync()).Action.Should().Be("SaveCard");
     }
 
@@ -692,6 +704,23 @@ public class PaymentEventProcessorTests : IDisposable
     }
 
     [Fact]
+    public async Task ProcessingFailure_ReleasesTheEventSoTheRetryIsProcessed()
+    {
+        var failingCards = new Mock<ISavedCardRepository>();
+        failingCards.Setup(c => c.GetByUserIdAsync(It.IsAny<Guid>()))
+            .ThrowsAsync(new InvalidOperationException("database unavailable"));
+        var failing = new PaymentEventProcessor(
+            new ProcessedPaymentEventRepository(_db), failingCards.Object, new UserRepository(_db),
+            new SubscriptionRepository(_db), _provider.Object, new AuditLogRepository(_db),
+            NullLogger<PaymentEventProcessor>.Instance);
+
+        await FluentActions.Awaiting(() => failing.ProcessAsync(CardSaved("evt_1")))
+            .Should().ThrowAsync<InvalidOperationException>();
+
+        (await CreateSut().ProcessAsync(CardSaved("evt_1"))).Should().Be(PaymentEventOutcome.Processed);
+    }
+
+    [Fact]
     public async Task UnhandledEvent_IsIgnoredButRecorded()
     {
         var outcome = await CreateSut().ProcessAsync(new UnhandledPaymentEvent("evt_x", "customer.created"));
@@ -741,24 +770,31 @@ public class PaymentEventProcessor : IPaymentEventProcessor
 
     public async Task<PaymentEventOutcome> ProcessAsync(PaymentEvent paymentEvent)
     {
-        if (await _processed.ExistsAsync(paymentEvent.EventId))
-            return PaymentEventOutcome.Duplicate;
-
-        var outcome = paymentEvent switch
-        {
-            CardSavedEvent card => await SaveCardAsync(card),
-            ListingFeePaidEvent fee => await MarkListingFeePaidAsync(fee),
-            _ => PaymentEventOutcome.Ignored
-        };
-
-        await _processed.AddAsync(new ProcessedPaymentEvent
+        // Claim the event id first: a repeated or concurrent delivery loses the claim and is a
+        // duplicate. If processing then fails, release the claim so the provider's retry runs again.
+        var claimed = await _processed.TryClaimAsync(new ProcessedPaymentEvent
         {
             EventId = paymentEvent.EventId,
             Provider = _provider.Name,
             Type = paymentEvent.GetType().Name,
             ProcessedAt = DateTime.UtcNow
         });
-        return outcome;
+        if (!claimed) return PaymentEventOutcome.Duplicate;
+
+        try
+        {
+            return paymentEvent switch
+            {
+                CardSavedEvent card => await SaveCardAsync(card),
+                ListingFeePaidEvent fee => await MarkListingFeePaidAsync(fee),
+                _ => PaymentEventOutcome.Ignored
+            };
+        }
+        catch
+        {
+            await _processed.ReleaseAsync(paymentEvent.EventId);
+            throw;
+        }
     }
 
     private async Task<PaymentEventOutcome> SaveCardAsync(CardSavedEvent e)
@@ -792,9 +828,10 @@ public class PaymentEventProcessor : IPaymentEventProcessor
         card.UpdatedAt = DateTime.UtcNow;
         if (existing == null) await _cards.AddAsync(card); else await _cards.UpdateAsync(card);
 
-        if (user.PaymentCustomerId != e.CustomerId)
+        if (user.PaymentCustomerId != e.CustomerId || user.PaymentCustomerProvider != _provider.Name)
         {
             user.PaymentCustomerId = e.CustomerId;
+            user.PaymentCustomerProvider = _provider.Name;
             await _users.UpdateAsync(user);
         }
 
@@ -844,7 +881,7 @@ public class PaymentEventProcessor : IPaymentEventProcessor
 }
 ```
 
-- [ ] **Step 5: Run green** — `dotnet test tests/Server.Tests --filter PaymentEventProcessorTests` → 8 passed. Full build + test green.
+- [ ] **Step 5: Run green** — `dotnet test tests/Server.Tests --filter PaymentEventProcessorTests` → 9 passed. Full build + test green.
 
 - [ ] **Step 6: Commit**
 
@@ -1559,15 +1596,33 @@ public class CardServiceTests
 
     private CardService CreateSut() => new(_cards.Object, _userRepo.Object, _users.Object, _provider.Object);
 
-    private User SignedIn(UserRole role, string? customerId = null)
+    public CardServiceTests() => _provider.SetupGet(p => p.Name).Returns("Stripe");
+
+    private User SignedIn(UserRole role, string? customerId = null, string customerProvider = "Stripe")
     {
         var user = new User
         {
             Id = Guid.NewGuid(), Email = "b@x", DisplayName = "B", Role = role,
-            Status = UserStatus.Active, PaymentCustomerId = customerId
+            Status = UserStatus.Active, PaymentCustomerId = customerId,
+            PaymentCustomerProvider = customerId == null ? null : customerProvider
         };
         _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
         return user;
+    }
+
+    [Fact]
+    public async Task StartSetup_CustomerFromAnotherProvider_IsReplaced()
+    {
+        // e.g. dev data created with the fake provider, now running on Stripe
+        var buyer = SignedIn(UserRole.Buyer, customerId: "cus_fake_1", customerProvider: "Fake");
+        _provider.Setup(p => p.CreateCustomerAsync(buyer.Id, "b@x", "B")).ReturnsAsync("cus_real");
+        _provider.Setup(p => p.CreateCardSetupSessionAsync(buyer.Id, "cus_real", It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync("https://pay/setup");
+
+        await CreateSut().StartSetupAsync("https://ok", "https://no");
+
+        buyer.PaymentCustomerId.Should().Be("cus_real");
+        buyer.PaymentCustomerProvider.Should().Be("Stripe");
     }
 
     [Fact]
@@ -1582,6 +1637,7 @@ public class CardServiceTests
 
         result.Value!.Url.Should().Be("https://pay/setup");
         buyer.PaymentCustomerId.Should().Be("cus_new");
+        buyer.PaymentCustomerProvider.Should().Be("Stripe");
         _userRepo.Verify(r => r.UpdateAsync(buyer), Times.Once);
     }
 
@@ -1612,7 +1668,7 @@ public class CardServiceTests
     {
         var buyer = SignedIn(UserRole.Buyer);
         _cards.Setup(c => c.GetByUserIdAsync(buyer.Id)).ReturnsAsync(new SavedCard
-            { UserId = buyer.Id, Brand = "visa", Last4 = "4242", ExpMonth = 1, ExpYear = 2020 });
+            { UserId = buyer.Id, Provider = "Stripe", Brand = "visa", Last4 = "4242", ExpMonth = 1, ExpYear = 2020 });
 
         var result = await CreateSut().GetMineAsync();
 
@@ -1634,12 +1690,15 @@ public class CardServiceTests
         var none = Guid.NewGuid();
         var expired = Guid.NewGuid();
         var current = Guid.NewGuid();
-        _cards.Setup(c => c.GetByUserIdAsync(expired)).ReturnsAsync(new SavedCard { ExpMonth = 1, ExpYear = 2020 });
-        _cards.Setup(c => c.GetByUserIdAsync(current)).ReturnsAsync(new SavedCard { ExpMonth = 12, ExpYear = DateTime.UtcNow.Year + 2 });
+        var otherProvider = Guid.NewGuid();
+        _cards.Setup(c => c.GetByUserIdAsync(expired)).ReturnsAsync(new SavedCard { Provider = "Stripe", ExpMonth = 1, ExpYear = 2020 });
+        _cards.Setup(c => c.GetByUserIdAsync(current)).ReturnsAsync(new SavedCard { Provider = "Stripe", ExpMonth = 12, ExpYear = DateTime.UtcNow.Year + 2 });
+        _cards.Setup(c => c.GetByUserIdAsync(otherProvider)).ReturnsAsync(new SavedCard { Provider = "Fake", ExpMonth = 12, ExpYear = DateTime.UtcNow.Year + 2 });
 
         (await CreateSut().HasValidCardAsync(none)).Should().BeFalse();
         (await CreateSut().HasValidCardAsync(expired)).Should().BeFalse();
         (await CreateSut().HasValidCardAsync(current)).Should().BeTrue();
+        (await CreateSut().HasValidCardAsync(otherProvider)).Should().BeFalse("a card saved with another provider can't be charged by this one");
     }
 }
 ```
@@ -1769,7 +1828,7 @@ public class CardService : ICardService
             : ServiceResult<SavedCardDto>.Ok(new SavedCardDto
             {
                 Brand = card.Brand, Last4 = card.Last4, ExpMonth = card.ExpMonth, ExpYear = card.ExpYear,
-                IsValid = card.IsValidOn(Today)
+                IsValid = IsUsable(card)
             });
     }
 
@@ -1779,9 +1838,11 @@ public class CardService : ICardService
         if (caller == null || caller.Role != UserRole.Buyer)
             return ServiceResult<PaymentRedirectDto>.Forbidden("Only buyers can save a card.");
 
-        if (string.IsNullOrEmpty(caller.PaymentCustomerId))
+        // A customer id issued by a different provider (e.g. the dev fake) can't be used here.
+        if (string.IsNullOrEmpty(caller.PaymentCustomerId) || caller.PaymentCustomerProvider != _provider.Name)
         {
             caller.PaymentCustomerId = await _provider.CreateCustomerAsync(caller.Id, caller.Email, caller.DisplayName);
+            caller.PaymentCustomerProvider = _provider.Name;
             await _userRepo.UpdateAsync(caller);
         }
 
@@ -1792,8 +1853,11 @@ public class CardService : ICardService
     public async Task<bool> HasValidCardAsync(Guid userId)
     {
         var card = await _cards.GetByUserIdAsync(userId);
-        return card != null && card.IsValidOn(Today);
+        return card != null && IsUsable(card);
     }
+
+    // Unexpired, and saved with the provider that will charge it.
+    private bool IsUsable(SavedCard card) => card.Provider == _provider.Name && card.IsValidOn(Today);
 }
 ```
 
@@ -2727,7 +2791,7 @@ git commit -m "feat: payment card page, save-a-card bid prompt and stud listing-
 ### Task 10: Migration `V2Phase2Payments`
 
 - [ ] **Step 1: Create** — `dotnet ef migrations add V2Phase2Payments --project src/Server --startup-project src/Server --output-dir Data/Migrations`
-- [ ] **Step 2: Read it.** Expect: `AddColumn PaymentCustomerId` on `Users` (nullable, 100), `CreateTable SavedCards` (unique index on `UserId`, FK to `Users` cascade), `CreateTable ProcessedPaymentEvents` (PK `EventId` nvarchar(255)). Nothing should be dropped or renamed.
+- [ ] **Step 2: Read it.** Expect: `AddColumn PaymentCustomerId` (nullable, 255) and `PaymentCustomerProvider` (nullable, 20) on `Users`, `CreateTable SavedCards` (unique index on `UserId`, FK to `Users` cascade, provider ids 255), `CreateTable ProcessedPaymentEvents` (PK `EventId` nvarchar(255)). Nothing should be dropped or renamed.
 - [ ] **Step 3: Check the model and snapshot agree** — `dotnet ef migrations has-pending-model-changes --project src/Server --startup-project src/Server` → "No changes have been made…".
 - [ ] **Step 4: Apply to the local dev DB** —
   `dotnet ef database update --project src/Server --startup-project src/Server --connection "Server=(localdb)\mssqllocaldb;Database=StallionsNomsDev;Trusted_Connection=True;MultipleActiveResultSets=true"`
