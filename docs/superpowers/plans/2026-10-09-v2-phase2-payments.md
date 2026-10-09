@@ -35,6 +35,11 @@
 >   was processed (else the cancel URL) and restores the session if processing throws.
 > - Known, deferred: success/cancel URLs are built from `Request.Host` — before go-live, use a
 >   configured public base URL or restrict `AllowedHosts`.
+> - The first line of each code block (`// src/...`, `@* src/... *@`, `/* src/... */`) only names the
+>   file — **don't copy it into the file**.
+> - Known gap: there is no `WebApplicationFactory` integration-test setup yet, so the real pipeline
+>   (webhook raw body, anonymous access, 401/403 on card endpoints) is only covered by unit tests and
+>   the dev click-through. Add an integration-test harness in a later phase.
 
 ---
 
