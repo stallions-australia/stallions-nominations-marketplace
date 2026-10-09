@@ -33,8 +33,8 @@ public class BidServiceTests
         _cardsMock.Setup(c => c.HasValidCardAsync(It.IsAny<Guid>())).ReturnsAsync(true);
     }
 
-    private BidService CreateSut() =>
-        new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, CreateInMemoryDb(),
+    private BidService CreateSut(AppDbContext? db = null) =>
+        new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, db ?? CreateInMemoryDb(),
             _termsRepoMock.Object, _cardsMock.Object);
 
     [Fact]
@@ -234,5 +234,28 @@ public class BidServiceTests
         var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 1000m });
 
         result.Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PlaceBid_TransactionStartsWithAnEmptyChangeTracker()
+    {
+        // A rollback does not reset the change tracker, so each attempt of the retriable
+        // transaction must clear it rather than reuse stale entities from a failed attempt.
+        var db = CreateInMemoryDb();
+        db.Bids.Attach(new Bid { Id = Guid.NewGuid(), AmountIncGst = 1m, Status = BidStatus.Active });
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction();
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+        var trackedAtStart = -1;
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id))
+            .Callback(() => trackedAtStart = db.ChangeTracker.Entries().Count())
+            .ReturnsAsync((Bid?)null);
+        _bidRepoMock.Setup(r => r.AddAsync(It.IsAny<Bid>())).ReturnsAsync((Bid b) => b);
+
+        var result = await CreateSut(db).PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 1000m });
+
+        result.Succeeded.Should().BeTrue();
+        trackedAtStart.Should().Be(0);
     }
 }

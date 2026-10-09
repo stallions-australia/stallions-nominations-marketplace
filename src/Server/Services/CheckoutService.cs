@@ -128,22 +128,31 @@ public class CheckoutService : ICheckoutService
                 Encoding.UTF8.GetBytes(_options.Value.WebhookSecret)))
             return ServiceResult.Forbidden("Invalid webhook secret.");
 
-        var purchase = await _purchaseRepo.GetByIdAsync(purchaseId);
-        if (purchase == null)
+        var existing = await _purchaseRepo.GetByIdAsync(purchaseId);
+        if (existing == null)
             return ServiceResult.NotFound("Purchase not found.");
 
-        if (purchase.Status != PurchaseStatus.Pending)
+        if (existing.Status != PurchaseStatus.Pending)
             return ServiceResult.BadRequest("Purchase is not in Pending status.");
 
         // The DbContext is configured with EnableRetryOnFailure, so a user-initiated
         // transaction must be executed through the retrying execution strategy as a
-        // single retriable unit (EF Core throws otherwise).
+        // single retriable unit (EF Core throws otherwise). A rollback does not reset the
+        // change tracker, so each attempt clears it and re-reads the purchase inside the
+        // transaction rather than saving the copy loaded above or a stale one from a failed attempt.
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
+            _db.ChangeTracker.Clear();
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
+                var purchase = await _purchaseRepo.GetByIdAsync(purchaseId);
+                if (purchase == null)
+                    return ServiceResult.NotFound("Purchase not found.");
+                if (purchase.Status != PurchaseStatus.Pending)
+                    return ServiceResult.BadRequest("Purchase is not in Pending status.");
+
                 purchase.Status = PurchaseStatus.Completed;
                 purchase.PaidAt = DateTime.UtcNow;
                 await _purchaseRepo.UpdateAsync(purchase);
