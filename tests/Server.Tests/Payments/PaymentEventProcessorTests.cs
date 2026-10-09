@@ -31,7 +31,7 @@ public class PaymentEventProcessorTests : IDisposable
 
     private PaymentEventProcessor CreateSut() => new(
         new ProcessedPaymentEventRepository(_db), new SavedCardRepository(_db), new UserRepository(_db),
-        new SubscriptionRepository(_db), _provider.Object, new AuditLogRepository(_db),
+        new SubscriptionRepository(_db), _provider.Object, new AuditLogRepository(_db), new InlineTransactionRunner(),
         NullLogger<PaymentEventProcessor>.Instance);
 
     private CardSavedEvent CardSaved(string eventId, string pm = "pm_1", string last4 = "4242") =>
@@ -150,13 +150,148 @@ public class PaymentEventProcessorTests : IDisposable
             .ThrowsAsync(new InvalidOperationException("database unavailable"));
         var failing = new PaymentEventProcessor(
             new ProcessedPaymentEventRepository(_db), failingCards.Object, new UserRepository(_db),
-            new SubscriptionRepository(_db), _provider.Object, new AuditLogRepository(_db),
+            new SubscriptionRepository(_db), _provider.Object, new AuditLogRepository(_db), new InlineTransactionRunner(),
             NullLogger<PaymentEventProcessor>.Instance);
 
         await FluentActions.Awaiting(() => failing.ProcessAsync(CardSaved("evt_1")))
             .Should().ThrowAsync<InvalidOperationException>();
 
         (await CreateSut().ProcessAsync(CardSaved("evt_1"))).Should().Be(PaymentEventOutcome.Processed);
+    }
+
+    private PaymentEventProcessor CreateSutWith(
+        IProcessedPaymentEventRepository? processed = null, ISavedCardRepository? cards = null) => new(
+        processed ?? new ProcessedPaymentEventRepository(_db), cards ?? new SavedCardRepository(_db),
+        new UserRepository(_db), new SubscriptionRepository(_db), _provider.Object,
+        new AuditLogRepository(_db), new InlineTransactionRunner(), NullLogger<PaymentEventProcessor>.Instance);
+
+    [Fact]
+    public async Task Detach_ThatThrows_IsSwallowedAndTheCardIsStillSaved()
+    {
+        await CreateSut().ProcessAsync(CardSaved("evt_1", pm: "pm_old"));
+        _provider.Setup(p => p.DetachCardAsync("pm_old")).ThrowsAsync(new InvalidOperationException("provider down"));
+
+        var outcome = await CreateSut().ProcessAsync(CardSaved("evt_2", pm: "pm_new"));
+
+        outcome.Should().Be(PaymentEventOutcome.Processed);
+        (await _db.SavedCards.SingleAsync()).ProviderPaymentMethodId.Should().Be("pm_new");
+    }
+
+    [Fact]
+    public async Task ResavingTheSamePaymentMethod_DoesNotDetach()
+    {
+        await CreateSut().ProcessAsync(CardSaved("evt_1", pm: "pm_1"));
+
+        await CreateSut().ProcessAsync(CardSaved("evt_2", pm: "pm_1"));
+
+        _provider.Verify(p => p.DetachCardAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Detach_HappensAfterTheNewCardIsSaved()
+    {
+        await CreateSut().ProcessAsync(CardSaved("evt_1", pm: "pm_old"));
+        string? storedWhenDetached = null;
+        _provider.Setup(p => p.DetachCardAsync("pm_old"))
+            .Callback(() => storedWhenDetached = _db.SavedCards.AsNoTracking().Single().ProviderPaymentMethodId)
+            .Returns(Task.CompletedTask);
+
+        await CreateSut().ProcessAsync(CardSaved("evt_2", pm: "pm_new"));
+
+        storedWhenDetached.Should().Be("pm_new");
+    }
+
+    [Fact]
+    public async Task CardSaved_ForUnknownUser_IsRejectedAndCompleted()
+    {
+        var evt = new CardSavedEvent("evt_1", Guid.NewGuid(), "cus_1", "pm_1", "visa", "4242", 8, 2028);
+
+        var outcome = await CreateSut().ProcessAsync(evt);
+
+        outcome.Should().Be(PaymentEventOutcome.Rejected);
+        (await _db.SavedCards.CountAsync()).Should().Be(0);
+        (await _db.ProcessedPaymentEvents.SingleAsync()).CompletedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ListingFeePaid_ForUnknownSubscription_IsRejectedAndAudited()
+    {
+        var id = Guid.NewGuid();
+
+        var outcome = await CreateSut().ProcessAsync(new ListingFeePaidEvent("evt_p", id, 99000, "aud", "pi_9"));
+
+        outcome.Should().Be(PaymentEventOutcome.Rejected);
+        var audit = await _db.AuditLogs.SingleAsync();
+        audit.Action.Should().Be("ListingFeePaymentForUnknownSubscription");
+        audit.EntityId.Should().Be(id);
+        audit.Details.Should().Contain("pi_9");
+    }
+
+    [Fact]
+    public async Task ListingFeePaid_ForAWaivedSubscription_IsIgnoredAndAuditedAsDuplicatePayment()
+    {
+        var sub = PendingSubscription(990m);
+        sub.Status = SubscriptionStatus.Waived;
+        await _db.SaveChangesAsync();
+
+        var outcome = await CreateSut().ProcessAsync(new ListingFeePaidEvent("evt_p", sub.Id, 99000, "aud", "pi_3"));
+
+        outcome.Should().Be(PaymentEventOutcome.Ignored);
+        var audit = await _db.AuditLogs.SingleAsync();
+        audit.Action.Should().Be("ListingFeeDuplicatePayment");
+        audit.EntityId.Should().Be(sub.Id);
+        audit.Details.Should().Contain("pi_3").And.Contain("Waived");
+    }
+
+    [Fact]
+    public async Task CompletedAt_IsSetOnProcessedAndRejectedPaths()
+    {
+        await CreateSut().ProcessAsync(CardSaved("evt_1"));
+        await CreateSut().ProcessAsync(new ListingFeePaidEvent("evt_2", Guid.NewGuid(), 1, "aud", "pi"));
+
+        (await _db.ProcessedPaymentEvents.CountAsync(p => p.CompletedAt != null)).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Duplicate_LeavesTheCardUnchanged()
+    {
+        await CreateSut().ProcessAsync(CardSaved("evt_1", pm: "pm_1", last4: "4242"));
+
+        var second = await CreateSut().ProcessAsync(CardSaved("evt_1", pm: "pm_2", last4: "9999"));
+
+        second.Should().Be(PaymentEventOutcome.Duplicate);
+        var card = await _db.SavedCards.SingleAsync();
+        card.ProviderPaymentMethodId.Should().Be("pm_1");
+        card.Last4.Should().Be("4242");
+    }
+
+    [Fact]
+    public async Task FreshIncompleteClaim_ReturnsInProgressAndChangesNothing()
+    {
+        _db.ProcessedPaymentEvents.Add(new ProcessedPaymentEvent
+        {
+            EventId = "evt_1", Provider = "Fake", Type = "CardSavedEvent", ProcessedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+
+        var outcome = await CreateSut().ProcessAsync(CardSaved("evt_1"));
+
+        outcome.Should().Be(PaymentEventOutcome.InProgress);
+        (await _db.SavedCards.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task WhenReleaseAlsoFails_TheOriginalExceptionPropagates()
+    {
+        var processed = new Mock<IProcessedPaymentEventRepository>();
+        processed.Setup(p => p.ClaimAsync(It.IsAny<ProcessedPaymentEvent>())).ReturnsAsync(ClaimResult.Claimed);
+        processed.Setup(p => p.ReleaseAsync(It.IsAny<string>())).ThrowsAsync(new IOException("release failed"));
+        var cards = new Mock<ISavedCardRepository>();
+        cards.Setup(c => c.GetByUserIdAsync(It.IsAny<Guid>()))
+            .ThrowsAsync(new InvalidOperationException("database unavailable"));
+
+        await FluentActions.Awaiting(() => CreateSutWith(processed.Object, cards.Object).ProcessAsync(CardSaved("evt_1")))
+            .Should().ThrowAsync<InvalidOperationException>().WithMessage("database unavailable");
     }
 
     [Fact]

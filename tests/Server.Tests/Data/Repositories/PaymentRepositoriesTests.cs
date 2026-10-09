@@ -35,9 +35,9 @@ public class PaymentRepositoriesTests
     {
         var name = nameof(ProcessedEvents_TryClaim_SecondClaimFromNewContextIsFalse);
         await using (var db1 = DbContextFactory.Create(name))
-            (await new ProcessedPaymentEventRepository(db1).TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+            (await new ProcessedPaymentEventRepository(db1).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.Claimed);
         await using var db2 = DbContextFactory.Create(name);
-        (await new ProcessedPaymentEventRepository(db2).TryClaimAsync(Evt("evt_1"))).Should().BeFalse();
+        (await new ProcessedPaymentEventRepository(db2).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.InProgress);
     }
 
     [Fact]
@@ -45,11 +45,11 @@ public class PaymentRepositoriesTests
     {
         var name = nameof(ProcessedEvents_ReleaseThenClaimAgain_IsTrue);
         await using (var db1 = DbContextFactory.Create(name))
-            (await new ProcessedPaymentEventRepository(db1).TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+            (await new ProcessedPaymentEventRepository(db1).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.Claimed);
         await using (var db2 = DbContextFactory.Create(name))
             await new ProcessedPaymentEventRepository(db2).ReleaseAsync("evt_1");
         await using var db3 = DbContextFactory.Create(name);
-        (await new ProcessedPaymentEventRepository(db3).TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+        (await new ProcessedPaymentEventRepository(db3).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.Claimed);
     }
 
     [Fact]
@@ -58,8 +58,8 @@ public class PaymentRepositoriesTests
         var name = nameof(ProcessedEvents_ContextStaysUsableAfterFailedClaim);
         await using var db = DbContextFactory.Create(name);
         var repo = new ProcessedPaymentEventRepository(db);
-        (await repo.TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
-        (await repo.TryClaimAsync(Evt("evt_1"))).Should().BeFalse();
+        (await repo.ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.Claimed);
+        (await repo.ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.InProgress);
 
         var cards = new SavedCardRepository(db);
         await cards.AddAsync(new SavedCard
@@ -113,7 +113,7 @@ public class PaymentRepositoriesTests
     public async Task ProcessedEvents_TryClaim_RethrowsNonDuplicateFailure()
     {
         await using var db = new FailingSaveContext(nameof(ProcessedEvents_TryClaim_RethrowsNonDuplicateFailure));
-        var act = () => new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"));
+        var act = () => new ProcessedPaymentEventRepository(db).ClaimAsync(Evt("evt_1"));
         await act.Should().ThrowAsync<DbUpdateException>().WithMessage("boom");
     }
 
@@ -124,12 +124,12 @@ public class PaymentRepositoriesTests
         await using (var db1 = DbContextFactory.Create(name))
         {
             var repo = new ProcessedPaymentEventRepository(db1);
-            (await repo.TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+            (await repo.ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.Claimed);
             db1.SavedCards.Add(new SavedCard { UserId = Guid.NewGuid() }); // left unsaved and tracked
             await repo.ReleaseAsync("evt_1");
         }
         await using var db2 = DbContextFactory.Create(name);
-        (await new ProcessedPaymentEventRepository(db2).TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+        (await new ProcessedPaymentEventRepository(db2).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.Claimed);
         db2.SavedCards.Count().Should().Be(0);
     }
 
@@ -141,7 +141,7 @@ public class PaymentRepositoriesTests
         await SeedEventAsync(name, new ProcessedPaymentEvent { EventId = "evt_1", Provider = "Fake", Type = "T", ProcessedAt = old });
 
         await using var db = DbContextFactory.Create(name);
-        (await new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+        (await new ProcessedPaymentEventRepository(db).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.Claimed);
 
         await using var db2 = DbContextFactory.Create(name);
         (await db2.ProcessedPaymentEvents.SingleAsync()).ProcessedAt.Should().BeAfter(old.AddMinutes(5));
@@ -154,7 +154,7 @@ public class PaymentRepositoriesTests
         await SeedEventAsync(name, new ProcessedPaymentEvent { EventId = "evt_1", Provider = "Fake", Type = "T", ProcessedAt = DateTime.UtcNow.AddMinutes(-1) });
 
         await using var db = DbContextFactory.Create(name);
-        (await new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"))).Should().BeFalse();
+        (await new ProcessedPaymentEventRepository(db).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.InProgress);
     }
 
     [Fact]
@@ -165,7 +165,7 @@ public class PaymentRepositoriesTests
         await SeedEventAsync(name, new ProcessedPaymentEvent { EventId = "evt_1", Provider = "Fake", Type = "T", ProcessedAt = old, CompletedAt = old });
 
         await using var db = DbContextFactory.Create(name);
-        (await new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"))).Should().BeFalse();
+        (await new ProcessedPaymentEventRepository(db).ClaimAsync(Evt("evt_1"))).Should().Be(ClaimResult.AlreadyCompleted);
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class PaymentRepositoriesTests
         await using (var db1 = DbContextFactory.Create(name))
         {
             var repo = new ProcessedPaymentEventRepository(db1);
-            await repo.TryClaimAsync(Evt("evt_1"));
+            await repo.ClaimAsync(Evt("evt_1"));
             await repo.MarkCompletedAsync("evt_1");
         }
         await using var db2 = DbContextFactory.Create(name);

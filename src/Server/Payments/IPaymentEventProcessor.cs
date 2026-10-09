@@ -1,6 +1,6 @@
 namespace Stallions.Server.Payments;
 
-public enum PaymentEventOutcome { Processed, Duplicate, Ignored, Rejected }
+public enum PaymentEventOutcome { Processed, Duplicate, Ignored, Rejected, InProgress }
 
 public interface IPaymentEventProcessor
 {
