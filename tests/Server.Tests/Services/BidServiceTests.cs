@@ -152,6 +152,32 @@ public class BidServiceTests
     }
 
     [Fact]
+    public async Task GetPublicHistory_AnonymisesBiddersInOrderOfFirstBid_HighestFirst()
+    {
+        var auctionId = Guid.NewGuid();
+        var alice = Guid.NewGuid();
+        var bob = Guid.NewGuid();
+        var t0 = DateTime.UtcNow.AddHours(-3);
+        _bidRepoMock.Setup(r => r.GetByAuctionListingIdAsync(auctionId)).ReturnsAsync(new List<Bid>
+        {
+            new() { Id = Guid.NewGuid(), AuctionListingId = auctionId, BuyerUserId = bob,   AmountIncGst = 1200m, PlacedAt = t0.AddMinutes(10) },
+            new() { Id = Guid.NewGuid(), AuctionListingId = auctionId, BuyerUserId = alice, AmountIncGst = 1000m, PlacedAt = t0 },
+            new() { Id = Guid.NewGuid(), AuctionListingId = auctionId, BuyerUserId = alice, AmountIncGst = 1500m, PlacedAt = t0.AddMinutes(20) },
+        });
+
+        var result = await CreateSut().GetPublicHistoryAsync(auctionId);
+
+        result.Succeeded.Should().BeTrue();
+        result.Value!.Select(b => (b.AmountIncGst, b.Bidder)).Should().Equal(
+            (1500m, "Bidder 1"),
+            (1200m, "Bidder 2"),
+            (1000m, "Bidder 1"));
+        // No buyer identity of any kind leaves the server on the public history.
+        typeof(PublicBidDto).GetProperties().Select(p => p.Name)
+            .Should().NotContain(n => n.Contains("User") || n.Contains("Buyer"));
+    }
+
+    [Fact]
     public async Task PlaceBid_WhenTermsPublishedAndBuyerHasNotAccepted_ReturnsBadRequest()
     {
         var buyer = ActiveBuyer();                       // AcceptedTermsVersion = null

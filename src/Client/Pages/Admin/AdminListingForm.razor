@@ -2,6 +2,7 @@
 @layout AdminLayout
 @attribute [Authorize]
 @inject AdminApiService AdminApi
+@inject SubscriptionApiService SubscriptionApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
 
@@ -56,6 +57,14 @@ else
                             <option value="@s.Id">@s.Name</option>
                         }
                     </select>
+                    @if (_selectedSeasonId != Guid.Empty && _subscriptions is not null && !HasActiveSubscription())
+                    {
+                        <p class="listing-fee-notice">
+                            Listing fee required. Contact Stallions Australia to activate.
+                            You can save this listing as a draft, but it can't be published until the
+                            listing fee for this stallion and season is paid.
+                        </p>
+                    }
                 </div>
             </div>
 
@@ -122,6 +131,7 @@ else
 
     private List<StallionSummaryDto> _stallions = [];
     private List<SeasonDto> _seasons = [];
+    private List<SubscriptionDto>? _subscriptions;   // null when unknown (load failed)
     private Guid _selectedStallionId;
     private Guid _selectedSeasonId;
     private bool _loading = true;
@@ -162,7 +172,15 @@ else
         {
             _loading = false;
         }
+
+        // Informational only — the server enforces the listing-fee rule on publish.
+        try { _subscriptions = await SubscriptionApi.GetMineAsync(); }
+        catch (ApiException) { _subscriptions = null; }
     }
+
+    private bool HasActiveSubscription() =>
+        _subscriptions!.Any(s => s.StallionId == _selectedStallionId && s.SeasonId == _selectedSeasonId
+                                 && s.Status is ("Paid" or "Waived"));
 
     private void OnStallionChanged(ChangeEventArgs e)
     {

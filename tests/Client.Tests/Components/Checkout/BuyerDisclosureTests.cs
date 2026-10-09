@@ -45,4 +45,24 @@ public class BuyerDisclosureTests : TestContext
         cut.Markup.Should().Contain("150");
         cut.Markup.Should().Contain("9,850");
     }
+
+    [Fact]
+    public void BuyerDisclosure_ShowsConfiguredWordingAndTheStudsTerms()
+    {
+        var cut = RenderComponent<BuyerDisclosure>(p => p
+            .Add(c => c.TotalPriceIncGst, 10000m)
+            .Add(c => c.BuyerFeeIncGst, 150m)
+            .Add(c => c.BalancePayableToStudIncGst, 9850m)
+            .Add(c => c.BuyerFeeExplanation, "CONFIGURED fee explanation.")
+            .Add(c => c.BalanceArrangementText, "CONFIGURED balance arrangement.")
+            .Add(c => c.StudTermsAndConditions, "45-day payment on live foal.")
+            .Add(c => c.OnConfirmed, EventCallback.Empty));
+
+        cut.Markup.Should().Contain("paid to Stallions Australia");
+        cut.Markup.Should().Contain("Balance payable to the stud");
+        cut.Markup.Should().Contain("CONFIGURED fee explanation.");
+        cut.Markup.Should().Contain("CONFIGURED balance arrangement.");
+        cut.Markup.Should().Contain("45-day payment on live foal.");
+        cut.Markup.Should().NotContain("Refund");
+    }
 }

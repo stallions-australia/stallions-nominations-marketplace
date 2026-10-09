@@ -1,0 +1,17 @@
+.subs-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
+}
+
+.subs-filters .form-label {
+    margin: 0;
+}
+
+.subs-filters .form-select {
+    width: auto;
+    min-width: 160px;
+}
+

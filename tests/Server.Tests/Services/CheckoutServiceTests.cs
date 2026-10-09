@@ -24,7 +24,8 @@ public class CheckoutServiceTests
     private readonly IOptions<CheckoutOptions> _options = Microsoft.Extensions.Options.Options.Create(new CheckoutOptions
     {
         WebhookSecret = "test-secret",
-        StudFarmBalanceArrangement = "Farm will contact you."
+        StudFarmBalanceArrangement = "Farm will contact you.",
+        BuyerFeeExplanation = "The buyer fee forms part of the price."
     });
 
     private static AppDbContext CreateInMemoryDb()
@@ -95,6 +96,25 @@ public class CheckoutServiceTests
         result.Value!.Disclosure.TotalPriceIncGst.Should().Be(10000m);
         result.Value.Disclosure.BuyerFeeIncGst.Should().Be(150m);
         result.Value.Disclosure.BalancePayableToStudIncGst.Should().Be(9850m);
+    }
+
+    [Fact]
+    public async Task Initiate_DisclosureCarriesConfiguredWordingAndTheStudsOwnTerms()
+    {
+        var buyer = VerifiedBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var listing = EndedAuction(buyerFee: 150m);
+        listing.TermsAndConditions = "45-day payment on live foal.";
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        BuyerWonAt(listing, buyer, 10000m);
+        _purchaseRepoMock.Setup(r => r.AddAsync(It.IsAny<Purchase>())).ReturnsAsync((Purchase p) => p);
+
+        var result = await CreateSut().InitiateCheckoutAsync(listing.Id, new CheckoutRequest());
+
+        var d = result.Value!.Disclosure;
+        d.BuyerFeeExplanation.Should().Be("The buyer fee forms part of the price.");
+        d.StudFarmBalanceArrangement.Should().Be("Farm will contact you.");
+        d.StudTermsAndConditions.Should().Be("45-day payment on live foal.");
     }
 
     [Fact]

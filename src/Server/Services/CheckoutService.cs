@@ -111,7 +111,9 @@ public class CheckoutService : ICheckoutService
                 TotalPriceIncGst = totalPrice,
                 BuyerFeeIncGst = feeIncGst,
                 BalancePayableToStudIncGst = balancePayableToStud,
-                StudFarmBalanceArrangement = _options.Value.StudFarmBalanceArrangement
+                StudFarmBalanceArrangement = _options.Value.StudFarmBalanceArrangement,
+                BuyerFeeExplanation = _options.Value.BuyerFeeExplanation,
+                StudTermsAndConditions = listing.TermsAndConditions
             }
         };
 

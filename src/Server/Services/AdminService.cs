@@ -2,6 +2,7 @@ using Stallions.Server.Auth;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Shared.DTOs.Admin;
+using Stallions.Shared.DTOs.Stallions;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Services;
@@ -16,6 +17,7 @@ public class AdminService : IAdminService
     private readonly IAuditLogRepository _auditRepo;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserService _users;
+    private readonly IStallionRepository _stallionRepo;
 
     public AdminService(
         IListingRepository listingRepo,
@@ -25,8 +27,10 @@ public class AdminService : IAdminService
         IStudDirectoryRepository studDirRepo,
         IAuditLogRepository auditRepo,
         ICurrentUserService currentUser,
-        IUserService users)
+        IUserService users,
+        IStallionRepository stallionRepo)
     {
+        _stallionRepo = stallionRepo;
         _listingRepo = listingRepo;
         _purchaseRepo = purchaseRepo;
         _userRepo = userRepo;
@@ -159,6 +163,25 @@ public class AdminService : IAdminService
             CreatedAt = farm.CreatedAt
         };
         return ServiceResult<StudFarmSummaryDto>.Ok(dto);
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<StallionSummaryDto>>> GetStudFarmStallionsAsync(Guid farmId)
+    {
+        var farm = await _studFarmRepo.GetByIdAsync(farmId);
+        if (farm == null)
+            return ServiceResult<IReadOnlyList<StallionSummaryDto>>.NotFound("Stud farm not found.");
+
+        var stallions = await _stallionRepo.GetByStudFarmIdAsync(farmId);
+        var dtos = stallions.Select(s => new StallionSummaryDto
+        {
+            Id = s.Id,
+            StudFarmId = s.StudFarmId,
+            Name = s.Name,
+            YearOfBirth = s.YearOfBirth,
+            Colour = s.Colour,
+            IsActive = s.IsActive
+        }).OrderBy(s => s.Name).ToList();
+        return ServiceResult<IReadOnlyList<StallionSummaryDto>>.Ok(dtos);
     }
 
     public async Task<ServiceResult> LinkStudFarmToDirectoryAsync(Guid farmId, Guid studDirectoryId)

@@ -58,6 +58,12 @@
 .badge-expired   { background: #fce4ec; color: #c62828; }
 .badge-sold      { background: #e3f2fd; color: #1565c0; }
 
+/* Listing-fee subscription status (Staff Listing Fees page, stud My Stallions page) */
+.badge-sub-pending { background: var(--warning);    color: var(--white); }
+.badge-sub-paid    { background: var(--success);    color: var(--white); }
+.badge-sub-waived  { background: var(--navy-light); color: var(--white); }
+.badge-sub-none    { background: var(--warm-grey);  color: var(--text-secondary); }
+
 /* Stallion group header in listings view */
 .stallion-group {
     margin-bottom: var(--space-6);
@@ -128,6 +134,13 @@
     gap: var(--space-2);
     font-size: var(--font-size-xs);
     color: var(--text-muted);
+    margin-top: var(--space-1);
+}
+
+/* Shown when a stallion has no paid/waived listing fee for the season */
+.listing-fee-notice {
+    font-size: var(--font-size-xs);
+    color: var(--danger);
     margin-top: var(--space-1);
 }
 

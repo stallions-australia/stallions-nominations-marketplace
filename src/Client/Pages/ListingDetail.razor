@@ -56,13 +56,31 @@ else
                     <div class="auction-meta">
                         <span class="text-secondary text-sm">Live auction</span>
                         <AuctionTimer ClosesAt="@auction.EndDateTime" />
+                        @* The reserve amount is never shown to buyers — only whether it has been met. *@
                         @if (auction.ReserveMet is bool reserveMet)
                         {
                             <span class="@(reserveMet ? "text-success" : "text-muted") text-sm">
                                 @(reserveMet ? "Reserve met" : "Reserve not met")
                             </span>
                         }
+                        else if (!auction.IsNoReserve)
+                        {
+                            <span class="text-muted text-sm">Reserve applies</span>
+                        }
                     </div>
+
+                    @if (auction.BuyerFeeIncGst is decimal buyerFee)
+                    {
+                        <div class="buyer-fee-notice">
+                            <p class="buyer-fee-amount">
+                                Buyer fee: <strong>@FormatPrice(buyerFee)</strong> inc. GST, paid to Stallions Australia
+                            </p>
+                            @if (!string.IsNullOrWhiteSpace(_disclosure?.BuyerFeeExplanation))
+                            {
+                                <p class="text-secondary text-sm">@_disclosure.BuyerFeeExplanation</p>
+                            }
+                        </div>
+                    }
 
                     <AuthorizeView>
                         <Authorized>
@@ -96,6 +114,27 @@ else
                             <a href="authentication/login" class="btn btn-gold btn-full">Sign in to bid</a>
                         </NotAuthorized>
                     </AuthorizeView>
+
+                    <div class="bid-history">
+                        <h3 class="bid-history-title">Bid history</h3>
+                        @if (_bidHistory.Count == 0)
+                        {
+                            <p class="text-muted text-sm">No bids yet.</p>
+                        }
+                        else
+                        {
+                            <ol class="bid-history-list">
+                                @foreach (var b in _bidHistory)
+                                {
+                                    <li class="bid-history-row">
+                                        <span class="bid-history-bidder">@b.Bidder</span>
+                                        <span class="bid-history-amount">@FormatPrice(b.AmountIncGst)</span>
+                                        <span class="bid-history-time text-muted text-xs">@b.PlacedAt.ToLocalTime().ToString("d MMM, h:mm tt")</span>
+                                    </li>
+                                }
+                            </ol>
+                        }
+                    </div>
                 </div>
             }
 
@@ -123,7 +162,9 @@ else
 
 @if (_showBidConfirm)
 {
-    <BidConfirmationModal OnConfirm="ConfirmBidAndPlace" OnCancel="() => _showBidConfirm = false" />
+    <BidConfirmationModal BuyerFeeIncGst="@((_listing as AuctionListingDto)?.BuyerFeeIncGst)"
+                          BuyerFeeExplanation="@_disclosure?.BuyerFeeExplanation"
+                          OnConfirm="ConfirmBidAndPlace" OnCancel="() => _showBidConfirm = false" />
 }
 
 @code {
@@ -137,6 +178,8 @@ else
     private bool _bidSuccess;
     // Updated price after a successful bid
     private decimal? _refreshedHighestBid;
+    private List<PublicBidDto> _bidHistory = [];
+    private BuyerFeeDisclosureDto? _disclosure;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -147,6 +190,11 @@ else
         try
         {
             _listing = await ListingApi.GetByIdAsync(Id);
+            if (_listing is AuctionListingDto)
+            {
+                await LoadBidHistoryAsync();
+                await LoadDisclosureAsync();
+            }
         }
         catch (ApiException ex) when (ex.StatusCode == 404)
         {
@@ -158,6 +206,19 @@ else
                 ? $"Failed to load listing: {ex.Message}"
                 : "Failed to load listing. Please try again.";
         }
+    }
+
+    // Secondary content: a failure here must not hide the listing itself.
+    private async Task LoadBidHistoryAsync()
+    {
+        try { _bidHistory = await ListingApi.GetBidHistoryAsync(Id) ?? []; }
+        catch (ApiException) { _bidHistory = []; }
+    }
+
+    private async Task LoadDisclosureAsync()
+    {
+        try { _disclosure = await ListingApi.GetBuyerFeeDisclosureAsync(); }
+        catch (ApiException) { _disclosure = null; }
     }
 
     // No starting or asking price is ever shown — only the current high bid, if any.
@@ -215,6 +276,7 @@ else
             _bidSuccess = true;
             var refreshed = await BidApi.GetCurrentBidAsync(Id);
             _refreshedHighestBid = refreshed?.HighestBidIncGst;
+            await LoadBidHistoryAsync();
         }
         catch (ApiException ex)
         {

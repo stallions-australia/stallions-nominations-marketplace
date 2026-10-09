@@ -10,7 +10,7 @@ public class CheckoutApiService
     public CheckoutApiService(HttpClient http) => _http = http;
 
     /// <summary>
-    /// Posts mare details. The server creates the purchase record and returns disclosure data.
+    /// Starts checkout. The server creates the purchase record and returns disclosure data.
     /// The buyer reviews the disclosure, then must explicitly confirm (Plan 3c Checkout page).
     /// </summary>
     public virtual async Task<CheckoutResponse> InitiateAsync(Guid listingId, CheckoutRequest request)

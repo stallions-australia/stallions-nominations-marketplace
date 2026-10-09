@@ -1,8 +1,16 @@
 <Modal IsOpen="true" Title="Confirm your bid" CloseOnBackdrop="false" OnClose="Cancel">
     <div class="bid-confirm-body">
         <p><strong>This bid is legally binding.</strong> By confirming, you commit to purchasing
-           this nomination at your bid price if you win the auction. Winning bidders must provide
-           mare details and pay the platform fee to complete the purchase.</p>
+           this nomination at your bid price if you win the auction.</p>
+        @if (BuyerFeeIncGst is decimal fee)
+        {
+            <p>If you win, a buyer fee of <strong>@fee.ToString("C0", AuCulture)</strong> inc. GST is
+               payable to Stallions Australia.</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(BuyerFeeExplanation))
+        {
+            <p class="text-secondary text-sm">@BuyerFeeExplanation</p>
+        }
         <label class="bid-confirm-skip">
             <input type="checkbox" @bind="_dontShowAgain" />
             <span>Don't show this message again.</span>
@@ -20,6 +28,13 @@
     /// <summary>Invoked when the buyer confirms; argument = whether to suppress future confirmations.</summary>
     [Parameter] public EventCallback<bool> OnConfirm { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
+    /// <summary>The listing's snapshotted buyer fee (inc. GST).</summary>
+    [Parameter] public decimal? BuyerFeeIncGst { get; set; }
+    /// <summary>Configured disclosure wording — never hardcoded here.</summary>
+    [Parameter] public string? BuyerFeeExplanation { get; set; }
+
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
 
     private bool _dontShowAgain;
     private bool _busy;

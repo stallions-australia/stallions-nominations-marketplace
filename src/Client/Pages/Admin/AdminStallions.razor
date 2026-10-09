@@ -2,6 +2,7 @@
 @layout AdminLayout
 @attribute [Authorize]
 @inject AdminApiService AdminApi
+@inject SubscriptionApiService SubscriptionApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
 
@@ -52,6 +53,7 @@ else if (_authorized != null)
                     <th>Year of Birth</th>
                     <th>Colour</th>
                     <th>Status</th>
+                    <th>Listing fee@(_openSeason is null ? "" : $" ({_openSeason.Name})")</th>
                     <th>Total Listings</th>
                     <th></th>
                 </tr>
@@ -67,6 +69,23 @@ else if (_authorized != null)
                             <span class="badge @(s.IsActive ? "badge-active" : "badge-cancelled")">
                                 @(s.IsActive ? "Active" : "Inactive")
                             </span>
+                        </td>
+                        <td>
+                            @if (_openSeason is null)
+                            {
+                                <span class="text-muted text-sm">No season open</span>
+                            }
+                            else
+                            {
+                                var status = SubscriptionStatusFor(s.Id);
+                                <span class="badge badge-sub-@status.ToLowerInvariant()">@status</span>
+                                @if (status is not ("Paid" or "Waived"))
+                                {
+                                    <div class="listing-fee-notice">
+                                        Listing fee required. Contact Stallions Australia to activate.
+                                    </div>
+                                }
+                            }
                         </td>
                         <td>@s.TotalListingCount</td>
                         <td class="admin-table-actions">
@@ -146,6 +165,8 @@ else if (_authorized != null)
 @code {
     private List<StallionSummaryDto> _stallions = [];
     private AuthorizedStallionsDto? _authorized;
+    private SeasonDto? _openSeason;
+    private List<SubscriptionDto> _subscriptions = [];
     private readonly HashSet<Guid> _adding = [];
     private bool _loading = true;
     private string? _error;
@@ -166,6 +187,8 @@ else if (_authorized != null)
         {
             _stallions = await AdminApi.GetMyStallionsAsync();
             _authorized = await AdminApi.GetAuthorizedStallionsAsync();
+            _openSeason = (await AdminApi.GetSeasonsAsync() ?? []).FirstOrDefault(s => s.IsOpen);
+            _subscriptions = await SubscriptionApi.GetMineAsync() ?? [];
 
             if (_authorized != null)
             {
@@ -185,6 +208,11 @@ else if (_authorized != null)
             _loading = false;
         }
     }
+
+    // Paid / Waived / Pending for the open season, or None when Staff haven't set one up.
+    private string SubscriptionStatusFor(Guid stallionId) =>
+        _subscriptions.FirstOrDefault(x => x.StallionId == stallionId && x.SeasonId == _openSeason?.Id)?.Status
+        ?? "None";
 
     private async Task AddAsync(Guid directoryId)
     {

@@ -19,6 +19,7 @@ public class AdminServiceTests
     private readonly Mock<IAuditLogRepository> _auditRepoMock = new();
     private readonly Mock<ICurrentUserService> _currentUserMock = new();
     private readonly Mock<IUserService> _userServiceMock = new();
+    private readonly Mock<IStallionRepository> _stallionRepoMock = new();
 
     private AdminService CreateSut() => new(
         _listingRepoMock.Object,
@@ -28,7 +29,8 @@ public class AdminServiceTests
         _studDirRepoMock.Object,
         _auditRepoMock.Object,
         _currentUserMock.Object,
-        _userServiceMock.Object);
+        _userServiceMock.Object,
+        _stallionRepoMock.Object);
 
     [Fact]
     public async Task GetAllStudFarmsAsync_ReturnsMappedDtos()
@@ -253,6 +255,32 @@ public class AdminServiceTests
         },
         Buyer = new User { DisplayName = "Jane Buyer" }
     };
+
+    [Fact]
+    public async Task GetStudFarmStallions_ReturnsThatFarmsActiveStallions()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _studFarmRepoMock.Setup(r => r.GetByIdAsync(farm.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByStudFarmIdAsync(farm.Id)).ReturnsAsync(new List<Stallion>
+        {
+            new() { Id = Guid.NewGuid(), StudFarmId = farm.Id, Name = "Snitzel", IsActive = true }
+        });
+
+        var result = await CreateSut().GetStudFarmStallionsAsync(farm.Id);
+
+        result.Value!.Should().ContainSingle().Which.Name.Should().Be("Snitzel");
+    }
+
+    [Fact]
+    public async Task GetStudFarmStallions_WhenFarmMissing_ReturnsNotFound()
+    {
+        var id = Guid.NewGuid();
+        _studFarmRepoMock.Setup(r => r.GetByIdAsync(id)).ReturnsAsync((StudFarm?)null);
+
+        var result = await CreateSut().GetStudFarmStallionsAsync(id);
+
+        result.HttpStatusCode.Should().Be(404);
+    }
 
     [Fact]
     public async Task GetAllListingsStaff_ShowsHighBidReserveAndBuyerFee()

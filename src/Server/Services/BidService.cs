@@ -126,6 +126,31 @@ public class BidService : IBidService
         return ServiceResult<IReadOnlyList<BidDto>>.Ok(bids.Select(MapToDto).ToList());
     }
 
+    public async Task<ServiceResult<IReadOnlyList<PublicBidDto>>> GetPublicHistoryAsync(Guid auctionListingId)
+    {
+        var bids = await _bidRepo.GetByAuctionListingIdAsync(auctionListingId);
+
+        // Number bidders by their first bid so the labels are stable as new bids arrive.
+        var labels = bids
+            .GroupBy(b => b.BuyerUserId)
+            .OrderBy(g => g.Min(b => b.PlacedAt))
+            .Select((g, i) => (g.Key, Label: $"Bidder {i + 1}"))
+            .ToDictionary(x => x.Key, x => x.Label);
+
+        var history = bids
+            .OrderByDescending(b => b.AmountIncGst)
+            .ThenByDescending(b => b.PlacedAt)
+            .Select(b => new PublicBidDto
+            {
+                AmountIncGst = b.AmountIncGst,
+                PlacedAt = b.PlacedAt,
+                Bidder = labels[b.BuyerUserId]
+            })
+            .ToList();
+
+        return ServiceResult<IReadOnlyList<PublicBidDto>>.Ok(history);
+    }
+
     public async Task<ServiceResult<IReadOnlyList<BidDto>>> GetMineAsync()
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();

@@ -77,6 +77,13 @@ public class AdminController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpGet("studfarms/{id:guid}/stallions")]
+    public async Task<IActionResult> GetStudFarmStallions(Guid id)
+    {
+        var r = await _admin.GetStudFarmStallionsAsync(id);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpPut("studfarms/{id:guid}/link-directory")]
     public async Task<IActionResult> LinkStudFarmToDirectory(Guid id, [FromBody] LinkStudDirectoryRequest request)
     {

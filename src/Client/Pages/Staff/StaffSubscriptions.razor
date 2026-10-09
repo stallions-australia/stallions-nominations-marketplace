@@ -1,0 +1,371 @@
+@page "/staff/subscriptions"
+@layout StaffLayout
+@attribute [Authorize]
+@inject SubscriptionApiService SubscriptionApi
+@inject StaffApiService StaffApi
+@inject PlatformSettingsApiService SettingsApi
+@inject UserStateService UserState
+@inject NavigationManager Nav
+
+<PageTitle>Listing Fees — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Listing Fees</h1>
+    <button class="btn btn-gold" @onclick="OpenCreate">+ New subscription</button>
+</div>
+
+<p class="text-secondary text-sm">
+    A stud pays one listing fee per stallion per season. A listing can only be published once its
+    stallion's subscription for that season is <strong>Paid</strong> or <strong>Waived</strong>.
+</p>
+
+<div class="subs-filters">
+    <label class="form-label" for="season-filter">Season</label>
+    <select id="season-filter" class="form-select" value="@_seasonFilter" @onchange="OnSeasonFilterChanged">
+        <option value="">All seasons</option>
+        @foreach (var s in _seasons)
+        {
+            <option value="@s.Id">@s.Name</option>
+        }
+    </select>
+    <label class="form-label" for="status-filter">Status</label>
+    <select id="status-filter" class="form-select" value="@_statusFilter" @onchange="OnStatusFilterChanged">
+        <option value="">All</option>
+        <option value="Pending">Pending</option>
+        <option value="Paid">Paid</option>
+        <option value="Waived">Waived</option>
+    </select>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_subscriptions.Count == 0)
+{
+    <div class="admin-empty-state"><p>No subscriptions match these filters.</p></div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Stallion</th>
+                <th>Stud farm</th>
+                <th>Season</th>
+                <th>Fee (inc. GST)</th>
+                <th>Status</th>
+                <th>Payment</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in _subscriptions)
+            {
+                <tr>
+                    <td>@s.StallionName</td>
+                    <td>@s.StudFarmName</td>
+                    <td>@s.SeasonName</td>
+                    <td>
+                        @Money(s.FeeIncGst)
+                        <div class="text-muted text-xs">ex GST @Money(s.FeeExGst) · GST @Money(s.GstAmount)</div>
+                    </td>
+                    <td><span class="badge badge-sub-@s.Status.ToLowerInvariant()">@s.Status</span></td>
+                    <td class="text-sm">
+                        @if (s.Status == "Paid")
+                        {
+                            <text>@s.PaymentMethod @(s.PaymentReference is null ? "" : $"· {s.PaymentReference}")
+                            @(s.PaidAt.HasValue ? $"· {s.PaidAt.Value.ToLocalTime():d MMM yyyy}" : "")</text>
+                        }
+                        else if (s.Status == "Waived")
+                        {
+                            <text>@s.WaiverReason</text>
+                        }
+                        else
+                        {
+                            <text>—</text>
+                        }
+                    </td>
+                    <td>
+                        @if (s.Status == "Pending")
+                        {
+                            <button class="btn btn-sm btn-gold" @onclick="() => OpenMarkPaid(s)">Mark paid</button>
+                            <button class="btn btn-sm btn-outline" @onclick="() => OpenWaive(s)">Waive</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@* ── New subscription ─────────────────────────────────────────────────── *@
+<Modal IsOpen="@_createOpen" Title="New listing fee subscription" OnClose="CloseModals">
+    <div class="form-group">
+        <label class="form-label" for="new-farm">Stud farm</label>
+        <select id="new-farm" class="form-select" value="@_newFarmId" @onchange="OnNewFarmChanged">
+            <option value="">— Select a stud farm —</option>
+            @foreach (var f in _farms)
+            {
+                <option value="@f.Id">@f.Name</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="new-stallion">Stallion</label>
+        <select id="new-stallion" class="form-select" @bind="_newStallionId" disabled="@(_farmStallions.Count == 0)">
+            <option value="">— Select a stallion —</option>
+            @foreach (var st in _farmStallions)
+            {
+                <option value="@st.Id">@st.Name</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="new-season">Season</label>
+        <select id="new-season" class="form-select" @bind="_newSeasonId">
+            <option value="">— Select a season —</option>
+            @foreach (var s in _seasons)
+            {
+                <option value="@s.Id">@s.Name@(s.IsOpen ? " (open)" : "")</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="new-fee">Listing fee (inc. GST)</label>
+        <div class="input-prefix">
+            <span>$</span>
+            <input id="new-fee" type="number" class="form-input" min="0.01" step="0.01" @bind="_newFee" />
+        </div>
+        <p class="form-hint">
+            Pre-filled with the standard fee (@Money(_standardFee)). Lower it to apply an intro offer;
+            use Waive to remove the fee entirely.
+        </p>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="new-notes">Notes (Staff only, optional)</label>
+        <textarea id="new-notes" class="form-control" rows="2" @bind="_newNotes"
+                  placeholder="e.g. Founding stud intro offer, agreed by phone"></textarea>
+    </div>
+    @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="CreateAsync" disabled="@_busy">@(_busy ? "Creating…" : "Create subscription")</button>
+        <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@* ── Mark paid ────────────────────────────────────────────────────────── *@
+<Modal IsOpen="@(_markPaidFor is not null)" Title="@($"Mark paid — {_markPaidFor?.StallionName}")" OnClose="CloseModals">
+    <p>Fee: <strong>@Money(_markPaidFor?.FeeIncGst ?? 0)</strong> inc. GST (@_markPaidFor?.SeasonName)</p>
+    <div class="form-group">
+        <label class="form-label" for="paid-method">Payment method</label>
+        <select id="paid-method" class="form-select" @bind="_paidMethod">
+            <option value="Invoice">Invoice</option>
+            <option value="BankTransfer">Bank transfer</option>
+            <option value="Card">Card</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="paid-ref">Reference (optional)</label>
+        <input id="paid-ref" class="form-input" @bind="_paidReference" placeholder="Invoice or transaction number" />
+    </div>
+    @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="MarkPaidAsync" disabled="@_busy">@(_busy ? "Saving…" : "Mark paid")</button>
+        <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@* ── Waive ────────────────────────────────────────────────────────────── *@
+<Modal IsOpen="@(_waiveFor is not null)" Title="@($"Waive listing fee — {_waiveFor?.StallionName}")" OnClose="CloseModals">
+    <p>The fee will be set to $0 and the stallion can be listed for @_waiveFor?.SeasonName.</p>
+    <div class="form-group">
+        <label class="form-label" for="waive-reason">Reason <span class="required">*</span></label>
+        <textarea id="waive-reason" class="form-control" rows="2" @bind="_waiveReason"
+                  placeholder="e.g. Founding stud — first season free"></textarea>
+    </div>
+    @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="WaiveAsync" disabled="@_busy">@(_busy ? "Saving…" : "Waive fee")</button>
+        <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@code {
+    private List<SubscriptionDto> _subscriptions = [];
+    private List<SeasonDto> _seasons = [];
+    private List<StudFarmSummaryDto> _farms = [];
+    private List<StallionSummaryDto> _farmStallions = [];
+    private decimal _standardFee;
+
+    private string _seasonFilter = string.Empty;
+    private string _statusFilter = string.Empty;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _modalError;
+
+    private bool _createOpen;
+    private string _newFarmId = string.Empty;
+    private Guid _newStallionId;
+    private Guid _newSeasonId;
+    private decimal _newFee;
+    private string? _newNotes;
+
+    private SubscriptionDto? _markPaidFor;
+    private string _paidMethod = "Invoice";
+    private string? _paidReference;
+
+    private SubscriptionDto? _waiveFor;
+    private string _waiveReason = string.Empty;
+
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+    private static string Money(decimal amount) => amount.ToString("C", AuCulture);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        try
+        {
+            _seasons = await StaffApi.GetSeasonsAsync();
+            _farms = await StaffApi.GetStudFarmsAsync();
+            _standardFee = (await SettingsApi.GetAsync()).StandardListingFeeIncGst;
+        }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load page data."; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            Guid? season = Guid.TryParse(_seasonFilter, out var id) ? id : null;
+            _subscriptions = await SubscriptionApi.GetAllAsync(season, string.IsNullOrEmpty(_statusFilter) ? null : _statusFilter);
+        }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load subscriptions."; }
+        finally { _loading = false; }
+    }
+
+    private async Task OnSeasonFilterChanged(ChangeEventArgs e)
+    {
+        _seasonFilter = e.Value?.ToString() ?? string.Empty;
+        await LoadAsync();
+    }
+
+    private async Task OnStatusFilterChanged(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString() ?? string.Empty;
+        await LoadAsync();
+    }
+
+    private void OpenCreate()
+    {
+        CloseModals();
+        _newFarmId = string.Empty;
+        _farmStallions = [];
+        _newStallionId = Guid.Empty;
+        _newSeasonId = _seasons.FirstOrDefault(s => s.IsOpen)?.Id ?? Guid.Empty;
+        _newFee = _standardFee;
+        _newNotes = null;
+        _createOpen = true;
+    }
+
+    private async Task OnNewFarmChanged(ChangeEventArgs e)
+    {
+        _newFarmId = e.Value?.ToString() ?? string.Empty;
+        _newStallionId = Guid.Empty;
+        _farmStallions = [];
+        if (!Guid.TryParse(_newFarmId, out var farmId)) return;
+        try { _farmStallions = await StaffApi.GetStudFarmStallionsAsync(farmId); }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to load stallions."; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _modalError = null;
+        if (_newStallionId == Guid.Empty) { _modalError = "Select a stud farm and stallion."; return; }
+        if (_newSeasonId == Guid.Empty) { _modalError = "Select a season."; return; }
+        if (_newFee <= 0) { _modalError = "The fee must be greater than zero. Use Waive to remove it."; return; }
+
+        _busy = true;
+        try
+        {
+            await SubscriptionApi.CreateAsync(new CreateSubscriptionRequest
+            {
+                StallionId = _newStallionId,
+                SeasonId = _newSeasonId,
+                // Only send an override when Staff changed the pre-filled standard fee.
+                FeeIncGstOverride = _newFee == _standardFee ? null : _newFee,
+                Notes = string.IsNullOrWhiteSpace(_newNotes) ? null : _newNotes.Trim()
+            });
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to create subscription."; }
+        finally { _busy = false; }
+    }
+
+    private void OpenMarkPaid(SubscriptionDto s)
+    {
+        CloseModals();
+        _markPaidFor = s;
+        _paidMethod = "Invoice";
+        _paidReference = null;
+    }
+
+    private async Task MarkPaidAsync()
+    {
+        if (_markPaidFor is null) return;
+        _busy = true; _modalError = null;
+        try
+        {
+            await SubscriptionApi.MarkPaidAsync(_markPaidFor.Id, new MarkSubscriptionPaidRequest
+            {
+                PaymentMethod = _paidMethod,
+                PaymentReference = string.IsNullOrWhiteSpace(_paidReference) ? null : _paidReference.Trim()
+            });
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to mark paid."; }
+        finally { _busy = false; }
+    }
+
+    private void OpenWaive(SubscriptionDto s)
+    {
+        CloseModals();
+        _waiveFor = s;
+        _waiveReason = string.Empty;
+    }
+
+    private async Task WaiveAsync()
+    {
+        if (_waiveFor is null) return;
+        _modalError = null;
+        if (string.IsNullOrWhiteSpace(_waiveReason)) { _modalError = "A reason is required."; return; }
+        _busy = true;
+        try
+        {
+            await SubscriptionApi.WaiveAsync(_waiveFor.Id, new WaiveSubscriptionRequest { Reason = _waiveReason.Trim() });
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to waive fee."; }
+        finally { _busy = false; }
+    }
+
+    private void CloseModals()
+    {
+        _createOpen = false;
+        _markPaidFor = null;
+        _waiveFor = null;
+        _modalError = null;
+    }
+}

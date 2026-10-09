@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using Stallions.Shared.DTOs.Admin;
+using Stallions.Shared.DTOs.Seasons;
+using Stallions.Shared.DTOs.Stallions;
 using Stallions.Shared.DTOs.Users;
 
 namespace Stallions.Client.Services;
@@ -126,6 +128,22 @@ public class StaffApiService
     }
 
     // ── Listings ───────────────────────────────────────────────────────────
+
+    public virtual async Task<List<StallionSummaryDto>> GetStudFarmStallionsAsync(Guid farmId)
+    {
+        var r = await _http.GetAsync($"api/admin/studfarms/{farmId}/stallions");
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, "Failed to load stallions.");
+        return await r.Content.ReadFromJsonAsync<List<StallionSummaryDto>>() ?? [];
+    }
+
+    public virtual async Task<List<SeasonDto>> GetSeasonsAsync()
+    {
+        var r = await _http.GetAsync("api/seasons");
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, "Failed to load seasons.");
+        return await r.Content.ReadFromJsonAsync<List<SeasonDto>>() ?? [];
+    }
 
     public virtual async Task<List<ListingStaffSummaryDto>> GetAllListingsAsync()
     {

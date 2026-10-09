@@ -1,0 +1,7 @@
+.settings-form {
+    max-width: 560px;
+}
+
+.settings-diff {
+    margin: var(--space-4) 0;
+}
