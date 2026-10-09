@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Moq;
 using Stallions.Server.Payments;
+using Stallions.Server.Payments.Stripe;
 
 namespace Stallions.Server.Tests.Payments;
 
@@ -38,5 +39,27 @@ public class PaymentServiceCollectionExtensionsTests
         using var sp = services.BuildServiceProvider();
         sp.GetRequiredService<IPaymentProvider>().Should().BeOfType<FakePaymentProvider>();
         sp.GetRequiredService<IPaymentProvider>().Should().BeSameAs(sp.GetRequiredService<FakePaymentProvider>());
+    }
+
+    [Fact]
+    public void Stripe_InProduction_RegistersStripeProvider()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Payments:Provider"] = "Stripe",
+                ["Payments:Stripe:SecretKey"] = "sk_test_dummy",
+                ["Payments:Stripe:WebhookSigningSecret"] = "whsec_dummy"
+            })
+            .Build();
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(e => e.EnvironmentName).Returns("Production");
+        var services = new ServiceCollection();
+
+        services.AddPayments(config, environment.Object);
+
+        using var sp = services.BuildServiceProvider();
+        using var scope = sp.CreateScope();
+        scope.ServiceProvider.GetRequiredService<IPaymentProvider>().Should().BeOfType<StripePaymentProvider>();
     }
 }

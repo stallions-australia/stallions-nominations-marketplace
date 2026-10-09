@@ -1,3 +1,5 @@
+using Stallions.Server.Payments.Stripe;
+
 namespace Stallions.Server.Payments;
 
 public static class PaymentServiceCollectionExtensions
@@ -17,6 +19,11 @@ public static class PaymentServiceCollectionExtensions
         {
             services.AddSingleton<FakePaymentProvider>();
             services.AddSingleton<IPaymentProvider>(sp => sp.GetRequiredService<FakePaymentProvider>());
+        }
+        else
+        {
+            services.AddSingleton<IStripeApi, StripeApi>();
+            services.AddScoped<IPaymentProvider, StripePaymentProvider>();
         }
 
         // One database transaction per payment event (claim + writes + completion).
