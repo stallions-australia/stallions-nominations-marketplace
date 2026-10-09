@@ -1,4 +1,3 @@
-// src/Server/Services/CardService.cs
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Payments;
@@ -28,7 +27,7 @@ public class CardService : ICardService
     public async Task<ServiceResult<SavedCardDto>> GetMineAsync()
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult<SavedCardDto>.Forbidden();
+        if (caller == null || caller.Role != UserRole.Buyer) return ServiceResult<SavedCardDto>.Forbidden();
 
         var card = await _cards.GetByUserIdAsync(caller.Id);
         return card == null

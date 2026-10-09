@@ -1,4 +1,3 @@
-// tests/Server.Tests/Services/CardServiceTests.cs
 using FluentAssertions;
 using Moq;
 using Stallions.Server.Data.Entities;
@@ -121,5 +120,46 @@ public class CardServiceTests
         (await CreateSut().HasValidCardAsync(expired)).Should().BeFalse();
         (await CreateSut().HasValidCardAsync(current)).Should().BeTrue();
         (await CreateSut().HasValidCardAsync(otherProvider)).Should().BeFalse("a card saved with another provider can't be charged by this one");
+    }
+
+    [Fact]
+    public async Task GetMine_CardFromAnotherProvider_IsNotValid()
+    {
+        var buyer = SignedIn(UserRole.Buyer);
+        _cards.Setup(c => c.GetByUserIdAsync(buyer.Id)).ReturnsAsync(new SavedCard
+            { UserId = buyer.Id, Provider = "Fake", Brand = "visa", Last4 = "4242", ExpMonth = 12, ExpYear = DateTime.UtcNow.Year + 2 });
+
+        (await CreateSut().GetMineAsync()).Value!.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task NullCaller_IsForbidden_ForGetMineAndStartSetup()
+    {
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync((User?)null);
+
+        (await CreateSut().GetMineAsync()).HttpStatusCode.Should().Be(403);
+        (await CreateSut().StartSetupAsync("https://ok", "https://no")).HttpStatusCode.Should().Be(403);
+    }
+
+    [Theory]
+    [InlineData(UserRole.StudFarmAdmin)]
+    [InlineData(UserRole.Staff)]
+    public async Task GetMine_NonBuyer_IsForbidden(UserRole role)
+    {
+        SignedIn(role);
+
+        (await CreateSut().GetMineAsync()).HttpStatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task StartSetup_ReusePath_DoesNotUpdateTheUser()
+    {
+        var buyer = SignedIn(UserRole.Buyer, customerId: "cus_old");
+        _provider.Setup(p => p.CreateCardSetupSessionAsync(buyer.Id, "cus_old", It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync("https://pay/setup");
+
+        await CreateSut().StartSetupAsync("https://ok", "https://no");
+
+        _userRepo.Verify(r => r.UpdateAsync(It.IsAny<User>()), Times.Never);
     }
 }

@@ -1,8 +1,8 @@
-// tests/Server.Tests/Controllers/PaymentsControllerWebhookTests.cs
 using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stallions.Server.Controllers;
 using Stallions.Server.Payments;
@@ -20,7 +20,7 @@ public class PaymentsControllerWebhookTests
         var context = new DefaultHttpContext();
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
         if (signature != null) context.Request.Headers["Stripe-Signature"] = signature;
-        return new PaymentsController(new Mock<ICardService>().Object, _provider.Object, _processor.Object)
+        return new PaymentsController(new Mock<ICardService>().Object, _provider.Object, _processor.Object, NullLogger<PaymentsController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = context }
         };
@@ -71,5 +71,41 @@ public class PaymentsControllerWebhookTests
         _provider.SetupGet(p => p.Name).Returns("Fake");
 
         (await CreateSut("{}", "sig").StripeWebhook()).Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task ProcessorThrowing_Propagates_SoStripeRetries()
+    {
+        _provider.SetupGet(p => p.Name).Returns("Stripe");
+        var evt = new UnhandledPaymentEvent("evt_1", "x");
+        _provider.Setup(p => p.ParseWebhookAsync(It.IsAny<string>(), It.IsAny<string?>())).ReturnsAsync(evt);
+        _processor.Setup(p => p.ProcessAsync(evt)).ThrowsAsync(new InvalidOperationException("boom"));
+
+        var act = () => CreateSut("{}", "sig").StripeWebhook();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task MissingSignatureHeader_PassesNullToTheProvider()
+    {
+        _provider.SetupGet(p => p.Name).Returns("Stripe");
+        _provider.Setup(p => p.ParseWebhookAsync("{}", null)).ThrowsAsync(new PaymentSignatureException("missing"));
+
+        var result = await CreateSut("{}", null).StripeWebhook();
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        _provider.Verify(p => p.ParseWebhookAsync("{}", null), Times.Once);
+    }
+
+    [Fact]
+    public async Task ParseFailure_Propagates()
+    {
+        _provider.SetupGet(p => p.Name).Returns("Stripe");
+        _provider.Setup(p => p.ParseWebhookAsync(It.IsAny<string>(), It.IsAny<string?>())).ThrowsAsync(new InvalidOperationException("bad"));
+
+        var act = () => CreateSut("{}", "sig").StripeWebhook();
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
     }
 }

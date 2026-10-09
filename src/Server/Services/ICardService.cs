@@ -1,4 +1,3 @@
-// src/Server/Services/ICardService.cs
 using Stallions.Shared.DTOs.Payments;
 
 namespace Stallions.Server.Services;

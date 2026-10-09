@@ -1,4 +1,3 @@
-// src/Shared/DTOs/Payments/SavedCardDto.cs
 namespace Stallions.Shared.DTOs.Payments;
 
 public class SavedCardDto
