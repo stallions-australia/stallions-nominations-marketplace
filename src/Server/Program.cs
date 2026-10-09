@@ -105,6 +105,8 @@ builder.Services.AddScoped<IStallionDirectoryRepository, StallionDirectoryReposi
 builder.Services.AddScoped<ITermsRepository, TermsRepository>();
 builder.Services.AddScoped<IPlatformSettingsRepository, PlatformSettingsRepository>();
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+builder.Services.AddScoped<ISavedCardRepository, SavedCardRepository>();
+builder.Services.AddScoped<IProcessedPaymentEventRepository, ProcessedPaymentEventRepository>();
 
 // Blob Storage (uses DefaultAzureCredential; requires AZURE_STORAGE_ACCOUNT_NAME in appsettings.Development.json)
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();

@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<TermsDocument> TermsDocuments => Set<TermsDocument>();
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<StallionSeasonSubscription> StallionSeasonSubscriptions => Set<StallionSeasonSubscription>();
+    public DbSet<SavedCard> SavedCards => Set<SavedCard>();
+    public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents => Set<ProcessedPaymentEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +44,7 @@ public class AppDbContext : DbContext
             e.Property(u => u.Email).HasMaxLength(256).IsRequired();
             e.Property(u => u.DisplayName).HasMaxLength(200).IsRequired();
             e.Property(u => u.ObjectId).HasMaxLength(36).IsRequired();
+            e.Property(u => u.PaymentCustomerId).HasMaxLength(100);
 
             e.HasOne(u => u.VerifiedBy)
                 .WithMany()
@@ -389,6 +392,32 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(s => s.CreatedByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ── SavedCards (one per buyer) ────────────────────────────────────────
+        modelBuilder.Entity<SavedCard>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.HasIndex(c => c.UserId).IsUnique();
+            e.Property(c => c.Provider).HasMaxLength(20).IsRequired();
+            e.Property(c => c.ProviderCustomerId).HasMaxLength(100).IsRequired();
+            e.Property(c => c.ProviderPaymentMethodId).HasMaxLength(100).IsRequired();
+            e.Property(c => c.Brand).HasMaxLength(30).IsRequired();
+            e.Property(c => c.Last4).HasMaxLength(4).IsRequired();
+
+            e.HasOne(c => c.User)
+                .WithMany()
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── ProcessedPaymentEvents (idempotency) ──────────────────────────────
+        modelBuilder.Entity<ProcessedPaymentEvent>(e =>
+        {
+            e.HasKey(p => p.EventId);
+            e.Property(p => p.EventId).HasMaxLength(255);
+            e.Property(p => p.Provider).HasMaxLength(20).IsRequired();
+            e.Property(p => p.Type).HasMaxLength(100).IsRequired();
         });
     }
 }
