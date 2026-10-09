@@ -37,10 +37,10 @@ public class CheckoutServiceTests
         return new AppDbContext(options);
     }
 
-    private CheckoutService CreateSut() => new(
+    private CheckoutService CreateSut(AppDbContext? db = null) => new(
         _listingRepoMock.Object, _bidRepoMock.Object, _purchaseRepoMock.Object,
         _bindingRepoMock.Object, _auditRepoMock.Object, _usersMock.Object, _options,
-        CreateInMemoryDb());
+        db ?? CreateInMemoryDb());
 
     private static User VerifiedBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
@@ -193,6 +193,59 @@ public class CheckoutServiceTests
             b.PurchaseId == purchase.Id && b.Status == BindingStatus.PendingAcknowledgement)), Times.Once);
         _auditRepoMock.Verify(r => r.LogAsync("Purchase", purchase.Id, "PurchaseCompleted",
             null, It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Complete_TransactionStartsWithAnEmptyChangeTrackerAndReloadsThePurchase()
+    {
+        // A rollback does not reset the change tracker, so each attempt clears it and re-reads
+        // the purchase inside the transaction instead of saving the copy loaded before it.
+        var db = CreateInMemoryDb();
+        db.Bids.Attach(new Bid { Id = Guid.NewGuid(), AmountIncGst = 1m, Status = BidStatus.Active });
+        var listing = new AuctionListing
+        {
+            Id = Guid.NewGuid(), Status = ListingStatus.Active,
+            EndDateTime = DateTime.UtcNow.AddHours(-1)
+        };
+        var outside = new Purchase
+        {
+            Id = Guid.NewGuid(), ListingId = listing.Id, Status = PurchaseStatus.Pending, BuyerFeeIncGst = 150m
+        };
+        var inside = new Purchase
+        {
+            Id = outside.Id, ListingId = listing.Id, Status = PurchaseStatus.Pending, BuyerFeeIncGst = 150m
+        };
+        var trackedAtReload = -1;
+        _purchaseRepoMock.SetupSequence(r => r.GetByIdAsync(outside.Id))
+            .ReturnsAsync(outside)
+            .ReturnsAsync(() =>
+            {
+                trackedAtReload = db.ChangeTracker.Entries().Count();
+                return inside;
+            });
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut(db).CompleteCheckoutAsync(outside.Id, "test-secret");
+
+        result.Succeeded.Should().BeTrue();
+        trackedAtReload.Should().Be(0);
+        _purchaseRepoMock.Verify(r => r.UpdateAsync(inside), Times.Once);
+        inside.Status.Should().Be(PurchaseStatus.Completed);
+    }
+
+    [Fact]
+    public async Task Complete_WhenPurchaseIsNoLongerPendingInsideTheTransaction_ReturnsBadRequest()
+    {
+        var purchaseId = Guid.NewGuid();
+        _purchaseRepoMock.SetupSequence(r => r.GetByIdAsync(purchaseId))
+            .ReturnsAsync(new Purchase { Id = purchaseId, Status = PurchaseStatus.Pending })
+            .ReturnsAsync(new Purchase { Id = purchaseId, Status = PurchaseStatus.Completed });
+
+        var result = await CreateSut().CompleteCheckoutAsync(purchaseId, "test-secret");
+
+        result.Succeeded.Should().BeFalse();
+        _bindingRepoMock.Verify(r => r.AddAsync(It.IsAny<NominationBinding>()), Times.Never);
+        _purchaseRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Purchase>()), Times.Never);
     }
 
     [Fact]

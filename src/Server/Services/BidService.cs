@@ -76,11 +76,14 @@ public class BidService : IBidService
         // Transactional section: re-read, validate, and mutate atomically.
         // The DbContext is configured with EnableRetryOnFailure, so a user-initiated
         // transaction must be executed through the retrying execution strategy as a
-        // single retriable unit (EF Core throws otherwise). The whole block re-reads
-        // fresh state on each attempt, so a retry is safe.
+        // single retriable unit (EF Core throws otherwise). A rollback does not reset the
+        // change tracker, so each attempt clears it and re-reads the highest bid rather than
+        // reusing stale tracked entities from a failed attempt. `caller` and `listing` were
+        // loaded before the transaction and are only read here, never saved.
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
+            _db.ChangeTracker.Clear();
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
