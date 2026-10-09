@@ -9,8 +9,8 @@ public class StripeApi : IStripeApi
     private readonly IStripeClient _client;
     public StripeApi(IOptions<PaymentOptions> options) => _client = new StripeClient(options.Value.Stripe.SecretKey);
 
-    public async Task<string> CreateCustomerAsync(CustomerCreateOptions options) =>
-        (await new CustomerService(_client).CreateAsync(options)).Id;
+    public async Task<string> CreateCustomerAsync(CustomerCreateOptions options, string idempotencyKey) =>
+        (await new CustomerService(_client).CreateAsync(options, new RequestOptions { IdempotencyKey = idempotencyKey })).Id;
 
     public async Task<string> CreateCheckoutSessionAsync(SessionCreateOptions options) =>
         (await new SessionService(_client).CreateAsync(options)).Url;

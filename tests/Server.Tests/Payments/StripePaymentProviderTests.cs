@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using Stallions.Server.Payments;
@@ -19,7 +20,7 @@ public class StripePaymentProviderTests
     {
         Provider = "Stripe",
         Stripe = new StripeSettings { SecretKey = "sk_test_unused", WebhookSigningSecret = Secret }
-    }));
+    }), NullLogger<StripePaymentProvider>.Instance);
 
     private static string Sign(string payload, long? timestamp = null)
     {
@@ -157,5 +158,134 @@ public class StripePaymentProviderTests
         sent.Customer.Should().Be("cus_9");
         sent.Currency.Should().Be("aud");
         sent.Metadata.Should().Contain("kind", "card-setup").And.Contain("userId", userId.ToString());
+    }
+
+    private static string SetupSession(string extra = "", string? metadata = null, string mode = "setup")
+    {
+        metadata ??= "{\"kind\":\"card-setup\",\"userId\":\"" + Guid.NewGuid() + "\"}";
+        return "{\"id\":\"cs_x\",\"object\":\"checkout.session\",\"mode\":\"" + mode + "\",\"customer\":\"cus_9\"" + extra +
+               ",\"metadata\":" + metadata + "}";
+    }
+
+    private async Task<PaymentEvent> Parse(string sessionJson)
+    {
+        var payload = SessionCompleted(sessionJson);
+        return await CreateSut().ParseWebhookAsync(payload, Sign(payload));
+    }
+
+    [Fact]
+    public async Task Webhook_SetupSession_CardNull_IsUnhandled()
+    {
+        _api.Setup(a => a.GetSetupIntentAsync("seti_1")).ReturnsAsync(new SetupIntent { PaymentMethodId = "pm_9" });
+        _api.Setup(a => a.GetPaymentMethodAsync("pm_9")).ReturnsAsync(new PaymentMethod { Id = "pm_9", Card = null });
+
+        (await Parse(SetupSession(",\"setup_intent\":\"seti_1\""))).Should().BeOfType<UnhandledPaymentEvent>();
+    }
+
+    [Fact]
+    public async Task Webhook_SetupSession_NoPaymentMethodOnIntent_IsUnhandled()
+    {
+        _api.Setup(a => a.GetSetupIntentAsync("seti_1")).ReturnsAsync(new SetupIntent { PaymentMethodId = null });
+
+        (await Parse(SetupSession(",\"setup_intent\":\"seti_1\""))).Should().BeOfType<UnhandledPaymentEvent>();
+    }
+
+    [Fact]
+    public async Task Webhook_SetupSession_NoSetupIntent_IsUnhandled() =>
+        (await Parse(SetupSession())).Should().BeOfType<UnhandledPaymentEvent>();
+
+    [Theory]
+    [InlineData("""{"kind":"card-setup"}""")]
+    [InlineData("""{"kind":"card-setup","userId":"not-a-guid"}""")]
+    [InlineData("{}")]
+    public async Task Webhook_SetupSession_BadMetadata_IsUnhandled(string metadata) =>
+        (await Parse(SetupSession(",\"setup_intent\":\"seti_1\"", metadata))).Should().BeOfType<UnhandledPaymentEvent>();
+
+    [Theory]
+    [InlineData("""{"kind":"listing-fee"}""")]
+    [InlineData("""{"kind":"listing-fee","subscriptionId":"nope"}""")]
+    public async Task Webhook_PaymentSession_BadMetadata_IsUnhandled(string metadata) =>
+        (await Parse(SetupSession(",\"payment_status\":\"paid\",\"payment_intent\":\"pi_1\"", metadata, "payment")))
+            .Should().BeOfType<UnhandledPaymentEvent>();
+
+    [Fact]
+    public async Task Webhook_PaymentSession_WithCardSetupKind_IsUnhandled() =>
+        (await Parse(SetupSession(",\"payment_status\":\"paid\"", mode: "payment"))).Should().BeOfType<UnhandledPaymentEvent>();
+
+    [Fact]
+    public async Task Webhook_ResourceMissing_IsUnhandled()
+    {
+        _api.Setup(a => a.GetSetupIntentAsync("seti_1")).ReturnsAsync(new SetupIntent { PaymentMethodId = "pm_9" });
+        _api.Setup(a => a.GetPaymentMethodAsync("pm_9"))
+            .ThrowsAsync(new StripeException { StripeError = new StripeError { Code = "resource_missing" } });
+
+        (await Parse(SetupSession(",\"setup_intent\":\"seti_1\""))).Should().BeOfType<UnhandledPaymentEvent>();
+    }
+
+    [Fact]
+    public async Task Webhook_OtherStripeError_Rethrows()
+    {
+        _api.Setup(a => a.GetSetupIntentAsync("seti_1")).ReturnsAsync(new SetupIntent { PaymentMethodId = "pm_9" });
+        _api.Setup(a => a.GetPaymentMethodAsync("pm_9"))
+            .ThrowsAsync(new StripeException { StripeError = new StripeError { Code = "rate_limit" } });
+
+        await FluentActions.Awaiting(() => Parse(SetupSession(",\"setup_intent\":\"seti_1\"")))
+            .Should().ThrowAsync<StripeException>();
+    }
+
+    [Fact]
+    public async Task ListingFeeSession_HasUrlsMetadataCardOnlyAndShortExpiry()
+    {
+        SessionCreateOptions? sent = null;
+        _api.Setup(a => a.CreateCheckoutSessionAsync(It.IsAny<SessionCreateOptions>()))
+            .Callback<SessionCreateOptions>(o => sent = o).ReturnsAsync("u");
+        var id = Guid.NewGuid();
+
+        await CreateSut().CreateListingFeeSessionAsync(id, 990m, "d", null, "https://app/ok", "https://app/no");
+
+        sent!.SuccessUrl.Should().Be("https://app/ok");
+        sent.CancelUrl.Should().Be("https://app/no");
+        sent.AllowedPaymentMethodTypes.Should().Equal("card");
+        sent.PaymentIntentData.Metadata.Should().Contain("kind", "listing-fee").And.Contain("subscriptionId", id.ToString());
+        sent.ExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddHours(1), TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task CardSetupSession_HasUrlsMetadataAndCardOnly()
+    {
+        SessionCreateOptions? sent = null;
+        _api.Setup(a => a.CreateCheckoutSessionAsync(It.IsAny<SessionCreateOptions>()))
+            .Callback<SessionCreateOptions>(o => sent = o).ReturnsAsync("u");
+        var id = Guid.NewGuid();
+
+        await CreateSut().CreateCardSetupSessionAsync(id, "cus_9", "https://app/ok", "https://app/no");
+
+        sent!.SuccessUrl.Should().Be("https://app/ok");
+        sent.CancelUrl.Should().Be("https://app/no");
+        sent.AllowedPaymentMethodTypes.Should().Equal("card");
+        sent.SetupIntentData.Metadata.Should().Contain("kind", "card-setup").And.Contain("userId", id.ToString());
+    }
+
+    [Fact]
+    public async Task CreateCustomer_PassesUserMetadataAndIdempotencyKey()
+    {
+        CustomerCreateOptions? sent = null;
+        string? key = null;
+        _api.Setup(a => a.CreateCustomerAsync(It.IsAny<CustomerCreateOptions>(), It.IsAny<string>()))
+            .Callback<CustomerCreateOptions, string>((o, k) => { sent = o; key = k; }).ReturnsAsync("cus_1");
+        var id = Guid.NewGuid();
+
+        (await CreateSut().CreateCustomerAsync(id, "a@b", "A B")).Should().Be("cus_1");
+
+        sent!.Metadata.Should().Contain("userId", id.ToString());
+        key.Should().Be($"customer-{id}");
+    }
+
+    [Fact]
+    public async Task DetachCard_DelegatesToTheApi()
+    {
+        await CreateSut().DetachCardAsync("pm_9");
+
+        _api.Verify(a => a.DetachPaymentMethodAsync("pm_9"), Times.Once);
     }
 }

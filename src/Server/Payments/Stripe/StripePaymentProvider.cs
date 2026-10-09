@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Stripe;
 using Stripe.Checkout;
@@ -13,10 +14,12 @@ public class StripePaymentProvider : IPaymentProvider
 
     private readonly IStripeApi _api;
     private readonly PaymentOptions _options;
+    private readonly ILogger<StripePaymentProvider> _logger;
 
-    public StripePaymentProvider(IStripeApi api, IOptions<PaymentOptions> options)
+    public StripePaymentProvider(IStripeApi api, IOptions<PaymentOptions> options, ILogger<StripePaymentProvider> logger)
     {
         _api = api;
+        _logger = logger;
         _options = options.Value;
     }
 
@@ -28,7 +31,7 @@ public class StripePaymentProvider : IPaymentProvider
             Email = email,
             Name = name,
             Metadata = new Dictionary<string, string> { ["userId"] = userId.ToString() }
-        });
+        }, $"customer-{userId}");
 
     public Task<string> CreateCardSetupSessionAsync(Guid userId, string customerId, string successUrl, string cancelUrl)
     {
@@ -58,6 +61,8 @@ public class StripePaymentProvider : IPaymentProvider
         return _api.CreateCheckoutSessionAsync(new SessionCreateOptions
         {
             Mode = "payment",
+            // Short-lived so a Staff waive / mark-paid cannot be followed by a late card payment for long.
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
             CustomerEmail = payerEmail,
             AllowedPaymentMethodTypes = new List<string> { "card" },
             LineItems = new List<SessionLineItemOptions>
@@ -97,21 +102,65 @@ public class StripePaymentProvider : IPaymentProvider
         if (stripeEvent.Type != "checkout.session.completed" || stripeEvent.Data.Object is not Session session)
             return new UnhandledPaymentEvent(stripeEvent.Id, stripeEvent.Type);
 
-        session.Metadata.TryGetValue(KindKey, out var kind);
+        string? kind = null;
+        session.Metadata?.TryGetValue(KindKey, out kind);
+        var type = stripeEvent.Type;
 
         if (session.Mode == "setup" && kind == KindCardSetup)
         {
-            var setupIntent = await _api.GetSetupIntentAsync(session.SetupIntentId);
-            var method = await _api.GetPaymentMethodAsync(setupIntent.PaymentMethodId);
-            return new CardSavedEvent(stripeEvent.Id, Guid.Parse(session.Metadata["userId"]), session.CustomerId,
-                method.Id, method.Card.Brand, method.Card.Last4, (int)method.Card.ExpMonth, (int)method.Card.ExpYear);
+            if (!TryGetGuid(session, "userId", out var userId))
+            {
+                _logger.LogError("Stripe card-setup session {SessionId} has missing or invalid userId metadata (event {EventId})",
+                    session.Id, stripeEvent.Id);
+                return new UnhandledPaymentEvent(stripeEvent.Id, $"{type}:setup:bad-metadata");
+            }
+
+            try
+            {
+                if (session.SetupIntentId == null) return NoCard(stripeEvent.Id, session.Id, "no SetupIntent");
+                var setupIntent = await _api.GetSetupIntentAsync(session.SetupIntentId);
+                if (setupIntent.PaymentMethodId == null) return NoCard(stripeEvent.Id, session.Id, "no payment method");
+                var method = await _api.GetPaymentMethodAsync(setupIntent.PaymentMethodId);
+                if (method.Card == null) return NoCard(stripeEvent.Id, session.Id, "payment method is not a card");
+
+                return new CardSavedEvent(stripeEvent.Id, userId, session.CustomerId,
+                    method.Id, method.Card.Brand, method.Card.Last4, (int)method.Card.ExpMonth, (int)method.Card.ExpYear);
+            }
+            catch (StripeException ex) when (ex.StripeError?.Code == "resource_missing")
+            {
+                // Permanent: retrying will never succeed. Anything else (transient) rethrows so Stripe retries.
+                _logger.LogError(ex, "Stripe card-setup session {SessionId}: SetupIntent or PaymentMethod no longer exists (event {EventId})",
+                    session.Id, stripeEvent.Id);
+                return new UnhandledPaymentEvent(stripeEvent.Id, $"{type}:setup:no-card");
+            }
         }
 
         if (session.Mode == "payment" && kind == KindListingFee && session.PaymentStatus == "paid")
-            return new ListingFeePaidEvent(stripeEvent.Id, Guid.Parse(session.Metadata["subscriptionId"]),
-                session.AmountTotal ?? 0, session.Currency, session.PaymentIntentId);
+        {
+            if (!TryGetGuid(session, "subscriptionId", out var subscriptionId))
+            {
+                _logger.LogError("Stripe listing-fee session {SessionId} (PaymentIntent {PaymentIntentId}) has missing or invalid subscriptionId metadata (event {EventId})",
+                    session.Id, session.PaymentIntentId, stripeEvent.Id);
+                return new UnhandledPaymentEvent(stripeEvent.Id, $"{type}:payment:bad-metadata");
+            }
 
-        return new UnhandledPaymentEvent(stripeEvent.Id, $"{stripeEvent.Type}:{session.Mode}:{session.PaymentStatus}");
+            return new ListingFeePaidEvent(stripeEvent.Id, subscriptionId,
+                session.AmountTotal ?? 0, session.Currency, session.PaymentIntentId);
+        }
+
+        return new UnhandledPaymentEvent(stripeEvent.Id, $"{type}:{session.Mode}:{session.PaymentStatus}");
+    }
+
+    private static bool TryGetGuid(Session session, string key, out Guid value)
+    {
+        value = Guid.Empty;
+        return session.Metadata != null && session.Metadata.TryGetValue(key, out var raw) && Guid.TryParse(raw, out value);
+    }
+
+    private UnhandledPaymentEvent NoCard(string eventId, string sessionId, string reason)
+    {
+        _logger.LogError("Stripe card-setup session {SessionId} cannot be saved: {Reason} (event {EventId})", sessionId, reason, eventId);
+        return new UnhandledPaymentEvent(eventId, "checkout.session.completed:setup:no-card");
     }
 
     public Task DetachCardAsync(string paymentMethodId) => _api.DetachPaymentMethodAsync(paymentMethodId);

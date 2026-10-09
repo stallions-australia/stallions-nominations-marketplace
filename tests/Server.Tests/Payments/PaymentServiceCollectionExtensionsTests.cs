@@ -55,6 +55,7 @@ public class PaymentServiceCollectionExtensionsTests
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns("Production");
         var services = new ServiceCollection();
+        services.AddLogging();
 
         services.AddPayments(config, environment.Object);
 
