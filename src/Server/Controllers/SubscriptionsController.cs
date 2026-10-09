@@ -41,8 +41,10 @@ public class SubscriptionsController : ControllerBase
     public async Task<IActionResult> Activate([FromBody] ActivateStallionRequest request)
     {
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        // The stallion id lets the page wait for that stallion's fee to be confirmed.
         var r = await _subscriptions.ActivateAsync(request,
-            $"{baseUrl}/admin/stallions?payment=success", $"{baseUrl}/admin/stallions?payment=cancelled");
+            $"{baseUrl}/admin/stallions?payment=success&stallion={request.StallionId}",
+            $"{baseUrl}/admin/stallions?payment=cancelled&stallion={request.StallionId}");
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 

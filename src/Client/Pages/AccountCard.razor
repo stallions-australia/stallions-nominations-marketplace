@@ -16,17 +16,23 @@
         <p class="account-card-disclosure">@_disclosure.SavedCardExplanation</p>
     }
 
+    <div role="status" aria-live="polite">
+        @if (_confirming)
+        {
+            <p class="account-card-notice">Confirming your card…</p>
+        }
+        else if (_notice is not null)
+        {
+            <p class="account-card-notice">@_notice</p>
+        }
+    </div>
+
     @if (_loading)
     {
         <LoadingSpinner />
     }
-    else if (_confirming)
+    else if (!_confirming)
     {
-        <p class="account-card-notice">Confirming your card…</p>
-    }
-    else
-    {
-        @if (_notice is not null) { <p class="account-card-notice">@_notice</p> }
         @if (_error is not null) { <ErrorMessage Message="@_error" /> }
 
         @if (_card is null)
@@ -53,6 +59,12 @@
 </div>
 
 @code {
+    /// <summary>"success" or "cancelled" when returning from the hosted card page.</summary>
+    [SupplyParameterFromQuery] public string? Result { get; set; }
+
+    /// <summary>When the card setup started (Unix seconds, UTC) — the saved card must be at least this recent.</summary>
+    [SupplyParameterFromQuery] public long? Since { get; set; }
+
     /// <summary>How often to re-check after returning from the hosted page (tests shorten it).</summary>
     [Parameter] public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
     private const int MaxPolls = 30; // ~60 s at the default interval
@@ -68,38 +80,53 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var token = _cts.Token;
+        // Read the return status once, then drop it from the address so a refresh or Back doesn't repeat it.
+        var result = Result;
+        DateTime? since = Since is long s ? DateTimeOffset.FromUnixTimeSeconds(s).UtcDateTime : null;
+        if (result is not null) Nav.NavigateTo("/account/card", replace: true);
+
         await UserState.LoadAsync();
+        if (token.IsCancellationRequested) return;
         if (!UserState.IsBuyer) { Nav.NavigateTo("/", replace: true); return; }
 
         try { _disclosure = await ListingApi.GetBuyerFeeDisclosureAsync(); }
         catch (ApiException) { _disclosure = null; }
 
-        var query = new Uri(Nav.Uri).Query;
-        var result = query.Contains("result=success") ? "success"
-                   : query.Contains("result=cancelled") ? "cancelled" : null;
         if (result == "cancelled") _notice = "Card not saved — please try again.";
 
         _card = await LoadCardAsync();
+        if (token.IsCancellationRequested) return;
         _loading = false;
 
-        if (result == "success" && _card is null && _error is null)
+        // The provider's webhook saves the card; wait for the one from this setup to land
+        // (a replaced card is still on file until then).
+        bool Arrived() => _card is not null && (since is null || AsUtc(_card.UpdatedAt) >= since);
+        if (result != "success" || Arrived() || _error is not null) return;
+
+        _confirming = true;
+        StateHasChanged();
+        try
         {
-            // The provider's webhook saves the card; wait for it to land.
-            _confirming = true;
-            StateHasChanged();
-            try
+            for (var i = 0; i < MaxPolls && !Arrived() && _error is null; i++)
             {
-                for (var i = 0; i < MaxPolls && _card is null && _error is null; i++)
-                {
-                    await Task.Delay(PollInterval, _cts.Token);
-                    _card = await LoadCardAsync();
-                }
+                await Task.Delay(PollInterval, token);
+                var card = await LoadCardAsync();
+                if (token.IsCancellationRequested) return;
+                if (card is not null) _card = card;
             }
-            catch (TaskCanceledException) { return; } // left the page
-            _confirming = false;
-            if (_card is null && _error is null) _notice = "Your card is still being confirmed — check back shortly.";
         }
+        catch (OperationCanceledException) { return; } // left the page
+        _confirming = false;
+        if (!Arrived() && _error is null) _notice = "Your card is still being confirmed — check back shortly.";
     }
+
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value
+    };
 
     private async Task<SavedCardDto?> LoadCardAsync()
     {
@@ -111,9 +138,9 @@
     {
         _busy = true; _error = null;
         // Stripe returns an absolute URL, the dev fake a relative one — both need a full page load.
+        // The button stays disabled on success: the browser is leaving the page.
         try { Nav.NavigateTo(await PaymentsApi.StartCardSetupAsync(), forceLoad: true); }
-        catch (ApiException ex) { _error = ex.Message; }
-        finally { _busy = false; }
+        catch (ApiException ex) { _error = ex.Message; _busy = false; }
     }
 
     private static string BrandName(string brand) => brand switch
@@ -124,9 +151,6 @@
         _ => brand
     };
 
-    public void Dispose()
-    {
-        _cts.Cancel();
-        _cts.Dispose();
-    }
+    // Only cancel: an in-flight poll may still read the token, so the source isn't disposed.
+    public void Dispose() => _cts.Cancel();
 }

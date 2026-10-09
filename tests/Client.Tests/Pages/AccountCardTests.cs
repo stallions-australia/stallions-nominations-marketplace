@@ -36,6 +36,13 @@ public class AccountCardTests : TestContext
         return RenderComponent<AccountCard>(p => p.Add(c => c.PollInterval, TimeSpan.FromMilliseconds(10)));
     }
 
+    // WaitForAssertion only re-checks after a render; a pending API call doesn't render.
+    private static async Task Until(Func<bool> condition)
+    {
+        for (var i = 0; i < 500 && !condition(); i++) await Task.Delay(10);
+        condition().Should().BeTrue("the condition should hold within 5 s");
+    }
+
     [Fact]
     public void NoCard_ShowsAddCardAndTheConfiguredDisclosure()
     {
@@ -95,5 +102,69 @@ public class AccountCardTests : TestContext
         var cut = Render("result=success");
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("•••• 4242"), TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ReturningFromReplace_KeepsConfirmingUntilTheNewCardIsSaved()
+    {
+        var since = new DateTimeOffset(2026, 10, 9, 1, 0, 0, TimeSpan.Zero);
+        var oldCard = new SavedCardDto { Brand = "visa", Last4 = "1111", ExpMonth = 8, ExpYear = 2028, IsValid = true,
+            UpdatedAt = since.UtcDateTime.AddDays(-30) };
+        var newCard = new TaskCompletionSource<SavedCardDto?>();
+        var calls = 0;
+        _payments.Setup(s => s.GetMyCardAsync())
+            .Returns(() => ++calls <= 2 ? Task.FromResult<SavedCardDto?>(oldCard) : newCard.Task);
+
+        var cut = Render($"result=success&since={since.ToUnixTimeSeconds()}");
+
+        await Until(() => calls >= 3);
+        cut.Markup.Should().Contain("Confirming your card…");
+
+        newCard.SetResult(new SavedCardDto { Brand = "visa", Last4 = "4242", ExpMonth = 8, ExpYear = 2029, IsValid = true,
+            UpdatedAt = since.UtcDateTime.AddSeconds(5) });
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("•••• 4242").And.NotContain("Confirming your card"));
+        cut.Markup.Should().NotContain("1111");
+    }
+
+    [Fact]
+    public void ReturningCancelled_ShowsTheNotice()
+    {
+        _payments.Setup(s => s.GetMyCardAsync()).ReturnsAsync((SavedCardDto?)null);
+
+        var cut = Render("result=cancelled");
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Card not saved"));
+        _payments.Verify(s => s.GetMyCardAsync(), Times.Once);
+    }
+
+    [Fact]
+    public void ReturningFromHostedPage_StripsTheQuery()
+    {
+        _payments.Setup(s => s.GetMyCardAsync()).ReturnsAsync(new SavedCardDto
+            { Brand = "visa", Last4 = "4242", ExpMonth = 8, ExpYear = 2028, IsValid = true });
+
+        var cut = Render("result=success&since=1");
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("•••• 4242"));
+        Services.GetRequiredService<NavigationManager>().Uri.Should().EndWith("/account/card");
+    }
+
+    [Fact]
+    public async Task LeavingThePageMidPoll_ThrowsNothing()
+    {
+        var slow = new TaskCompletionSource<SavedCardDto?>();
+        var calls = 0;
+        _payments.Setup(s => s.GetMyCardAsync())
+            .Returns(() => ++calls == 1 ? Task.FromResult<SavedCardDto?>(null) : slow.Task);
+        var cut = Render("result=success");
+        await Until(() => calls == 2);
+
+        DisposeComponents();
+        slow.SetResult(null);
+        await Task.Delay(100);
+
+        Renderer.UnhandledException.IsCompleted.Should().BeFalse();
+        calls.Should().Be(2, "polling stops once the page is gone");
     }
 }

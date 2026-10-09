@@ -20,20 +20,27 @@ public class AdminStallionsTests : TestContext
     private static HttpClient Http() => new() { BaseAddress = new Uri("https://localhost/") };
     private readonly Mock<SubscriptionApiService> _subs = new(MockBehavior.Loose, Http());
     private readonly StallionSummaryDto _snitzel = new() { Id = Guid.NewGuid(), Name = "Snitzel", IsActive = true };
+    private readonly StallionSummaryDto _zoustar = new() { Id = Guid.NewGuid(), Name = "Zoustar", IsActive = true };
     private readonly SeasonDto _season = new() { Id = Guid.NewGuid(), Name = "2026 Season", IsOpen = true };
+    private readonly List<StallionSummaryDto> _stallions = [];
 
-    private IRenderedComponent<AdminStallions> Render(params SubscriptionDto[] subscriptions) => Render(null, subscriptions);
+    public AdminStallionsTests() => _stallions.Add(_snitzel);
 
-    private IRenderedComponent<AdminStallions> Render(string? query, params SubscriptionDto[] subscriptions)
+    private IRenderedComponent<AdminStallions> Render(params SubscriptionDto[] subscriptions)
+    {
+        _subs.Setup(s => s.GetMineAsync()).ReturnsAsync(subscriptions.ToList());
+        return RenderAt(null);
+    }
+
+    // The caller sets up GetMineAsync (often as a sequence) before rendering.
+    private IRenderedComponent<AdminStallions> RenderAt(string? query)
     {
         this.AddTestAuthorization().SetAuthorized("stud@example.com");
         var admin = new Mock<AdminApiService>(MockBehavior.Loose, Http());
-        admin.Setup(a => a.GetMyStallionsAsync()).ReturnsAsync([_snitzel]);
+        admin.Setup(a => a.GetMyStallionsAsync()).ReturnsAsync(_stallions);
         admin.Setup(a => a.GetAuthorizedStallionsAsync()).ReturnsAsync(new AuthorizedStallionsDto { IsLinked = false });
         admin.Setup(a => a.GetSeasonsAsync()).ReturnsAsync([_season]);
         Services.AddSingleton(admin.Object);
-
-        if (query is null) _subs.Setup(s => s.GetMineAsync()).ReturnsAsync(subscriptions.ToList());
         Services.AddSingleton(_subs.Object);
 
         var settings = new Mock<PlatformSettingsApiService>(MockBehavior.Loose, Http());
@@ -51,8 +58,15 @@ public class AdminStallionsTests : TestContext
         return cut;
     }
 
-    private SubscriptionDto Subscription(string status, decimal fee) => new()
-        { StallionId = _snitzel.Id, SeasonId = _season.Id, Status = status, FeeIncGst = fee };
+    // WaitForAssertion only re-checks after a render; a pending API call doesn't render.
+    private static async Task Until(Func<bool> condition)
+    {
+        for (var i = 0; i < 500 && !condition(); i++) await Task.Delay(10);
+        condition().Should().BeTrue("the condition should hold within 5 s");
+    }
+
+    private SubscriptionDto Subscription(string status, decimal fee, StallionSummaryDto? stallion = null) => new()
+        { StallionId = (stallion ?? _snitzel).Id, SeasonId = _season.Id, Status = status, FeeIncGst = fee };
 
     [Fact]
     public void NoSubscription_OffersActivationAtTheStandardFee()
@@ -98,10 +112,77 @@ public class AdminStallionsTests : TestContext
             .ReturnsAsync([Subscription("Pending", 990m)])
             .ReturnsAsync([Subscription("Paid", 990m)]);
 
-        var cut = Render("payment=success");
+        var cut = RenderAt($"payment=success&stallion={_snitzel.Id}");
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("Paid")
             .And.NotContain("Activate for").And.NotContain("Confirming your listing-fee payment"), TimeSpan.FromSeconds(5));
         _subs.Verify(s => s.GetMineAsync(), Times.Exactly(3));
+    }
+
+    [Fact]
+    public void ReturningFromPayment_AlreadyPaid_ShowsNoBannerAndDoesNotPoll()
+    {
+        _subs.Setup(s => s.GetMineAsync()).ReturnsAsync([Subscription("Paid", 990m)]);
+
+        var cut = RenderAt($"payment=success&stallion={_snitzel.Id}");
+
+        cut.Markup.Should().NotContain("Confirming your listing-fee payment").And.NotContain("still being confirmed");
+        _subs.Verify(s => s.GetMineAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReturningFromPayment_WaitsForTheNamedStallion_NotAnother()
+    {
+        _stallions.Add(_zoustar);
+        var calls = 0;
+        _subs.Setup(s => s.GetMineAsync()).ReturnsAsync(() => ++calls switch
+        {
+            1 => [Subscription("Pending", 990m)],
+            2 => [Subscription("Pending", 990m), Subscription("Paid", 990m, _zoustar)],
+            _ => [Subscription("Paid", 990m), Subscription("Paid", 990m, _zoustar)]
+        });
+
+        var cut = RenderAt($"payment=success&stallion={_snitzel.Id}");
+
+        await Until(() => calls >= 3);
+        cut.WaitForAssertion(() => cut.Markup.Should().NotContain("Confirming your listing-fee payment"));
+        calls.Should().Be(3, "polling continues past another stallion's payment and stops at Snitzel's");
+        cut.Markup.Should().NotContain("Activate for");
+    }
+
+    [Fact]
+    public void ReturningCancelled_ShowsTheNotice()
+    {
+        var cut = RenderAt($"payment=cancelled&stallion={_snitzel.Id}");
+
+        cut.Markup.Should().Contain("Payment not completed");
+    }
+
+    [Fact]
+    public void ReturningFromPayment_StripsTheQuery()
+    {
+        _subs.Setup(s => s.GetMineAsync()).ReturnsAsync([Subscription("Paid", 990m)]);
+
+        RenderAt($"payment=success&stallion={_snitzel.Id}");
+
+        Services.GetRequiredService<NavigationManager>().Uri.Should().EndWith("/admin/stallions");
+    }
+
+    [Fact]
+    public async Task LeavingThePageMidPoll_ThrowsNothing()
+    {
+        var slow = new TaskCompletionSource<List<SubscriptionDto>>();
+        var calls = 0;
+        _subs.Setup(s => s.GetMineAsync())
+            .Returns(() => ++calls == 1 ? Task.FromResult(new List<SubscriptionDto> { Subscription("Pending", 990m) }) : slow.Task);
+        RenderAt($"payment=success&stallion={_snitzel.Id}");
+        await Until(() => calls == 2);
+
+        DisposeComponents();
+        slow.SetResult([Subscription("Pending", 990m)]);
+        await Task.Delay(100);
+
+        Renderer.UnhandledException.IsCompleted.Should().BeFalse();
+        calls.Should().Be(2, "polling stops once the page is gone");
     }
 }

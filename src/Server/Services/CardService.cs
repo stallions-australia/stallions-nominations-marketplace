@@ -35,7 +35,7 @@ public class CardService : ICardService
             : ServiceResult<SavedCardDto>.Ok(new SavedCardDto
             {
                 Brand = card.Brand, Last4 = card.Last4, ExpMonth = card.ExpMonth, ExpYear = card.ExpYear,
-                IsValid = IsUsable(card)
+                IsValid = IsUsable(card), UpdatedAt = card.UpdatedAt
             });
     }
 

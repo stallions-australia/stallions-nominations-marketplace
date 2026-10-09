@@ -8,4 +8,6 @@ public class SavedCardDto
     public int ExpYear { get; set; }
     /// <summary>False once the card is past the end of its expiry month — bidding is then blocked.</summary>
     public bool IsValid { get; set; }
+    /// <summary>When the card was last saved (UTC) — lets the card page tell a just-replaced card from the old one.</summary>
+    public DateTime UpdatedAt { get; set; }
 }

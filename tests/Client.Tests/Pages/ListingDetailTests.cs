@@ -16,7 +16,7 @@ namespace Stallions.Client.Tests.Pages;
 public class ListingDetailTests : TestContext
 {
     private void RegisterServices(ListingDto listing, string? role = null, List<PublicBidDto>? history = null,
-        SavedCardDto? card = null)
+        SavedCardDto? card = null, Exception? cardError = null)
     {
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
@@ -61,7 +61,8 @@ public class ListingDetailTests : TestContext
 
         var paymentsMock = new Mock<PaymentsApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
-        paymentsMock.Setup(s => s.GetMyCardAsync()).ReturnsAsync(card);
+        if (cardError is not null) paymentsMock.Setup(s => s.GetMyCardAsync()).ThrowsAsync(cardError);
+        else paymentsMock.Setup(s => s.GetMyCardAsync()).ReturnsAsync(card);
         Services.AddSingleton(paymentsMock.Object);
     }
 
@@ -167,6 +168,7 @@ public class ListingDetailTests : TestContext
         cut.WaitForAssertion(() => cut.FindAll(".bid-history-row").Should().HaveCount(2));
         cut.Markup.Should().Contain("Bidder 1").And.Contain("Bidder 2").And.Contain("$1,200");
     }
+
     [Fact]
     public void VerifiedBuyerWithoutACard_SeesSaveACardInsteadOfTheBidForm()
     {
@@ -205,5 +207,18 @@ public class ListingDetailTests : TestContext
         var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
 
         cut.WaitForAssertion(() => cut.FindAll(".bid-form").Should().ContainSingle());
+    }
+    [Fact]
+    public void CardCheckFails_ShowsCouldNotCheck_NotTheSavePrompt()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ActiveAuction();
+        RegisterServices(listing, role: "Buyer", cardError: new ApiException(503, "Service unavailable"));
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("We couldn't check your payment card — refresh to try again."));
+        cut.Markup.Should().NotContain("Save a card to bid");
+        cut.FindAll(".bid-form").Should().BeEmpty();
     }
 }

@@ -36,7 +36,10 @@ public class PaymentsController : ControllerBase
     public async Task<IActionResult> StartCardSetup()
     {
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
-        var r = await _cards.StartSetupAsync($"{baseUrl}/account/card?result=success", $"{baseUrl}/account/card?result=cancelled");
+        // "since" lets the card page wait for the card saved by this setup rather than show an older one.
+        var since = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var r = await _cards.StartSetupAsync($"{baseUrl}/account/card?result=success&since={since}",
+            $"{baseUrl}/account/card?result=cancelled");
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 

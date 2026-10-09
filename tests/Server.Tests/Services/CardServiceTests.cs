@@ -98,6 +98,17 @@ public class CardServiceTests
     }
 
     [Fact]
+    public async Task GetMine_ReturnsWhenTheCardWasLastSaved()
+    {
+        var buyer = SignedIn(UserRole.Buyer);
+        var updatedAt = new DateTime(2026, 10, 9, 3, 4, 5, DateTimeKind.Utc);
+        _cards.Setup(c => c.GetByUserIdAsync(buyer.Id)).ReturnsAsync(new SavedCard
+            { UserId = buyer.Id, Provider = "Stripe", Brand = "visa", Last4 = "4242", ExpMonth = 8, ExpYear = 2028, UpdatedAt = updatedAt });
+
+        (await CreateSut().GetMineAsync()).Value!.UpdatedAt.Should().Be(updatedAt);
+    }
+
+    [Fact]
     public async Task GetMine_WithoutCard_IsNotFound()
     {
         SignedIn(UserRole.Buyer);
