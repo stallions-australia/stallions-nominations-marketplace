@@ -8,7 +8,7 @@
 <PageTitle>Invoices — Staff Admin</PageTitle>
 
 <div class="admin-page-header">
-    <h1 class="admin-page-title">Remittance Invoices</h1>
+    <h1 class="admin-page-title">Sales by Stud Farm</h1>
 </div>
 
 @if (_loading)
@@ -34,8 +34,8 @@ else
                 <div class="invoice-farm-name">@inv.StudFarmName</div>
                 <div class="invoice-totals">
                     <span>Sales: <strong>@inv.TotalSalesIncGst.ToString("C")</strong></span>
-                    <span>Fees Retained: <strong>@inv.TotalPlatformFeesIncGst.ToString("C")</strong></span>
-                    <span>Remittance Due: <strong class="remittance-amount">@inv.TotalRemittance.ToString("C")</strong></span>
+                    <span>Buyer Fees: <strong>@inv.TotalBuyerFeesIncGst.ToString("C")</strong></span>
+                    <span>Balance Payable to Stud: <strong class="remittance-amount">@inv.TotalBalancePayableToStudIncGst.ToString("C")</strong></span>
                 </div>
             </summary>
             <div class="invoice-lines">
@@ -44,8 +44,8 @@ else
                         <tr>
                             <th>Stallion</th>
                             <th>Sale Price (inc. GST)</th>
-                            <th>Platform Fee (inc. GST)</th>
-                            <th>Remittance Amount</th>
+                            <th>Buyer Fee (inc. GST)</th>
+                            <th>Balance Payable to Stud</th>
                             <th>Sale Date</th>
                         </tr>
                     </thead>
@@ -55,8 +55,8 @@ else
                             <tr>
                                 <td>@line.StallionName</td>
                                 <td>@line.SalePriceIncGst.ToString("C")</td>
-                                <td>@line.PlatformFeeIncGst.ToString("C")</td>
-                                <td>@line.RemittanceAmount.ToString("C")</td>
+                                <td>@line.BuyerFeeIncGst.ToString("C")</td>
+                                <td>@line.BalancePayableToStudIncGst.ToString("C")</td>
                                 <td>@line.PaidAt.ToString("d MMM yyyy")</td>
                             </tr>
                         }

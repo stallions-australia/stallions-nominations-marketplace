@@ -35,9 +35,10 @@ else
                 <th>Farm</th>
                 <th>Buyer</th>
                 <th>Sale Price (inc. GST)</th>
-                <th>Platform Fee (inc. GST)</th>
+                <th>Buyer Fee (inc. GST)</th>
                 <th>Fee ex GST</th>
                 <th>GST Amount</th>
+                <th>Balance to Stud</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -50,9 +51,10 @@ else
                     <td>@t.StudFarmName</td>
                     <td>@t.BuyerDisplayName</td>
                     <td>@t.TotalPriceIncGst.ToString("C")</td>
-                    <td>@t.PlatformFeeIncGst.ToString("C")</td>
-                    <td>@t.PlatformFeeExGst.ToString("C")</td>
-                    <td>@t.PlatformFeeGst.ToString("C")</td>
+                    <td>@t.BuyerFeeIncGst.ToString("C")</td>
+                    <td>@t.BuyerFeeExGst.ToString("C")</td>
+                    <td>@t.BuyerFeeGst.ToString("C")</td>
+                    <td>@t.BalancePayableToStudIncGst.ToString("C")</td>
                     <td><span class="badge badge-status-@t.Status.ToLowerInvariant()">@t.Status</span></td>
                 </tr>
             }

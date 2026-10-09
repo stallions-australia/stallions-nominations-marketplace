@@ -24,8 +24,7 @@ public class CheckoutServiceTests
     private readonly IOptions<CheckoutOptions> _options = Microsoft.Extensions.Options.Options.Create(new CheckoutOptions
     {
         WebhookSecret = "test-secret",
-        StudFarmBalanceArrangement = "Farm will contact you.",
-        RefundPolicy = "90% refund policy."
+        StudFarmBalanceArrangement = "Farm will contact you."
     });
 
     private static AppDbContext CreateInMemoryDb()
@@ -52,19 +51,50 @@ public class CheckoutServiceTests
         EndDateTime = DateTime.UtcNow.AddHours(-1)
     };
 
+    private void BuyerWonAt(AuctionListing listing, User buyer, decimal amount) =>
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(listing.Id)).ReturnsAsync(new Bid
+        {
+            Id = Guid.NewGuid(), AuctionListingId = listing.Id, BuyerUserId = buyer.Id, AmountIncGst = amount
+        });
+
     [Fact]
-    public async Task Initiate_WhenMareMissing_ReturnsBadRequest()
+    public async Task Initiate_DoesNotRequireMareDetails()
     {
         var buyer = VerifiedBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
         var listing = EndedAuction(buyerFee: 150m);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        BuyerWonAt(listing, buyer, 10000m);
+        _purchaseRepoMock.Setup(r => r.AddAsync(It.IsAny<Purchase>())).ReturnsAsync((Purchase p) => p);
 
-        var result = await CreateSut().InitiateCheckoutAsync(listing.Id,
-            new CheckoutRequest { MareName = "" });
+        var result = await CreateSut().InitiateCheckoutAsync(listing.Id, new CheckoutRequest());
 
-        result.Succeeded.Should().BeFalse();
-        result.HttpStatusCode.Should().Be(400);
+        result.Succeeded.Should().BeTrue(result.Error);
+        result.HttpStatusCode.Should().Be(201);
+    }
+
+    [Fact]
+    public async Task Initiate_RecordsBalancePayableToStud_AsPriceLessBuyerFee()
+    {
+        // Winning bid $10,000, buyer fee $150 → the stud invoices the buyer $9,850.
+        var buyer = VerifiedBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var listing = EndedAuction(buyerFee: 150m);
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        BuyerWonAt(listing, buyer, 10000m);
+        Purchase? captured = null;
+        _purchaseRepoMock.Setup(r => r.AddAsync(It.IsAny<Purchase>()))
+            .Callback<Purchase>(p => captured = p)
+            .ReturnsAsync((Purchase p) => p);
+
+        var result = await CreateSut().InitiateCheckoutAsync(listing.Id, new CheckoutRequest());
+
+        captured!.TotalPriceIncGst.Should().Be(10000m);
+        captured.BuyerFeeIncGst.Should().Be(150m);
+        captured.BalancePayableToStudIncGst.Should().Be(9850m);
+        result.Value!.Disclosure.TotalPriceIncGst.Should().Be(10000m);
+        result.Value.Disclosure.BuyerFeeIncGst.Should().Be(150m);
+        result.Value.Disclosure.BalancePayableToStudIncGst.Should().Be(9850m);
     }
 
     [Fact]
@@ -75,8 +105,7 @@ public class CheckoutServiceTests
         var listing = EndedAuction(buyerFee: null);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
-        var result = await CreateSut().InitiateCheckoutAsync(listing.Id,
-            new CheckoutRequest { MareName = "Bella" });
+        var result = await CreateSut().InitiateCheckoutAsync(listing.Id, new CheckoutRequest());
 
         result.Succeeded.Should().BeFalse();
         result.HttpStatusCode.Should().Be(400);
@@ -99,15 +128,14 @@ public class CheckoutServiceTests
             .Callback<Purchase>(p => captured = p)
             .ReturnsAsync((Purchase p) => p);
 
-        var result = await CreateSut().InitiateCheckoutAsync(listing.Id,
-            new CheckoutRequest { MareName = "Bella" });
+        var result = await CreateSut().InitiateCheckoutAsync(listing.Id, new CheckoutRequest());
 
         result.Succeeded.Should().BeTrue();
         captured.Should().NotBeNull();
-        captured!.PlatformFeeIncGst.Should().Be(150.00m);
-        captured.PlatformFeeGst.Should().Be(13.64m);
-        captured.PlatformFeeExGst.Should().Be(136.36m);
-        result.Value!.Disclosure.PlatformFeeIncGst.Should().Be(150.00m);
+        captured!.BuyerFeeIncGst.Should().Be(150.00m);
+        captured.BuyerFeeGst.Should().Be(13.64m);
+        captured.BuyerFeeExGst.Should().Be(136.36m);
+        result.Value!.Disclosure.BuyerFeeIncGst.Should().Be(150.00m);
     }
 
     [Fact]
@@ -133,7 +161,7 @@ public class CheckoutServiceTests
         var purchase = new Purchase
         {
             Id = Guid.NewGuid(), ListingId = listing.Id, Status = PurchaseStatus.Pending,
-            PlatformFeeIncGst = 250m
+            BuyerFeeIncGst = 150m
         };
         _purchaseRepoMock.Setup(r => r.GetByIdAsync(purchase.Id)).ReturnsAsync(purchase);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
@@ -145,5 +173,26 @@ public class CheckoutServiceTests
             b.PurchaseId == purchase.Id && b.Status == BindingStatus.PendingAcknowledgement)), Times.Once);
         _auditRepoMock.Verify(r => r.LogAsync("Purchase", purchase.Id, "PurchaseCompleted",
             null, It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Refund_RefundsTheFullBuyerFee()
+    {
+        var staff = new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(staff);
+        var purchase = new Purchase
+        {
+            Id = Guid.NewGuid(), Status = PurchaseStatus.Completed,
+            TotalPriceIncGst = 10000m, BuyerFeeIncGst = 150m, BalancePayableToStudIncGst = 9850m
+        };
+        _purchaseRepoMock.Setup(r => r.GetByIdAsync(purchase.Id)).ReturnsAsync(purchase);
+
+        var result = await CreateSut().RefundAsync(purchase.Id);
+
+        result.Succeeded.Should().BeTrue();
+        purchase.RefundAmount.Should().Be(150m);
+        purchase.Status.Should().Be(PurchaseStatus.Refunded);
+        _auditRepoMock.Verify(r => r.LogAsync("Purchase", purchase.Id, "PurchaseRefunded",
+            staff.Id, It.IsAny<string?>()), Times.Once);
     }
 }

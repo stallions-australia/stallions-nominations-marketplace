@@ -53,7 +53,7 @@ public class AdminService : IAdminService
             ActiveListingCount = activeListings.Count,
             AuctionListingCount = activeListings.Count(l => l.ListingType == ListingType.Auction),
             RecentPurchaseCount = recentCompleted.Count,
-            RecentFeeRevenueIncGst = recentCompleted.Sum(p => p.PlatformFeeIncGst),
+            RecentFeeRevenueIncGst = recentCompleted.Sum(p => p.BuyerFeeIncGst),
             PendingVerificationCount = pendingUsers.Count
         };
         return ServiceResult<DashboardDto>.Ok(dto);
@@ -69,9 +69,10 @@ public class AdminService : IAdminService
             BuyerDisplayName = p.Buyer?.DisplayName ?? string.Empty,
             StudFarmName = p.Listing?.StudFarm?.Name ?? string.Empty,
             TotalPriceIncGst = p.TotalPriceIncGst,
-            PlatformFeeIncGst = p.PlatformFeeIncGst,
-            PlatformFeeExGst = p.PlatformFeeExGst,
-            PlatformFeeGst = p.PlatformFeeGst,
+            BuyerFeeIncGst = p.BuyerFeeIncGst,
+            BuyerFeeExGst = p.BuyerFeeExGst,
+            BuyerFeeGst = p.BuyerFeeGst,
+            BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
             PaidAt = p.PaidAt,
             Status = p.Status.ToString()
         }).ToList();
@@ -96,13 +97,13 @@ public class AdminService : IAdminService
                     PurchaseId = p.Id,
                     StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
                     SalePriceIncGst = p.TotalPriceIncGst,
-                    PlatformFeeIncGst = p.PlatformFeeIncGst,
-                    RemittanceAmount = p.TotalPriceIncGst - p.PlatformFeeIncGst,
+                    BuyerFeeIncGst = p.BuyerFeeIncGst,
+                    BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
                     PaidAt = p.PaidAt!.Value
                 }).ToList(),
                 TotalSalesIncGst = g.Sum(p => p.TotalPriceIncGst),
-                TotalPlatformFeesIncGst = g.Sum(p => p.PlatformFeeIncGst),
-                TotalRemittance = g.Sum(p => p.TotalPriceIncGst - p.PlatformFeeIncGst)
+                TotalBuyerFeesIncGst = g.Sum(p => p.BuyerFeeIncGst),
+                TotalBalancePayableToStudIncGst = g.Sum(p => p.BalancePayableToStudIncGst)
             }).ToList();
 
         return ServiceResult<IReadOnlyList<InvoiceDto>>.Ok(invoices);

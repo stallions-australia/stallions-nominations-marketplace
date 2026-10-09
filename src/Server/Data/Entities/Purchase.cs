@@ -9,12 +9,12 @@ public class Purchase
     public Guid BuyerUserId { get; set; }
     public Guid? BidId { get; set; }
     public decimal TotalPriceIncGst { get; set; }
-    public decimal PlatformFeeIncGst { get; set; }
-    public decimal PlatformFeeExGst { get; set; }
-    public decimal PlatformFeeGst { get; set; }
-    public string MareName { get; set; } = string.Empty;
-    public string? MareRegistration { get; set; }
-    public string? MareBreed { get; set; }
+    // Flat buyer fee paid to Stallions Australia, split for BAS. It forms part of the price.
+    public decimal BuyerFeeIncGst { get; set; }
+    public decimal BuyerFeeExGst { get; set; }
+    public decimal BuyerFeeGst { get; set; }
+    // What the buyer pays the stud directly: TotalPriceIncGst − BuyerFeeIncGst.
+    public decimal BalancePayableToStudIncGst { get; set; }
     public string? PaymentProvider { get; set; }
     public string? PaymentReference { get; set; }
     public DateTime? PaidAt { get; set; }

@@ -185,14 +185,12 @@ public class AppDbContext : DbContext
         {
             e.HasKey(p => p.Id);
             e.Property(p => p.TotalPriceIncGst).HasPrecision(12, 2);
-            e.Property(p => p.PlatformFeeIncGst).HasPrecision(12, 2);
-            e.Property(p => p.PlatformFeeExGst).HasPrecision(12, 2);
-            e.Property(p => p.PlatformFeeGst).HasPrecision(12, 2);
+            e.Property(p => p.BuyerFeeIncGst).HasPrecision(12, 2);
+            e.Property(p => p.BuyerFeeExGst).HasPrecision(12, 2);
+            e.Property(p => p.BuyerFeeGst).HasPrecision(12, 2);
+            e.Property(p => p.BalancePayableToStudIncGst).HasPrecision(12, 2);
             e.Property(p => p.RefundAmount).HasPrecision(12, 2);
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
-            e.Property(p => p.MareName).HasMaxLength(200).IsRequired();
-            e.Property(p => p.MareRegistration).HasMaxLength(100);
-            e.Property(p => p.MareBreed).HasMaxLength(100);
             e.Property(p => p.PaymentProvider).HasMaxLength(50);
             e.Property(p => p.PaymentReference).HasMaxLength(200);
 

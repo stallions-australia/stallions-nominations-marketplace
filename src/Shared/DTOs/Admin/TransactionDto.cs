@@ -7,9 +7,10 @@ public class TransactionDto
     public string BuyerDisplayName { get; set; } = string.Empty;
     public string StudFarmName { get; set; } = string.Empty;
     public decimal TotalPriceIncGst { get; set; }
-    public decimal PlatformFeeIncGst { get; set; }
-    public decimal PlatformFeeExGst { get; set; }
-    public decimal PlatformFeeGst { get; set; }
+    public decimal BuyerFeeIncGst { get; set; }
+    public decimal BuyerFeeExGst { get; set; }
+    public decimal BuyerFeeGst { get; set; }
+    public decimal BalancePayableToStudIncGst { get; set; }
     public DateTime? PaidAt { get; set; }
     public string Status { get; set; } = string.Empty;
 }

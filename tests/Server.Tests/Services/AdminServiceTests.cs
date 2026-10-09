@@ -235,4 +235,77 @@ public class AdminServiceTests
             r => r.AddAsync(It.Is<StudFarm>(f => f.StudDirectoryId == studDirId)),
             Times.Once);
     }
+
+    private static Purchase CompletedSale(StudFarm farm, decimal price, decimal buyerFee) => new()
+    {
+        Id = Guid.NewGuid(),
+        Status = PurchaseStatus.Completed,
+        PaidAt = DateTime.UtcNow.AddDays(-1),
+        TotalPriceIncGst = price,
+        BuyerFeeIncGst = buyerFee,
+        BuyerFeeExGst = buyerFee - Math.Round(buyerFee / 11m, 2),
+        BuyerFeeGst = Math.Round(buyerFee / 11m, 2),
+        BalancePayableToStudIncGst = price - buyerFee,
+        Listing = new AuctionListing
+        {
+            StudFarmId = farm.Id, StudFarm = farm,
+            Stallion = new Stallion { Name = "Snitzel" }
+        },
+        Buyer = new User { DisplayName = "Jane Buyer" }
+    };
+
+    [Fact]
+    public async Task GetInvoices_ShowsBuyerFeesAndBalancePayableToStud()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
+        {
+            CompletedSale(farm, 10000m, 150m),
+            CompletedSale(farm, 20000m, 150m)
+        });
+
+        var result = await CreateSut().GetInvoicesAsync();
+
+        var invoice = result.Value!.Should().ContainSingle().Subject;
+        invoice.TotalSalesIncGst.Should().Be(30000m);
+        invoice.TotalBuyerFeesIncGst.Should().Be(300m);
+        invoice.TotalBalancePayableToStudIncGst.Should().Be(29700m);
+        invoice.Lines.Should().Contain(l => l.BuyerFeeIncGst == 150m && l.BalancePayableToStudIncGst == 9850m);
+    }
+
+    [Fact]
+    public async Task GetTransactions_MapsBuyerFeeGstSplitAndBalance()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
+        {
+            CompletedSale(farm, 10000m, 150m)
+        });
+
+        var result = await CreateSut().GetTransactionsAsync();
+
+        var t = result.Value!.Should().ContainSingle().Subject;
+        t.BuyerFeeIncGst.Should().Be(150m);
+        t.BuyerFeeExGst.Should().Be(136.36m);
+        t.BuyerFeeGst.Should().Be(13.64m);
+        t.BalancePayableToStudIncGst.Should().Be(9850m);
+    }
+
+    [Fact]
+    public async Task GetDashboard_FeeRevenueSumsRecentBuyerFees()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _listingRepoMock.Setup(r => r.GetActiveAsync(null, null, null)).ReturnsAsync(new List<Listing>());
+        _userRepoMock.Setup(r => r.GetAllAsync(It.IsAny<UserRole?>(), It.IsAny<UserStatus?>()))
+            .ReturnsAsync(new List<User>());
+        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
+        {
+            CompletedSale(farm, 10000m, 150m),
+            CompletedSale(farm, 20000m, 150m)
+        });
+
+        var result = await CreateSut().GetDashboardAsync();
+
+        result.Value!.RecentFeeRevenueIncGst.Should().Be(300m);
+    }
 }

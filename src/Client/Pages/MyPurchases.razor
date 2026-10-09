@@ -29,11 +29,11 @@
                 <div class="purchase-row">
                     <div class="purchase-info">
                         <div class="purchase-stallion">@p.StallionName</div>
-                        <div class="purchase-mare text-muted text-sm">Mare: @p.MareName</div>
                     </div>
                     <div class="purchase-amounts">
                         <div class="purchase-price">@p.TotalPriceIncGst.ToString("C0", AuCulture)</div>
-                        <div class="purchase-fee text-muted text-sm">Fee: @p.PlatformFeeIncGst.ToString("C0", AuCulture)</div>
+                        <div class="purchase-fee text-muted text-sm">Buyer fee: @p.BuyerFeeIncGst.ToString("C0", AuCulture)</div>
+                        <div class="purchase-fee text-muted text-sm">Balance to stud: @p.BalancePayableToStudIncGst.ToString("C0", AuCulture)</div>
                     </div>
                     <div class="purchase-status">
                         <span class="badge @GetStatusBadge(p.Status)">@p.Status</span>
