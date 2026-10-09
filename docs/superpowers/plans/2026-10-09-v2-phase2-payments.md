@@ -40,6 +40,12 @@
 > - Known gap: there is no `WebApplicationFactory` integration-test setup yet, so the real pipeline
 >   (webhook raw body, anonymous access, 401/403 on card endpoints) is only covered by unit tests and
 >   the dev click-through. Add an integration-test harness in a later phase.
+> - After the Task 8 review: a Pending subscription stores `PendingCheckoutUrl` /
+>   `PendingCheckoutExpiresAt`; Activate reuses that hosted page while it has 5+ minutes left, so
+>   repeated clicks can't open a second payable session. Paid / mark-paid / waive clear them. The fake
+>   provider's Decline leaves the session open (as Stripe's cancel does).
+> - Follow-up for a later phase: alert Staff (email or dashboard flag) on `ListingFeeDuplicatePayment`
+>   audits so the refund is not missed.
 
 ---
 
@@ -2834,7 +2840,7 @@ git commit -m "feat: payment card page, save-a-card bid prompt and stud listing-
 ### Task 10: Migration `V2Phase2Payments`
 
 - [ ] **Step 1: Create** — `dotnet ef migrations add V2Phase2Payments --project src/Server --startup-project src/Server --output-dir Data/Migrations`
-- [ ] **Step 2: Read it.** Expect: `AddColumn PaymentCustomerId` (nullable, 255) and `PaymentCustomerProvider` (nullable, 20) on `Users`, `CreateTable SavedCards` (unique index on `UserId`, FK to `Users` cascade, provider ids 255), `CreateTable ProcessedPaymentEvents` (PK `EventId` nvarchar(255), `ProcessedAt` = claimed at, nullable `CompletedAt`). Nothing should be dropped or renamed.
+- [ ] **Step 2: Read it.** Expect: `AddColumn PaymentCustomerId` (nullable, 255) and `PaymentCustomerProvider` (nullable, 20) on `Users`, `CreateTable SavedCards` (unique index on `UserId`, FK to `Users` cascade, provider ids 255), `CreateTable ProcessedPaymentEvents` (PK `EventId` nvarchar(255), `ProcessedAt` = claimed at, nullable `CompletedAt`), and two nullable columns on `StallionSeasonSubscriptions` (`PendingCheckoutUrl` nvarchar(2048), `PendingCheckoutExpiresAt`). Nothing should be dropped or renamed.
 - [ ] **Step 3: Check the model and snapshot agree** — `dotnet ef migrations has-pending-model-changes --project src/Server --startup-project src/Server` → "No changes have been made…".
 - [ ] **Step 4: Apply to the local dev DB** —
   `dotnet ef database update --project src/Server --startup-project src/Server --connection "Server=(localdb)\mssqllocaldb;Database=StallionsNomsDev;Trusted_Connection=True;MultipleActiveResultSets=true"`
