@@ -2891,5 +2891,10 @@ git commit -m "chore: App Service payment settings (Fake on dev, Stripe Key Vaul
   create the Stripe account (test mode), add Key Vault secrets `StripeSecretKey` and
   `StripeWebhookSigningSecret` to `kv-stallions-noms-dev`, add the webhook endpoint
   `https://app-stallions-noms-dev.azurewebsites.net/api/payments/webhook/stripe` (event
-  `checkout.session.completed`), enable card receipt emails, then change the Bicep line to `'Stripe'`
-  for dev, provision and deploy. Do **not** merge to master — David reviews first.
+  `checkout.session.completed`) **using the same API version as Stripe.net 53's
+  `Stripe.ApiVersion.Current`** (the code disables the version-mismatch check, so a different
+  version could silently drop fields), make sure **Card** is enabled in the account's payment-method
+  settings (the code filters Checkout with `AllowedPaymentMethodTypes = ["card"]`, which only narrows
+  the account's enabled methods), enable card receipt emails, then change the Bicep line to
+  `'Stripe'` for dev, provision and deploy. First Stripe click-through: confirm the setup-mode
+  Checkout page offers a card form. Do **not** merge to master — David reviews first.
