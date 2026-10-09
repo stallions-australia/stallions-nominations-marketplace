@@ -2800,7 +2800,7 @@ git commit -m "feat: payment card page, save-a-card bid prompt and stud listing-
 ### Task 10: Migration `V2Phase2Payments`
 
 - [ ] **Step 1: Create** — `dotnet ef migrations add V2Phase2Payments --project src/Server --startup-project src/Server --output-dir Data/Migrations`
-- [ ] **Step 2: Read it.** Expect: `AddColumn PaymentCustomerId` (nullable, 255) and `PaymentCustomerProvider` (nullable, 20) on `Users`, `CreateTable SavedCards` (unique index on `UserId`, FK to `Users` cascade, provider ids 255), `CreateTable ProcessedPaymentEvents` (PK `EventId` nvarchar(255)). Nothing should be dropped or renamed.
+- [ ] **Step 2: Read it.** Expect: `AddColumn PaymentCustomerId` (nullable, 255) and `PaymentCustomerProvider` (nullable, 20) on `Users`, `CreateTable SavedCards` (unique index on `UserId`, FK to `Users` cascade, provider ids 255), `CreateTable ProcessedPaymentEvents` (PK `EventId` nvarchar(255), `ProcessedAt` = claimed at, nullable `CompletedAt`). Nothing should be dropped or renamed.
 - [ ] **Step 3: Check the model and snapshot agree** — `dotnet ef migrations has-pending-model-changes --project src/Server --startup-project src/Server` → "No changes have been made…".
 - [ ] **Step 4: Apply to the local dev DB** —
   `dotnet ef database update --project src/Server --startup-project src/Server --connection "Server=(localdb)\mssqllocaldb;Database=StallionsNomsDev;Trusted_Connection=True;MultipleActiveResultSets=true"`
