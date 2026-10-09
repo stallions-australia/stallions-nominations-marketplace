@@ -26,8 +26,32 @@ public class BidServiceTests
         return new AppDbContext(options);
     }
 
+    private readonly Mock<ICardService> _cardsMock = new();
+
+    public BidServiceTests()
+    {
+        _cardsMock.Setup(c => c.HasValidCardAsync(It.IsAny<Guid>())).ReturnsAsync(true);
+    }
+
     private BidService CreateSut() =>
-        new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, CreateInMemoryDb(), _termsRepoMock.Object);
+        new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, CreateInMemoryDb(),
+            _termsRepoMock.Object, _cardsMock.Object);
+
+    [Fact]
+    public async Task PlaceBid_WithoutAValidSavedCard_ReturnsBadRequest()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        _cardsMock.Setup(c => c.HasValidCardAsync(buyer.Id)).ReturnsAsync(false);
+        var auction = OpenAuction();
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+
+        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 5000m });
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("Save a card before bidding.");
+        _bidRepoMock.Verify(r => r.AddAsync(It.IsAny<Bid>()), Times.Never);
+    }
 
     private static User ActiveBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };

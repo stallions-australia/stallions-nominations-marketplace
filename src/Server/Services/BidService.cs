@@ -14,15 +14,18 @@ public class BidService : IBidService
     private readonly IUserService _users;
     private readonly AppDbContext _db;
     private readonly ITermsRepository _termsRepo;
+    private readonly ICardService _cards;
 
     public BidService(IBidRepository bidRepo, IListingRepository listingRepo,
-        IUserService users, AppDbContext db, ITermsRepository termsRepo)
+        IUserService users, AppDbContext db, ITermsRepository termsRepo,
+        ICardService cards)
     {
         _bidRepo = bidRepo;
         _listingRepo = listingRepo;
         _users = users;
         _db = db;
         _termsRepo = termsRepo;
+        _cards = cards;
     }
 
     public async Task<ServiceResult<CurrentBidDto>> GetCurrentBidAsync(Guid auctionListingId)
@@ -50,6 +53,10 @@ public class BidService : IBidService
         if (currentTerms != null && caller.AcceptedTermsVersion != currentTerms.Version)
             return ServiceResult<BidDto>.BadRequest(
                 "You must accept the current Terms & Conditions before placing a bid.");
+
+        // A valid saved card is required so the buyer fee can be charged automatically on a win.
+        if (!await _cards.HasValidCardAsync(caller.Id))
+            return ServiceResult<BidDto>.BadRequest("Save a card before bidding.");
 
         var listing = await _listingRepo.GetAuctionByIdAsync(auctionListingId);
         if (listing == null)
