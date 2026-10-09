@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Tests.Helpers;
@@ -89,6 +91,95 @@ public class PaymentRepositoriesTests
         var reread = await new SavedCardRepository(db2).GetByUserIdAsync(userId);
         reread!.Last4.Should().Be("1111");
         reread.ProviderPaymentMethodId.Should().Be("pm_2");
+    }
+
+    private sealed class FailingSaveContext : AppDbContext
+    {
+        public FailingSaveContext(string name)
+            : base(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(name).Options) { }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
+            throw new DbUpdateException("boom");
+    }
+
+    private static async Task SeedEventAsync(string name, ProcessedPaymentEvent e)
+    {
+        await using var db = DbContextFactory.Create(name);
+        db.ProcessedPaymentEvents.Add(e);
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ProcessedEvents_TryClaim_RethrowsNonDuplicateFailure()
+    {
+        await using var db = new FailingSaveContext(nameof(ProcessedEvents_TryClaim_RethrowsNonDuplicateFailure));
+        var act = () => new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"));
+        await act.Should().ThrowAsync<DbUpdateException>().WithMessage("boom");
+    }
+
+    [Fact]
+    public async Task ProcessedEvents_Release_WorksWhenContextTracksAFailedWrite()
+    {
+        var name = nameof(ProcessedEvents_Release_WorksWhenContextTracksAFailedWrite);
+        await using (var db1 = DbContextFactory.Create(name))
+        {
+            var repo = new ProcessedPaymentEventRepository(db1);
+            (await repo.TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+            db1.SavedCards.Add(new SavedCard { UserId = Guid.NewGuid() }); // left unsaved and tracked
+            await repo.ReleaseAsync("evt_1");
+        }
+        await using var db2 = DbContextFactory.Create(name);
+        (await new ProcessedPaymentEventRepository(db2).TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+        db2.SavedCards.Count().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ProcessedEvents_TryClaim_ReclaimsStaleIncompleteClaim()
+    {
+        var name = nameof(ProcessedEvents_TryClaim_ReclaimsStaleIncompleteClaim);
+        var old = DateTime.UtcNow - ProcessedPaymentEventRepository.ClaimTimeout - TimeSpan.FromMinutes(1);
+        await SeedEventAsync(name, new ProcessedPaymentEvent { EventId = "evt_1", Provider = "Fake", Type = "T", ProcessedAt = old });
+
+        await using var db = DbContextFactory.Create(name);
+        (await new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"))).Should().BeTrue();
+
+        await using var db2 = DbContextFactory.Create(name);
+        (await db2.ProcessedPaymentEvents.SingleAsync()).ProcessedAt.Should().BeAfter(old.AddMinutes(5));
+    }
+
+    [Fact]
+    public async Task ProcessedEvents_TryClaim_FreshIncompleteClaimIsFalse()
+    {
+        var name = nameof(ProcessedEvents_TryClaim_FreshIncompleteClaimIsFalse);
+        await SeedEventAsync(name, new ProcessedPaymentEvent { EventId = "evt_1", Provider = "Fake", Type = "T", ProcessedAt = DateTime.UtcNow.AddMinutes(-1) });
+
+        await using var db = DbContextFactory.Create(name);
+        (await new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"))).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProcessedEvents_TryClaim_CompletedOldClaimIsFalse()
+    {
+        var name = nameof(ProcessedEvents_TryClaim_CompletedOldClaimIsFalse);
+        var old = DateTime.UtcNow.AddHours(-2);
+        await SeedEventAsync(name, new ProcessedPaymentEvent { EventId = "evt_1", Provider = "Fake", Type = "T", ProcessedAt = old, CompletedAt = old });
+
+        await using var db = DbContextFactory.Create(name);
+        (await new ProcessedPaymentEventRepository(db).TryClaimAsync(Evt("evt_1"))).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProcessedEvents_MarkCompleted_SetsCompletedAt()
+    {
+        var name = nameof(ProcessedEvents_MarkCompleted_SetsCompletedAt);
+        await using (var db1 = DbContextFactory.Create(name))
+        {
+            var repo = new ProcessedPaymentEventRepository(db1);
+            await repo.TryClaimAsync(Evt("evt_1"));
+            await repo.MarkCompletedAsync("evt_1");
+        }
+        await using var db2 = DbContextFactory.Create(name);
+        (await db2.ProcessedPaymentEvents.SingleAsync()).CompletedAt.Should().NotBeNull();
     }
 
     [Fact]
