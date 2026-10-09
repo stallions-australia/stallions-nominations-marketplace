@@ -53,7 +53,9 @@ public class ProcessedPaymentEventRepository : IProcessedPaymentEventRepository
     {
         _db.ChangeTracker.Clear(); // a failed earlier write must not block the delete
         var existing = await _db.ProcessedPaymentEvents.FirstOrDefaultAsync(p => p.EventId == eventId);
-        if (existing is null) return;
+        // A completed claim must survive: a commit that succeeded but reported a transient error
+        // still did the work, and its record is what stops a duplicate.
+        if (existing is null || existing.CompletedAt is not null) return;
         _db.ProcessedPaymentEvents.Remove(existing);
         await _db.SaveChangesAsync();
     }

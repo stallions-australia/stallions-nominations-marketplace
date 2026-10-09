@@ -71,6 +71,23 @@ public class PaymentRepositoriesTests
     }
 
     [Fact]
+    public async Task ProcessedEvents_Release_KeepsACompletedClaim()
+    {
+        var name = nameof(ProcessedEvents_Release_KeepsACompletedClaim);
+        var now = DateTime.UtcNow;
+        await SeedEventAsync(name, new ProcessedPaymentEvent
+        {
+            EventId = "evt_1", Provider = "Fake", Type = "T", ProcessedAt = now, CompletedAt = now
+        });
+
+        await using (var db = DbContextFactory.Create(name))
+            await new ProcessedPaymentEventRepository(db).ReleaseAsync("evt_1");
+
+        await using var db2 = DbContextFactory.Create(name);
+        (await db2.ProcessedPaymentEvents.SingleAsync()).CompletedAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task SavedCards_Update_PersistsToFreshContext()
     {
         var name = nameof(SavedCards_Update_PersistsToFreshContext);

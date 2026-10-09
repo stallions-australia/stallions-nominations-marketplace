@@ -16,10 +16,12 @@ public class EfTransactionRunner : ITransactionRunner
     public Task<T> RunAsync<T>(Func<Task<T>> work)
     {
         // The context uses EnableRetryOnFailure, so the transaction must run inside the execution
-        // strategy; the work re-reads fresh state on each attempt.
+        // strategy. A rollback does not reset the change tracker, so each attempt clears it and
+        // re-reads fresh state rather than reusing stale tracked entities from a failed attempt.
         var strategy = _db.Database.CreateExecutionStrategy();
         return strategy.ExecuteAsync(async () =>
         {
+            _db.ChangeTracker.Clear();
             await using var tx = await _db.Database.BeginTransactionAsync();
             var result = await work();
             await tx.CommitAsync();
