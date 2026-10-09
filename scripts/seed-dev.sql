@@ -15,6 +15,12 @@
 --   PaymentMethod:      'Card', 'Invoice', 'BankTransfer', 'Waived'
 -- ============================================================
 
+-- Required for writes to tables with filtered indexes (Users). SSMS sets these by default;
+-- sqlcmd does not.
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+GO
+
 SET XACT_ABORT ON;  -- any error rolls back the whole seed
 BEGIN TRANSACTION;
 
