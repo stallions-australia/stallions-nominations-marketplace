@@ -22,7 +22,8 @@ public class ListingServiceCardTests
         _mockStallionRepo.Object,
         _mockFarmRepo.Object,
         _mockUsers.Object,
-        new Mock<IPlatformSettingsRepository>().Object);
+        new Mock<IPlatformSettingsRepository>().Object,
+        new Mock<ISubscriptionService>().Object);
 
     [Fact]
     public async Task GetListingCardsAsync_Auction_IncludesBidCountAndHighestBid()

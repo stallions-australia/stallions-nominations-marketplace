@@ -13,6 +13,7 @@ public class ListingService : IListingService
     private readonly IStudFarmRepository _farmRepo;
     private readonly IUserService _users;
     private readonly IPlatformSettingsRepository _settingsRepo;
+    private readonly ISubscriptionService _subscriptions;
 
     public ListingService(
         IListingRepository listingRepo,
@@ -20,7 +21,8 @@ public class ListingService : IListingService
         IStallionRepository stallionRepo,
         IStudFarmRepository farmRepo,
         IUserService users,
-        IPlatformSettingsRepository settingsRepo)
+        IPlatformSettingsRepository settingsRepo,
+        ISubscriptionService subscriptions)
     {
         _listingRepo = listingRepo;
         _seasonRepo = seasonRepo;
@@ -28,6 +30,7 @@ public class ListingService : IListingService
         _farmRepo = farmRepo;
         _users = users;
         _settingsRepo = settingsRepo;
+        _subscriptions = subscriptions;
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff)
@@ -207,6 +210,12 @@ public class ListingService : IListingService
 
         if (listing is AuctionListing al && al.EndDateTime <= DateTime.UtcNow)
             return ServiceResult.BadRequest("Auction end date must be in the future.");
+
+        // The stud must have paid (or been granted a waiver of) the listing fee for this stallion
+        // and season. Applies to every publish — there is no Staff exemption.
+        if (!await _subscriptions.HasActiveSubscriptionAsync(listing.StallionId, listing.SeasonId))
+            return ServiceResult.BadRequest(
+                $"This stallion has no paid listing fee for {listing.Season?.Name ?? "this season"}. Contact Stallions Australia.");
 
         // Lock the buyer fee in on first publish only — unpublishing and republishing keeps the
         // original amount, so a Staff settings change never alters a listing buyers have seen.

@@ -16,9 +16,13 @@ public class ListingServiceTests
     private readonly Mock<IStudFarmRepository> _farmRepoMock = new();
     private readonly Mock<IUserService> _usersMock = new();
     private readonly Mock<IPlatformSettingsRepository> _settingsRepoMock = new();
+    private readonly Mock<ISubscriptionService> _subscriptionsMock = new();
 
     public ListingServiceTests()
     {
+        // Default: the stallion has a paid listing fee, so publish tests not about the guard pass it.
+        _subscriptionsMock.Setup(s => s.HasActiveSubscriptionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
+            .ReturnsAsync(true);
         _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
         {
             BuyerFeeIncGst = 150m, StandardListingFeeIncGst = 990m, MinimumBidIncrement = 25m,
@@ -29,7 +33,7 @@ public class ListingServiceTests
     private ListingService CreateSut() => new(
         _listingRepoMock.Object, _seasonRepoMock.Object,
         _stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object,
-        _settingsRepoMock.Object);
+        _settingsRepoMock.Object, _subscriptionsMock.Object);
 
     private void SetBuyerFeeSetting(decimal fee) =>
         _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
@@ -239,6 +243,45 @@ public class ListingServiceTests
 
         // Visible to buyers (isStaff: false) and unaffected by the new setting.
         result.Value!.BuyerFeeIncGst.Should().Be(150m);
+    }
+
+    [Fact]
+    public async Task PublishListing_WithoutActiveSubscription_ReturnsBadRequestNamingTheSeason()
+    {
+        var (_, farm) = SignedInFarm();
+        var listing = DraftAuction(farm.Id);
+        listing.StallionId = Guid.NewGuid();
+        listing.SeasonId = Guid.NewGuid();
+        listing.Season = new Season { Id = listing.SeasonId, Name = "2026 Season" };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        _subscriptionsMock.Setup(s => s.HasActiveSubscriptionAsync(listing.StallionId, listing.SeasonId))
+            .ReturnsAsync(false);
+
+        var result = await CreateSut().PublishListingAsync(listing.Id);
+
+        result.Succeeded.Should().BeFalse();
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("This stallion has no paid listing fee for 2026 Season. Contact Stallions Australia.");
+        listing.Status.Should().Be(ListingStatus.Draft);
+        listing.BuyerFeeIncGst.Should().BeNull();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishListing_WithActiveSubscription_Publishes()
+    {
+        var (_, farm) = SignedInFarm();
+        var listing = DraftAuction(farm.Id);
+        listing.StallionId = Guid.NewGuid();
+        listing.SeasonId = Guid.NewGuid();
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        _subscriptionsMock.Setup(s => s.HasActiveSubscriptionAsync(listing.StallionId, listing.SeasonId))
+            .ReturnsAsync(true);
+
+        var result = await CreateSut().PublishListingAsync(listing.Id);
+
+        result.Succeeded.Should().BeTrue();
+        listing.Status.Should().Be(ListingStatus.Active);
     }
 
     [Fact]
