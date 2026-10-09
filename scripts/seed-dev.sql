@@ -3,18 +3,23 @@
 -- Run against the local dev database (StallionsNomsDev)
 -- Safe to re-run: uses IF NOT EXISTS / MERGE patterns
 --
+-- Run AFTER the EF migrations (it reads fee amounts from the seeded PlatformSettings row,
+-- so no fee amount is repeated here).
+--
 -- IMPORTANT: EF Core stores all enums as strings in this project.
---   ListingType:   'FixedPrice', 'Auction'
---   ListingStatus: 'Draft', 'Active', 'Sold', 'Expired', 'Cancelled'
---   UserRole:      'Buyer', 'StudFarmAdmin', 'Staff'
---   UserStatus:    'PendingVerification', 'Active', 'Suspended'
+--   ListingType:        'Auction'
+--   ListingStatus:      'Draft', 'Active', 'Sold', 'Expired', 'Cancelled'
+--   UserRole:           'Buyer', 'StudFarmAdmin', 'Staff'
+--   UserStatus:         'PendingVerification', 'Active', 'Suspended'
+--   SubscriptionStatus: 'Pending', 'Paid', 'Waived'
+--   PaymentMethod:      'Card', 'Invoice', 'BankTransfer', 'Waived'
 -- ============================================================
 
+SET XACT_ABORT ON;  -- any error rolls back the whole seed
 BEGIN TRANSACTION;
 
 -- ── Fix any previously inserted rows that used integer values ────
 -- (Safe no-op if rows don't exist or already have string values)
-UPDATE Listings SET ListingType = 'FixedPrice' WHERE ListingType = '0';
 UPDATE Listings SET ListingType = 'Auction'    WHERE ListingType = '1';
 UPDATE Listings SET Status = 'Draft'     WHERE Status = '0';
 UPDATE Listings SET Status = 'Active'    WHERE Status = '1';
@@ -42,12 +47,12 @@ END
 
 -- ── Users (stub stud farm admins) ───────────────────────────
 -- Placeholder rows so the FK from StudFarms → Users is satisfied.
--- EntraObjectId values are fake GUIDs; replace with real Entra OIDs
+-- ObjectId values are fake GUIDs; replace with real Entra OIDs
 -- once you have test user accounts.
 
 IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = '00000000-0000-0000-0000-000000000001')
 BEGIN
-    INSERT INTO Users (Id, EntraObjectId, Email, DisplayName, Role, Status, CreatedAt)
+    INSERT INTO Users (Id, ObjectId, Email, DisplayName, Role, Status, CreatedAt)
     VALUES (
         '00000000-0000-0000-0000-000000000001',
         'aaaaaaaa-0000-0000-0000-000000000001',
@@ -59,7 +64,7 @@ END
 
 IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = '00000000-0000-0000-0000-000000000002')
 BEGIN
-    INSERT INTO Users (Id, EntraObjectId, Email, DisplayName, Role, Status, CreatedAt)
+    INSERT INTO Users (Id, ObjectId, Email, DisplayName, Role, Status, CreatedAt)
     VALUES (
         '00000000-0000-0000-0000-000000000002',
         'aaaaaaaa-0000-0000-0000-000000000002',
@@ -153,60 +158,49 @@ BEGIN
         1, 1, GETUTCDATE());
 END
 
--- ── Fixed Price Listings ──────────────────────────────────────
--- Fastnet Rock: first 20 at $8,000
-IF NOT EXISTS (SELECT 1 FROM Listings WHERE Id = '44444444-0000-0000-0000-000000000001')
-BEGIN
-    INSERT INTO Listings (Id, StallionId, SeasonId, StudFarmId, ListingType, Status,
-        PlatformFeePercent, PublishedAt, CreatedAt)
-    VALUES ('44444444-0000-0000-0000-000000000001',
-        '33333333-0000-0000-0000-000000000001', @SeasonId, @CoolmoreId,
-        'FixedPrice', 'Active', 2.5, GETUTCDATE(), GETUTCDATE());
+-- ── Fee settings (seeded by the V2Phase1Domain migration) ────
+-- Listings snapshot the buyer fee and bid increment from these, exactly as publishing does.
+DECLARE @BuyerFee     DECIMAL(12,2) = (SELECT BuyerFeeIncGst           FROM PlatformSettings);
+DECLARE @Increment    DECIMAL(12,2) = (SELECT MinimumBidIncrement      FROM PlatformSettings);
+DECLARE @ListingFee   DECIMAL(12,2) = (SELECT StandardListingFeeIncGst FROM PlatformSettings);
+DECLARE @ListingFeeGst DECIMAL(12,2) = ROUND(@ListingFee / 11, 2);
+IF @BuyerFee IS NULL
+    THROW 50000, 'PlatformSettings row missing - run the EF migrations before this seed.', 1;
 
-    INSERT INTO FixedPriceListings (Id, PriceIncGst, Quantity, QuantityRemaining)
-    VALUES ('44444444-0000-0000-0000-000000000001', 8000.00, 20, 17);
-END
+-- ── Listing fee subscriptions ────────────────────────────────
+-- Paid for every seeded stallion in the open season so dev listings can be published.
+-- Created by the first Staff user if there is one, otherwise the Coolmore stub admin.
+DECLARE @SeedCreatorId UNIQUEIDENTIFIER = COALESCE(
+    (SELECT TOP 1 Id FROM Users WHERE Role = 'Staff' ORDER BY CreatedAt),
+    '00000000-0000-0000-0000-000000000001');
 
--- Fastnet Rock: next 10 at $10,000
-IF NOT EXISTS (SELECT 1 FROM Listings WHERE Id = '44444444-0000-0000-0000-000000000002')
-BEGIN
-    INSERT INTO Listings (Id, StallionId, SeasonId, StudFarmId, ListingType, Status,
-        PlatformFeePercent, PublishedAt, CreatedAt)
-    VALUES ('44444444-0000-0000-0000-000000000002',
-        '33333333-0000-0000-0000-000000000001', @SeasonId, @CoolmoreId,
-        'FixedPrice', 'Active', 2.5, GETUTCDATE(), GETUTCDATE());
-
-    INSERT INTO FixedPriceListings (Id, PriceIncGst, Quantity, QuantityRemaining)
-    VALUES ('44444444-0000-0000-0000-000000000002', 10000.00, 10, 10);
-END
-
--- Snitzel: limited quantity, nearly sold out
-IF NOT EXISTS (SELECT 1 FROM Listings WHERE Id = '44444444-0000-0000-0000-000000000003')
-BEGIN
-    INSERT INTO Listings (Id, StallionId, SeasonId, StudFarmId, ListingType, Status,
-        PlatformFeePercent, PublishedAt, CreatedAt)
-    VALUES ('44444444-0000-0000-0000-000000000003',
-        '33333333-0000-0000-0000-000000000002', @SeasonId, @ArrowfieldId,
-        'FixedPrice', 'Active', 3.0, GETUTCDATE(), GETUTCDATE());
-
-    INSERT INTO FixedPriceListings (Id, PriceIncGst, Quantity, QuantityRemaining)
-    VALUES ('44444444-0000-0000-0000-000000000003', 15000.00, 5, 2);
-END
+INSERT INTO StallionSeasonSubscriptions (Id, StallionId, SeasonId, StudFarmId,
+    FeeIncGst, FeeExGst, GstAmount, Status, PaymentMethod, PaymentReference, PaidAt,
+    Notes, CreatedAt, CreatedByUserId)
+SELECT NEWID(), s.Id, @SeasonId, s.StudFarmId,
+    @ListingFee, @ListingFee - @ListingFeeGst, @ListingFeeGst,
+    'Paid', 'Invoice', 'DEV-SEED', GETUTCDATE(),
+    'Dev seed data', GETUTCDATE(), @SeedCreatorId
+FROM Stallions s
+WHERE s.Id IN ('33333333-0000-0000-0000-000000000001', '33333333-0000-0000-0000-000000000002',
+               '33333333-0000-0000-0000-000000000003', '33333333-0000-0000-0000-000000000004')
+  AND NOT EXISTS (SELECT 1 FROM StallionSeasonSubscriptions x
+                  WHERE x.StallionId = s.Id AND x.SeasonId = @SeasonId);
 
 -- ── Auction Listings ─────────────────────────────────────────
--- So You Think: ending in ~4 hours (tests "ending soon" styling)
+-- So You Think: ending in ~4 hours (tests "ending soon" styling), hidden reserve
 IF NOT EXISTS (SELECT 1 FROM Listings WHERE Id = '44444444-0000-0000-0000-000000000004')
 BEGIN
     INSERT INTO Listings (Id, StallionId, SeasonId, StudFarmId, ListingType, Status,
-        PlatformFeePercent, PublishedAt, CreatedAt)
+        BuyerFeeIncGst, PublishedAt, CreatedAt)
     VALUES ('44444444-0000-0000-0000-000000000004',
         '33333333-0000-0000-0000-000000000003', @SeasonId, @CoolmoreId,
-        'Auction', 'Active', 2.0, GETUTCDATE(), GETUTCDATE());
+        'Auction', 'Active', @BuyerFee, GETUTCDATE(), GETUTCDATE());
 
-    INSERT INTO AuctionListings (Id, StartingPrice, ReservePrice, IsNoReserve,
+    INSERT INTO AuctionListings (Id, ReservePrice, IsNoReserve,
         MinimumBidIncrement, EndDateTime)
     VALUES ('44444444-0000-0000-0000-000000000004',
-        5000.00, 12000.00, 0, 25.00,
+        12000.00, 0, @Increment,
         DATEADD(hour, 4, GETUTCDATE()));
 END
 
@@ -214,19 +208,35 @@ END
 IF NOT EXISTS (SELECT 1 FROM Listings WHERE Id = '44444444-0000-0000-0000-000000000005')
 BEGIN
     INSERT INTO Listings (Id, StallionId, SeasonId, StudFarmId, ListingType, Status,
-        PlatformFeePercent, PublishedAt, CreatedAt)
+        BuyerFeeIncGst, PublishedAt, CreatedAt)
     VALUES ('44444444-0000-0000-0000-000000000005',
         '33333333-0000-0000-0000-000000000004', @SeasonId, @ArrowfieldId,
-        'Auction', 'Active', 1.5, GETUTCDATE(), GETUTCDATE());
+        'Auction', 'Active', @BuyerFee, GETUTCDATE(), GETUTCDATE());
 
-    INSERT INTO AuctionListings (Id, StartingPrice, ReservePrice, IsNoReserve,
+    INSERT INTO AuctionListings (Id, ReservePrice, IsNoReserve,
         MinimumBidIncrement, EndDateTime)
     VALUES ('44444444-0000-0000-0000-000000000005',
-        8000.00, NULL, 1, 25.00,
+        NULL, 1, @Increment,
         DATEADD(day, 5, GETUTCDATE()));
+END
+
+-- Fastnet Rock: draft auction with a reserve, ready to publish (its stallion's fee is Paid above)
+IF NOT EXISTS (SELECT 1 FROM Listings WHERE Id = '44444444-0000-0000-0000-000000000006')
+BEGIN
+    INSERT INTO Listings (Id, StallionId, SeasonId, StudFarmId, ListingType, Status,
+        TermsAndConditions, CreatedAt)
+    VALUES ('44444444-0000-0000-0000-000000000006',
+        '33333333-0000-0000-0000-000000000001', @SeasonId, @CoolmoreId,
+        'Auction', 'Draft', 'Dev seed terms: 45-day payment on live foal.', GETUTCDATE());
+
+    INSERT INTO AuctionListings (Id, ReservePrice, IsNoReserve,
+        MinimumBidIncrement, EndDateTime)
+    VALUES ('44444444-0000-0000-0000-000000000006',
+        20000.00, 0, @Increment,
+        DATEADD(day, 7, GETUTCDATE()));
 END
 
 COMMIT;
 
 PRINT 'Seed data inserted/updated successfully.';
-PRINT 'NOTE: Update the placeholder EntraObjectId values in Users once you have real Entra OIDs.';
+PRINT 'NOTE: Update the placeholder ObjectId values in Users once you have real Entra OIDs.';

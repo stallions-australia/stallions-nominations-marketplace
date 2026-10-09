@@ -1,5 +1,10 @@
 # Data Model and API Design Spec
 
+> **Superseded transaction model (2026-10-09):** the fixed-price listings, percentage platform fee,
+> deferred stud top-up, 90% refund policy and mare-detail capture described here were replaced by
+> `2026-10-09-business-model-v2-design.md` (per-stallion season listing fee + flat buyer fee).
+> Where the two conflict, the v2 spec wins.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Define the complete database schema and RESTful API surface for the Stallions Nominations Marketplace backend, ready for implementation using EF Core + ASP.NET Core Web API.

@@ -1,5 +1,10 @@
 # Stud Farm Admin UI — Design Spec (Plan 4)
 
+> **Superseded transaction model (2026-10-09):** fixed-price listings, starting prices, stud-set bid
+> increments and the Staff-set per-listing fee % described here were replaced by
+> `2026-10-09-business-model-v2-design.md` (auctions with a hidden reserve, a per-stallion season
+> listing fee, and a flat buyer fee). Where the two conflict, the v2 spec wins.
+
 ## Overview
 
 The Stud Farm Admin UI gives authenticated stud farm operators a dedicated section of the Stallions Nominations Marketplace to manage their stallion roster, create and publish nomination listings, and respond to buyer enquiries. This is an authenticated, role-gated section of the existing Blazor WASM client — no new app, no new hosting.
