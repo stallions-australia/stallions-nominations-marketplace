@@ -265,9 +265,8 @@ public class SubscriptionService : ISubscriptionService
             return ServiceResult<PaymentRedirectDto>.BadRequest("The payment page is unavailable right now. Please try again shortly.");
         }
 
-        subscription.PendingCheckoutUrl = url;
-        subscription.PendingCheckoutExpiresAt = DateTime.UtcNow.AddHours(1); // matches the Stripe session's expiry
-        await _repo.UpdateAsync(subscription);
+        // Writes only the checkout columns: the webhook or Staff may have settled the subscription during the provider call.
+        await _repo.SetPendingCheckoutAsync(subscription, url, DateTime.UtcNow.AddHours(1)); // matches the Stripe session's expiry
         return ServiceResult<PaymentRedirectDto>.Ok(new PaymentRedirectDto { Url = url });
     }
 
