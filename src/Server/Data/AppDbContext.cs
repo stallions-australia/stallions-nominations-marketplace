@@ -24,6 +24,7 @@ public class AppDbContext : DbContext
     public DbSet<StudDirectory> StudDirectories => Set<StudDirectory>();
     public DbSet<StallionDirectory> StallionDirectories => Set<StallionDirectory>();
     public DbSet<TermsDocument> TermsDocuments => Set<TermsDocument>();
+    public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -328,6 +329,32 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(t => t.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── PlatformSettings (single row) ──────────────────────────────────────
+        modelBuilder.Entity<PlatformSettings>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.BuyerFeeIncGst).HasPrecision(12, 2);
+            e.Property(s => s.StandardListingFeeIncGst).HasPrecision(12, 2);
+            e.Property(s => s.MinimumBidIncrement).HasPrecision(12, 2);
+
+            e.HasOne(s => s.UpdatedBy)
+                .WithMany()
+                .HasForeignKey(s => s.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // The only place default fee amounts appear in code. Staff change them via api/settings.
+            e.HasData(new PlatformSettings
+            {
+                Id = Entities.PlatformSettings.SingletonId,
+                BuyerFeeIncGst = 150m,
+                StandardListingFeeIncGst = 990m,
+                MinimumBidIncrement = 25m,
+                ChargeGracePeriodHours = 2,
+                OfferExpiryDays = 7,
+                UpdatedAt = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc)
+            });
         });
     }
 }
