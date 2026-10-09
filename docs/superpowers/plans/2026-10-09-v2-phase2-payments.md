@@ -30,6 +30,11 @@
 >   apply (`ListingFeeDuplicatePayment`, `ListingFeePaymentForUnknownSubscription`), and returns
 >   `PaymentEventOutcome.InProgress` (webhook → 409). Amounts in cents always go through
 >   `PaymentAmounts.ToCents`.
+> - After the Task 4 review: `PaymentOptionsValidator.Validate(options, environmentName)` allows the
+>   fake only in Development/Staging. The fake page redirects to the success URL only when the event
+>   was processed (else the cancel URL) and restores the session if processing throws.
+> - Known, deferred: success/cancel URLs are built from `Request.Host` — before go-live, use a
+>   configured public base URL or restrict `AllowedHosts`.
 
 ---
 

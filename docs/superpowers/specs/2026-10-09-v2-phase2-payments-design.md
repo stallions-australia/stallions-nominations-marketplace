@@ -22,7 +22,7 @@ interim checkout flow stays as it is until then.
 |---|---|
 | P1 | **Stripe-hosted Checkout** for both card capture (*setup* mode) and the listing-fee payment (*payment* mode). Card data never touches the app; Stripe handles 3-D Secure, wallets and receipts. |
 | P2 | **Self-serve stud activation.** A stud activates a stallion for the open season and pays by card. Staff can still mark paid by invoice or bank transfer, or waive. |
-| P3 | No Stripe account yet. A **fake provider** (`Payments:Provider = Fake`) lets dev be click-tested now; switching dev to Stripe later is a configuration change. The server refuses to start with the fake provider in Production. |
+| P3 | No Stripe account yet. A **fake provider** (`Payments:Provider = Fake`) lets dev be click-tested now; switching dev to Stripe later is a configuration change. The fake provider is allowed only in the Development and Staging environments (dev's App Service runs as Staging); anywhere else the server refuses to start. |
 | P4 | **One saved card per buyer.** Replacing it overwrites the previous card. |
 | P5 | Proper GST **tax invoices** for the listing fee are Phase 5. Phase 2 relies on Stripe's card receipt email (a Stripe dashboard setting). |
 
@@ -56,7 +56,8 @@ Other event types are acknowledged and ignored.
 - **`FakePaymentProvider`** — sessions are kept in memory, which suits single-instance dev. Its
   redirect URL is a server page, `/payments/fake/{sessionId}`, offering **Approve** and
   **Decline**. Approve builds the same `PaymentEvent` the Stripe webhook would and hands it to the
-  processor. Decline goes back to the cancel URL. The fake controller is mapped only when the
+  processor, then returns to the success URL only if the event was processed (otherwise the
+  cancel URL). Decline goes back to the cancel URL. The fake controller returns 404 unless the
   fake provider is active.
 
 ### `PaymentEventProcessor`
@@ -86,8 +87,8 @@ The only code that changes data because of a payment. It is provider-neutral.
   `Payments__Stripe__SecretKey` / `Payments__Stripe__WebhookSigningSecret`. This needs an
   `azd provision --environment dev` (dev only, with David's go-ahead). While the provider is
   `Fake`, the unresolved Key Vault references are never read.
-- Startup fails if `Payments:Provider = Fake` in Production, or if `Stripe` is chosen without both
-  secrets.
+- Startup fails if `Payments:Provider = Fake` outside Development/Staging, or if `Stripe` is chosen
+  without both secrets.
 
 ## Data model
 
@@ -153,7 +154,7 @@ One migration: `V2Phase2Payments`.
 - Webhook signature verified on the raw body; events processed once; every state change audited.
 - Saving a card is BuyerOnly; activation is StudFarmAdminOnly and limited to the caller's own
   stallions in the open season. Staff payment actions stay StaffOnly.
-- Secrets live only in Key Vault. The fake provider cannot run in Production.
+- Secrets live only in Key Vault. The fake provider can only run in Development or Staging.
 
 ## Errors
 
@@ -173,7 +174,7 @@ One migration: `V2Phase2Payments`.
   - Bid gate: no card, expired card, card valid until the end of its expiry month.
   - Activation: own stallion only, open season required, already active rejected, Pending
     subscription reused with its discount, new subscription at the standard fee.
-  - Startup guard: fake provider refused in Production; Stripe refused without secrets.
+  - Startup guard: fake provider refused outside Development/Staging; Stripe refused without secrets.
 - **Stripe adapter:** webhook verification using Stripe.net signing with a test secret —
   valid signature, tampered body, stale timestamp; mapping of setup and payment sessions to
   `PaymentEvent`s.
