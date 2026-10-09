@@ -4,6 +4,8 @@
 @inject NavigationManager Nav
 @inject UserStateService UserState
 @inject UserApiService UserApi
+@inject PaymentsApiService PaymentsApi
+@inject AuthenticationStateProvider AuthProvider
 
 <PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
 
@@ -84,7 +86,20 @@ else
 
                     <AuthorizeView>
                         <Authorized>
-                            @if (UserState.IsBuyer && UserState.IsVerified)
+                            @* A buyer must have a valid saved card before bidding (the buyer fee is charged to it on a win). *@
+                            @if (UserState.IsBuyer && UserState.IsVerified && !_cardChecked)
+                            {
+                                <p class="text-muted text-sm" role="status" aria-live="polite">Checking your payment card…</p>
+                            }
+                            else if (UserState.IsBuyer && UserState.IsVerified && _cardCheckFailed)
+                            {
+                                <p class="text-muted text-sm" role="status" aria-live="polite">We couldn't check your payment card — refresh to try again.</p>
+                            }
+                            else if (UserState.IsBuyer && UserState.IsVerified && _card is not { IsValid: true })
+                            {
+                                <a href="/account/card" class="btn btn-gold btn-full">Save a card to bid</a>
+                            }
+                            else if (UserState.IsBuyer && UserState.IsVerified)
                             {
                                 <div class="bid-form">
                                     <p class="bid-form-hint">
@@ -180,6 +195,9 @@ else
     private decimal? _refreshedHighestBid;
     private List<PublicBidDto> _bidHistory = [];
     private BuyerFeeDisclosureDto? _disclosure;
+    private SavedCardDto? _card;
+    private bool _cardChecked;
+    private bool _cardCheckFailed;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -194,6 +212,7 @@ else
             {
                 await LoadBidHistoryAsync();
                 await LoadDisclosureAsync();
+                await LoadCardAsync();
             }
         }
         catch (ApiException ex) when (ex.StatusCode == 404)
@@ -219,6 +238,35 @@ else
     {
         try { _disclosure = await ListingApi.GetBuyerFeeDisclosureAsync(); }
         catch (ApiException) { _disclosure = null; }
+    }
+
+    // Bidding needs a valid saved card. Only signed-in buyers have one to check.
+    private async Task LoadCardAsync()
+    {
+        _card = null;
+        _cardCheckFailed = false;
+        try
+        {
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            if (auth.User.Identity?.IsAuthenticated != true) return;
+            // The layout normally loads the user first; make sure, in case this page got there first.
+            await UserState.LoadAsync();
+            if (UserState.IsBuyer) _card = await PaymentsApi.GetMyCardAsync();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            // A transient failure: don't tell a buyer who has a card to save one.
+            _cardCheckFailed = true;
+        }
+        catch (AccessTokenNotAvailableException)
+        {
+            // Signed-in session has lapsed — treated as no card; signing in again resolves it.
+            _card = null;
+        }
+        finally
+        {
+            _cardChecked = true;
+        }
     }
 
     // No starting or asking price is ever shown — only the current high bid, if any.

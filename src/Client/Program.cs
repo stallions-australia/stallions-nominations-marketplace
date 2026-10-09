@@ -59,6 +59,8 @@ builder.Services.AddHttpClient<PlatformSettingsApiService>(c => c.BaseAddress = 
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 builder.Services.AddHttpClient<SubscriptionApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
+builder.Services.AddHttpClient<PaymentsApiService>(c => c.BaseAddress = apiBase)
+    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 
 builder.Services.AddScoped<UserStateService>();
 

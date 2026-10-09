@@ -11,4 +11,10 @@ public interface ISubscriptionRepository
     Task<IReadOnlyList<StallionSeasonSubscription>> GetAllAsync(Guid? seasonId = null, SubscriptionStatus? status = null);
     Task<StallionSeasonSubscription> AddAsync(StallionSeasonSubscription subscription);
     Task UpdateAsync(StallionSeasonSubscription subscription);
+
+    /// <summary>Saves the open checkout page, writing only those two columns so a concurrent status change is never overwritten.</summary>
+    Task SetPendingCheckoutAsync(StallionSeasonSubscription subscription, string url, DateTime expiresAt);
+
+    /// <summary>Stops tracking an entity (e.g. after a failed insert) so it is not saved again.</summary>
+    void Detach(StallionSeasonSubscription subscription);
 }

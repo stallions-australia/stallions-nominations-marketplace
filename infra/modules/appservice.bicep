@@ -80,6 +80,20 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
           name: 'AZURE_STORAGE_ACCOUNT_NAME'
           value: storageAccountName
         }
+        {
+          // Fake (simulated payment page) until Stripe keys exist; Stripe in Production.
+          // Switch dev to Stripe by changing this line once the Key Vault secrets are loaded.
+          name: 'Payments__Provider'
+          value: isProduction ? 'Stripe' : 'Fake'
+        }
+        {
+          name: 'Payments__Stripe__SecretKey'
+          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/StripeSecretKey/)'
+        }
+        {
+          name: 'Payments__Stripe__WebhookSigningSecret'
+          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/StripeWebhookSigningSecret/)'
+        }
       ]
     }
   }

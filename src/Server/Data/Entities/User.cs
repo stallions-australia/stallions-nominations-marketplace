@@ -19,6 +19,12 @@ public class User
     public DateTime? AcceptedTermsAt { get; set; }
     public bool SuppressBidConfirmation { get; set; }
 
+    // Payment provider customer reference (created on first card setup). Never card data.
+    public string? PaymentCustomerId { get; set; }
+
+    // Which payment provider issued PaymentCustomerId ("Fake" or "Stripe"); an id from another provider must not be reused.
+    public string? PaymentCustomerProvider { get; set; }
+
     // Navigation properties
     public User? VerifiedBy { get; set; }
     public StudFarm? StudFarm { get; set; }

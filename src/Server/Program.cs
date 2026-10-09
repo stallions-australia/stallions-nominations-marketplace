@@ -8,6 +8,7 @@ using Stallions.Server.Auth;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
+using Stallions.Server.Payments;
 using Stallions.Server.Services;
 using Stallions.Shared.Enums;
 
@@ -75,6 +76,9 @@ builder.Services.AddScoped<IAuthorizationHandler, DbRoleHandler>();
 // Config options
 builder.Services.Configure<CheckoutOptions>(builder.Configuration.GetSection("Checkout"));
 
+// Payments — Stripe or the dev-only fake (refused in Production)
+builder.Services.AddPayments(builder.Configuration, builder.Environment);
+
 // Infrastructure
 builder.Services.AddHttpContextAccessor();
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -105,6 +109,8 @@ builder.Services.AddScoped<IStallionDirectoryRepository, StallionDirectoryReposi
 builder.Services.AddScoped<ITermsRepository, TermsRepository>();
 builder.Services.AddScoped<IPlatformSettingsRepository, PlatformSettingsRepository>();
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
+builder.Services.AddScoped<ISavedCardRepository, SavedCardRepository>();
+builder.Services.AddScoped<IProcessedPaymentEventRepository, ProcessedPaymentEventRepository>();
 
 // Blob Storage (uses DefaultAzureCredential; requires AZURE_STORAGE_ACCOUNT_NAME in appsettings.Development.json)
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
@@ -116,6 +122,7 @@ builder.Services.AddScoped<IStallionService, StallionService>();
 builder.Services.AddScoped<IListingService, ListingService>();
 builder.Services.AddScoped<IBidService, BidService>();
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
+builder.Services.AddScoped<ICardService, CardService>();
 builder.Services.AddScoped<INominationBindingService, NominationBindingService>();
 builder.Services.AddScoped<IEnquiryService, EnquiryService>();
 builder.Services.AddScoped<IAdminService, AdminService>();

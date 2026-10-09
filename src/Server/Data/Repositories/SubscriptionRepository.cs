@@ -49,4 +49,22 @@ public class SubscriptionRepository : ISubscriptionRepository
         _db.StallionSeasonSubscriptions.Update(subscription);
         await _db.SaveChangesAsync();
     }
+
+    public async Task SetPendingCheckoutAsync(StallionSeasonSubscription subscription, string url, DateTime expiresAt)
+    {
+        var entry = _db.Entry(subscription);
+        if (entry.State == EntityState.Detached) _db.StallionSeasonSubscriptions.Attach(subscription);
+        // Only these two columns are written; everything else keeps whatever the database holds.
+        // (Clearing IsModified restores original values, so do it before assigning the new ones.)
+        foreach (var property in entry.Properties)
+            property.IsModified = false;
+        subscription.PendingCheckoutUrl = url;
+        subscription.PendingCheckoutExpiresAt = expiresAt;
+        entry.Property(s => s.PendingCheckoutUrl).IsModified = true;
+        entry.Property(s => s.PendingCheckoutExpiresAt).IsModified = true;
+        await _db.SaveChangesAsync();
+    }
+
+    public void Detach(StallionSeasonSubscription subscription) =>
+        _db.Entry(subscription).State = EntityState.Detached;
 }

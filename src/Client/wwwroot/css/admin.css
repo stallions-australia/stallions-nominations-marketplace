@@ -144,6 +144,16 @@
     margin-top: var(--space-1);
 }
 
+/* Shown while the listing-fee payment is confirmed after returning from the payment page */
+.listing-fee-payment-status {
+    border-left: 3px solid var(--gold);
+    background: var(--cream);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-4);
+}
+
 /* Enquiry inbox rows */
 .enquiry-row-unread td {
     font-weight: 600;

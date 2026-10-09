@@ -315,6 +315,33 @@ namespace Stallions.Server.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.ProcessedPaymentEvent", b =>
+                {
+                    b.Property<string>("EventId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("EventId");
+
+                    b.ToTable("ProcessedPaymentEvents");
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.Purchase", b =>
                 {
                     b.Property<Guid>("Id")
@@ -385,6 +412,60 @@ namespace Stallions.Server.Data.Migrations
                     b.HasIndex("ListingId");
 
                     b.ToTable("Purchases");
+                });
+
+            modelBuilder.Entity("Stallions.Server.Data.Entities.SavedCard", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Brand")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ExpMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ExpYear")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Last4")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("nvarchar(4)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ProviderCustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("ProviderPaymentMethodId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("SavedCards");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.Season", b =>
@@ -605,6 +686,13 @@ namespace Stallions.Server.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateTime?>("PendingCheckoutExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PendingCheckoutUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
                     b.Property<Guid>("SeasonId")
                         .HasColumnType("uniqueidentifier");
 
@@ -806,6 +894,14 @@ namespace Stallions.Server.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(36)
                         .HasColumnType("nvarchar(36)");
+
+                    b.Property<string>("PaymentCustomerId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("PaymentCustomerProvider")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -1020,6 +1116,17 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("Buyer");
 
                     b.Navigation("Listing");
+                });
+
+            modelBuilder.Entity("Stallions.Server.Data.Entities.SavedCard", b =>
+                {
+                    b.HasOne("Stallions.Server.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.Season", b =>

@@ -3,8 +3,10 @@
 @attribute [Authorize]
 @inject AdminApiService AdminApi
 @inject SubscriptionApiService SubscriptionApi
+@inject PlatformSettingsApiService SettingsApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
+@implements IDisposable
 
 <PageTitle>My Stallions — Stallions Australia</PageTitle>
 
@@ -46,6 +48,20 @@ else if (_authorized != null)
     }
     else
     {
+        <div role="status" aria-live="polite">
+            @if (_confirmingPayment)
+            {
+                <p class="listing-fee-payment-status">Confirming your listing-fee payment…</p>
+            }
+            else if (_paymentNotice is not null)
+            {
+                <p class="listing-fee-payment-status">@_paymentNotice</p>
+            }
+        </div>
+        @if (_activateError is not null)
+        {
+            <ErrorMessage Message="@_activateError" />
+        }
         <table class="admin-table">
             <thead>
                 <tr>
@@ -81,9 +97,22 @@ else if (_authorized != null)
                                 <span class="badge badge-sub-@status.ToLowerInvariant()">@status</span>
                                 @if (status is not ("Paid" or "Waived"))
                                 {
-                                    <div class="listing-fee-notice">
-                                        Listing fee required. Contact Stallions Australia to activate.
-                                    </div>
+                                    var fee = FeeFor(s.Id);
+                                    @if (fee is decimal amount && amount > 0)
+                                    {
+                                        <div>
+                                            <button class="btn btn-sm btn-gold" disabled="@(_activating is not null || _confirmingPayment)"
+                                                    @onclick="() => ActivateAsync(s.Id)">
+                                                @(_activating == s.Id ? "Opening…" : $"Activate for {_openSeason.Name} — {amount.ToString("C0", AuCulture)}")
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="listing-fee-notice">
+                                            Listing fee required. Contact Stallions Australia to activate.
+                                        </div>
+                                    }
                                 }
                             }
                         </td>
@@ -172,12 +201,71 @@ else if (_authorized != null)
     private string? _error;
     private string? _addError;
     private string _missingMailto = string.Empty;
+    private decimal? _standardFee;
+    private Guid? _activating;
+    private string? _activateError;
+    private bool _confirmingPayment;
+    private string? _paymentNotice;
+    private readonly CancellationTokenSource _cts = new();
+
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    /// <summary>"success" or "cancelled" when returning from the listing-fee payment page.</summary>
+    [SupplyParameterFromQuery] public string? Payment { get; set; }
+
+    /// <summary>The stallion the listing fee was paid for, when returning from the payment page.</summary>
+    [SupplyParameterFromQuery] public Guid? Stallion { get; set; }
+
+    /// <summary>How often to re-check after returning from the payment page (tests shorten it).</summary>
+    [Parameter] public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
 
     protected override async Task OnInitializedAsync()
     {
+        var token = _cts.Token;
+        // Read the return status once, then drop it from the address so a refresh or Back doesn't repeat it.
+        var payment = Payment;
+        var stallionId = Stallion;
+        if (payment is not null) Nav.NavigateTo("/admin/stallions", replace: true);
+
         await UserState.LoadAsync();
         if (!UserState.IsStudFarmAdmin) { Nav.NavigateTo("/", replace: true); return; }
+        if (token.IsCancellationRequested) return;
         await Load();
+        if (token.IsCancellationRequested) return;
+
+        if (payment == "cancelled")
+            _paymentNotice = "Payment not completed — the listing fee is still due.";
+        else if (payment == "success" && stallionId is Guid id && _error is null && _openSeason is not null)
+            await WaitForPaymentAsync(id, token);
+    }
+
+    // The provider's webhook marks the fee Paid; re-check for up to ~60 s until the stallion
+    // that was just paid for is active for the open season.
+    private async Task WaitForPaymentAsync(Guid stallionId, CancellationToken token)
+    {
+        bool Active() => SubscriptionStatusFor(stallionId) is "Paid" or "Waived";
+        if (Active()) return;
+
+        _confirmingPayment = true;
+        StateHasChanged();
+        try
+        {
+            for (var i = 0; i < 30 && !Active(); i++)
+            {
+                await Task.Delay(PollInterval, token);
+                List<SubscriptionDto>? latest = null;
+                try { latest = await SubscriptionApi.GetMineAsync(); }
+                catch (ApiException) { /* keep the last known list and try again */ }
+                if (token.IsCancellationRequested) return;
+                if (latest is not null) _subscriptions = latest;
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException) { return; } // left the page
+        _confirmingPayment = false;
+        if (!Active())
+            _paymentNotice = "Your payment is still being confirmed — refresh this page shortly.";
     }
 
     private async Task Load()
@@ -189,6 +277,9 @@ else if (_authorized != null)
             _authorized = await AdminApi.GetAuthorizedStallionsAsync();
             _openSeason = (await AdminApi.GetSeasonsAsync() ?? []).FirstOrDefault(s => s.IsOpen);
             _subscriptions = await SubscriptionApi.GetMineAsync() ?? [];
+            // Shown on the Activate button; without it the stud is asked to contact Stallions Australia.
+            try { _standardFee = (await SettingsApi.GetAsync()).StandardListingFeeIncGst; }
+            catch (ApiException) { _standardFee = null; }
 
             if (_authorized != null)
             {
@@ -213,6 +304,23 @@ else if (_authorized != null)
     private string SubscriptionStatusFor(Guid stallionId) =>
         _subscriptions.FirstOrDefault(x => x.StallionId == stallionId && x.SeasonId == _openSeason?.Id)?.Status
         ?? "None";
+
+    // A Pending subscription keeps its own amount (e.g. a Staff discount); otherwise the standard fee.
+    private decimal? FeeFor(Guid stallionId) =>
+        _subscriptions.FirstOrDefault(x => x.StallionId == stallionId && x.SeasonId == _openSeason?.Id)?.FeeIncGst
+        ?? _standardFee;
+
+    private async Task ActivateAsync(Guid stallionId)
+    {
+        _activating = stallionId; _activateError = null;
+        // Stripe returns an absolute URL, the dev fake a relative one — both need a full page load.
+        // The buttons stay disabled on success: the browser is leaving the page.
+        try { Nav.NavigateTo(await SubscriptionApi.ActivateAsync(stallionId), forceLoad: true); }
+        catch (ApiException ex) { _activateError = ex.Message; _activating = null; }
+    }
+
+    // Only cancel: an in-flight poll may still read the token, so the source isn't disposed.
+    public void Dispose() => _cts.Cancel();
 
     private async Task AddAsync(Guid directoryId)
     {
