@@ -8,6 +8,7 @@ using Stallions.Server.Auth;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
+using Stallions.Server.Payments;
 using Stallions.Server.Services;
 using Stallions.Shared.Enums;
 
@@ -74,6 +75,9 @@ builder.Services.AddScoped<IAuthorizationHandler, DbRoleHandler>();
 
 // Config options
 builder.Services.Configure<CheckoutOptions>(builder.Configuration.GetSection("Checkout"));
+
+// Payments — Stripe or the dev-only fake (refused in Production)
+builder.Services.AddPayments(builder.Configuration, builder.Environment);
 
 // Infrastructure
 builder.Services.AddHttpContextAccessor();
