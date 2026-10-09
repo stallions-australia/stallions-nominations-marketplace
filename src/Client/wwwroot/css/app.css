@@ -264,7 +264,6 @@ h1:focus { outline: none; }
   letter-spacing: .04em;
 }
 .badge-auction  { background: var(--gold);    color: var(--white); }
-.badge-buynow   { background: var(--navy);    color: var(--white); }
 .badge-ending   { background: var(--danger);  color: var(--white); }
 .badge-leading  { background: var(--success); color: var(--white); }
 .badge-outbid   { background: #d4821a;        color: var(--white); }

@@ -29,7 +29,6 @@ public class ListingDtoSerializationTests
             ListingType = "Auction",   // matches the JsonDerivedType discriminator value
             Status = "Active",
             CreatedAt = DateTime.UtcNow,
-            StartingPrice = 5000m,
             IsNoReserve = false,
             MinimumBidIncrement = 25m,
             EndDateTime = DateTime.UtcNow.AddDays(3)
@@ -45,59 +44,24 @@ public class ListingDtoSerializationTests
         deserialized.Should().BeOfType<AuctionListingDto>();
         var result = (AuctionListingDto)deserialized!;
         result.StallionName.Should().Be("Snitzel");
-        result.StartingPrice.Should().Be(5000m);
         result.ListingType.Should().Be("Auction");
     }
 
     [Fact]
-    public void ListingDto_FixedPriceListingDto_RoundTripsWithoutException()
+    public void AuctionListingDto_RoundTrips_DescriptionAndTerms()
     {
-        var dto = new FixedPriceListingDto
+        var dto = new AuctionListingDto
         {
             Id = Guid.NewGuid(),
-            StallionId = Guid.NewGuid(),
-            StallionName = "Fastnet Rock",
-            SeasonId = Guid.NewGuid(),
-            SeasonName = "2025 Season",
-            StudFarmId = Guid.NewGuid(),
-            StudFarmName = "Coolmore Australia",
-            ListingType = "FixedPrice",   // matches the JsonDerivedType discriminator value
-            Status = "Active",
-            CreatedAt = DateTime.UtcNow,
-            PriceIncGst = 8000m,
-            Quantity = 5,
-            QuantityRemaining = 4
-        };
-
-        string json = JsonSerializer.Serialize<ListingDto>(dto);
-        json.Should().Contain("\"listingType\"");
-        json.Should().Contain("\"FixedPrice\"");
-
-        var deserialized = JsonSerializer.Deserialize<ListingDto>(json);
-        deserialized.Should().BeOfType<FixedPriceListingDto>();
-        var result = (FixedPriceListingDto)deserialized!;
-        result.StallionName.Should().Be("Fastnet Rock");
-        result.PriceIncGst.Should().Be(8000m);
-        result.ListingType.Should().Be("FixedPrice");
-    }
-
-    [Fact]
-    public void FixedPriceListingDto_RoundTrips_DescriptionAndTerms()
-    {
-        var dto = new FixedPriceListingDto
-        {
-            Id = Guid.NewGuid(),
-            ListingType = "FixedPrice",
+            ListingType = "Auction",
             Description = "Premium service, live foal guarantee.",
             TermsAndConditions = "45-day payment required on live foal.",
-            PriceIncGst = 10000m,
-            Quantity = 20,
-            QuantityRemaining = 20
+            EndDateTime = DateTime.UtcNow.AddDays(3)
         };
         // Serialize via the base type so the polymorphic discriminator is written (same pattern as existing tests)
         var json = JsonSerializer.Serialize<ListingDto>(dto, new JsonSerializerOptions { WriteIndented = false });
         var back = JsonSerializer.Deserialize<ListingDto>(json);
-        var fp = back.Should().BeOfType<FixedPriceListingDto>().Subject;
+        var fp = back.Should().BeOfType<AuctionListingDto>().Subject;
         fp.Description.Should().Be("Premium service, live foal guarantee.");
         fp.TermsAndConditions.Should().Be("45-day payment required on live foal.");
     }

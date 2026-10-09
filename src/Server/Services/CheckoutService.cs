@@ -6,6 +6,7 @@ using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
+using Stallions.Shared;
 using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.Enums;
 
@@ -51,8 +52,6 @@ public class CheckoutService : ICheckoutService
         if (caller.Status != UserStatus.Active)
             return ServiceResult<CheckoutResponse>.Forbidden("Your account must be verified before you can purchase.");
 
-        if (string.IsNullOrWhiteSpace(request.MareName))
-            return ServiceResult<CheckoutResponse>.BadRequest("Mare name is required to complete a purchase.");
 
         var listing = await _listingRepo.GetByIdAsync(listingId);
         if (listing == null)
@@ -61,20 +60,13 @@ public class CheckoutService : ICheckoutService
         if (listing.Status != ListingStatus.Active)
             return ServiceResult<CheckoutResponse>.BadRequest("This listing is no longer available.");
 
-        if (listing.PlatformFeePercent == null)
+        if (listing.BuyerFeeIncGst == null)
             return ServiceResult<CheckoutResponse>.BadRequest("This listing is not ready for purchase. Please contact Stallions Australia.");
 
         decimal totalPrice;
         Guid? bidId = null;
 
-        if (listing is FixedPriceListing fpl)
-        {
-            if (fpl.QuantityRemaining <= 0)
-                return ServiceResult<CheckoutResponse>.BadRequest("This listing is sold out.");
-
-            totalPrice = fpl.PriceIncGst;
-        }
-        else if (listing is AuctionListing auction)
+        if (listing is AuctionListing auction)
         {
             var winningBid = await _bidRepo.GetHighestBidAsync(auction.Id);
             if (listing is AuctionListing auctionListing && auctionListing.EndDateTime > DateTime.UtcNow)
@@ -91,11 +83,10 @@ public class CheckoutService : ICheckoutService
             return ServiceResult<CheckoutResponse>.BadRequest("Unknown listing type.");
         }
 
-        // Calculate GST breakdown
-        var feePercent = listing.PlatformFeePercent!.Value;
-        var feeIncGst = Math.Round(totalPrice * (feePercent / 100m), 2);
-        var feeGst = Math.Round(feeIncGst / 11m, 2);
-        var feeExGst = feeIncGst - feeGst;
+        // Flat buyer fee snapshotted on the listing at publish. It is part of the price, not on
+        // top of it: the buyer pays the stud the balance directly.
+        var (feeIncGst, feeExGst, feeGst) = GstBreakdown.FromIncGst(listing.BuyerFeeIncGst!.Value);
+        var balancePayableToStud = totalPrice - feeIncGst;
 
         var purchase = new Purchase
         {
@@ -103,12 +94,10 @@ public class CheckoutService : ICheckoutService
             BuyerUserId = caller.Id,
             BidId = bidId,
             TotalPriceIncGst = totalPrice,
-            PlatformFeeIncGst = feeIncGst,
-            PlatformFeeExGst = feeExGst,
-            PlatformFeeGst = feeGst,
-            MareName = request.MareName,
-            MareRegistration = request.MareRegistration,
-            MareBreed = request.MareBreed,
+            BuyerFeeIncGst = feeIncGst,
+            BuyerFeeExGst = feeExGst,
+            BuyerFeeGst = feeGst,
+            BalancePayableToStudIncGst = balancePayableToStud,
             Status = PurchaseStatus.Pending
         };
 
@@ -120,9 +109,11 @@ public class CheckoutService : ICheckoutService
             Disclosure = new CheckoutDisclosureDto
             {
                 TotalPriceIncGst = totalPrice,
-                PlatformFeeIncGst = feeIncGst,
+                BuyerFeeIncGst = feeIncGst,
+                BalancePayableToStudIncGst = balancePayableToStud,
                 StudFarmBalanceArrangement = _options.Value.StudFarmBalanceArrangement,
-                RefundPolicy = _options.Value.RefundPolicy
+                BuyerFeeExplanation = _options.Value.BuyerFeeExplanation,
+                StudTermsAndConditions = listing.TermsAndConditions
             }
         };
 
@@ -165,13 +156,7 @@ public class CheckoutService : ICheckoutService
                 await _bindingRepo.AddAsync(binding);
 
                 var listing = await _listingRepo.GetByIdAsync(purchase.ListingId);
-                if (listing is FixedPriceListing fpl)
-                {
-                    fpl.QuantityRemaining--;
-                    if (fpl.QuantityRemaining <= 0) { fpl.Status = ListingStatus.Sold; fpl.ClosedAt = DateTime.UtcNow; }
-                    await _listingRepo.UpdateAsync(fpl);
-                }
-                else if (listing is AuctionListing al)
+                if (listing is AuctionListing al)
                 {
                     al.WinningBidId = purchase.BidId;
                     al.Status = ListingStatus.Sold;
@@ -180,7 +165,7 @@ public class CheckoutService : ICheckoutService
                 }
 
                 await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseCompleted", null,
-                    $"{{\"PlatformFeeIncGst\":{purchase.PlatformFeeIncGst}}}");
+                    $"{{\"BuyerFeeIncGst\":{purchase.BuyerFeeIncGst}}}");
 
                 await tx.CommitAsync();
                 return ServiceResult.Ok();
@@ -235,8 +220,8 @@ public class CheckoutService : ICheckoutService
         if (purchase.Status != PurchaseStatus.Completed)
             return ServiceResult.BadRequest("Only completed purchases can be refunded.");
 
-        // 90% refund — platform retains 10%
-        purchase.RefundAmount = Math.Round(purchase.PlatformFeeIncGst * 0.9m, 2);
+        // Manual Staff action for genuine errors: the full buyer fee is refunded.
+        purchase.RefundAmount = purchase.BuyerFeeIncGst;
         purchase.RefundedAt = DateTime.UtcNow;
         purchase.Status = PurchaseStatus.Refunded;
         await _purchaseRepo.UpdateAsync(purchase);
@@ -254,12 +239,10 @@ public class CheckoutService : ICheckoutService
         StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
         BuyerUserId = p.BuyerUserId,
         TotalPriceIncGst = p.TotalPriceIncGst,
-        PlatformFeeIncGst = p.PlatformFeeIncGst,
-        PlatformFeeExGst = p.PlatformFeeExGst,
-        PlatformFeeGst = p.PlatformFeeGst,
-        MareName = p.MareName,
-        MareRegistration = p.MareRegistration,
-        MareBreed = p.MareBreed,
+        BuyerFeeIncGst = p.BuyerFeeIncGst,
+        BuyerFeeExGst = p.BuyerFeeExGst,
+        BuyerFeeGst = p.BuyerFeeGst,
+        BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
         PaymentProvider = p.PaymentProvider,
         PaymentReference = p.PaymentReference,
         PaidAt = p.PaidAt,

@@ -13,7 +13,6 @@ public class ListingsController : ControllerBase
     private readonly IListingService _listings;
     public ListingsController(IListingService listings) => _listings = listings;
 
-    private bool IsStaff => User.IsInRole("Staff");
 
     [HttpGet]
     [AllowAnonymous]
@@ -30,7 +29,8 @@ public class ListingsController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var r = await _listings.GetByIdAsync(id, IsStaff);
+        // Reserve visibility (Staff / owning stud only) is decided in the service from the DB role.
+        var r = await _listings.GetByIdAsync(id);
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
@@ -47,7 +47,13 @@ public class ListingsController : ControllerBase
     public async Task<IActionResult> GetMine()
     {
         var r = await _listings.GetMineAsync();
-        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+        // Serialize each listing as its concrete type (as the single-listing endpoints do). A list
+        // declared as ListingDto makes System.Text.Json 10 throw: the ListingType property clashes
+        // with the "listingType" discriminator under camelCase. The concrete type still writes
+        // "listingType" first, which the client reads as the discriminator.
+        return r.Succeeded
+            ? Ok(r.Value!.Cast<object>().ToList())
+            : StatusCode(r.HttpStatusCode, r.Error);
     }
 
     [HttpPost("auction")]
@@ -55,14 +61,6 @@ public class ListingsController : ControllerBase
     public async Task<IActionResult> CreateAuction([FromBody] CreateAuctionListingRequest request)
     {
         var r = await _listings.CreateAuctionListingAsync(request);
-        return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
-    }
-
-    [HttpPost("fixed-price")]
-    [Authorize(Policy = "StudFarmAdminOnly")]
-    public async Task<IActionResult> CreateFixedPrice([FromBody] CreateFixedPriceListingRequest request)
-    {
-        var r = await _listings.CreateFixedPriceListingAsync(request);
         return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 

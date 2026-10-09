@@ -25,19 +25,21 @@
     <div class="card-body">
         <div class="card-price-row">
             <div>
-                <PriceDisplay Amount="@GetDisplayPrice()" />
-                <span class="card-gst-label">inc. GST</span>
+                @if (Listing.CurrentHighestBidIncGst is decimal highBid)
+                {
+                    <PriceDisplay Amount="@highBid" />
+                    <span class="card-gst-label">inc. GST</span>
+                }
+                else
+                {
+                    <span class="card-gst-label">No bids yet</span>
+                }
             </div>
             @if (Listing.ListingType == "Auction" && Listing.BidCount.HasValue)
             {
                 <span class="card-meta">@Listing.BidCount bid@(Listing.BidCount != 1 ? "s" : "")</span>
             }
-            @if (Listing.ListingType == "FixedPrice" && Listing.QuantityRemaining.HasValue)
-            {
-                <span class="card-meta @(Listing.QuantityRemaining <= 3 ? "card-meta--urgent" : "")">
-                    @Listing.QuantityRemaining remaining
-                </span>
-            }
+
         </div>
 
         <div class="progress-bar-track">
@@ -53,7 +55,7 @@
             <button class="btn btn-primary btn-sm"
                     @onclick:stopPropagation="true"
                     @onclick="NavigateToListing">
-                @(Listing.ListingType == "Auction" ? "Place a bid" : "Purchase nomination")
+                @(Listing.ListingType == "Auction" ? "Place a bid" : "View listing")
             </button>
             <button class="btn btn-outline btn-sm"
                     @onclick:stopPropagation="true"
@@ -81,23 +83,15 @@
 
     private string GetBadgeClass() => Listing.ListingType == "Auction"
         ? (IsEndingSoon() ? "badge-ending" : "badge-auction")
-        : "badge-buynow";
+        : "badge-auction";
 
     private string GetBadgeText() => Listing.ListingType == "Auction"
         ? (IsEndingSoon() ? "Ending soon" : "Auction")
-        : "Buy Now";
+        : "Listing";
 
-    private decimal GetDisplayPrice() =>
-        Listing.ListingType == "Auction" && Listing.CurrentHighestBidIncGst.HasValue
-            ? Listing.CurrentHighestBidIncGst.Value
-            : Listing.PriceIncGst;
 
-    private string GetProgressClass()
-    {
-        if (Listing.ListingType == "Auction")
-            return IsEndingSoon() ? "progress-bar-fill--urgent" : "progress-bar-fill--gold";
-        return Listing.QuantityRemaining is <= 3 ? "progress-bar-fill--urgent" : "progress-bar-fill--navy";
-    }
+    private string GetProgressClass() =>
+        IsEndingSoon() ? "progress-bar-fill--urgent" : "progress-bar-fill--gold";
 
     private double GetProgressWidthPct()
     {
@@ -108,11 +102,6 @@
             var window = TimeSpan.FromDays(AuctionProgressWindowDays);
             var elapsed = window - remaining;
             return Math.Clamp(elapsed.TotalSeconds / window.TotalSeconds * 100, 5, 99);
-        }
-        if (Listing.TotalQuantity is > 0 && Listing.QuantityRemaining.HasValue)
-        {
-            var sold = Listing.TotalQuantity.Value - Listing.QuantityRemaining.Value;
-            return Math.Clamp((double)sold / Listing.TotalQuantity.Value * 100, 0, 100);
         }
         return 50;
     }

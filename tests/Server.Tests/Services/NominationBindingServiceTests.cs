@@ -23,7 +23,7 @@ public class NominationBindingServiceTests
     public async Task Sign_WhenBuyerSigns_SetsBuyerSignedAtAndStatusBuyerSigned()
     {
         var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
         var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = buyer.Id, ListingId = listing.Id };
         var binding = new NominationBinding { Id = Guid.NewGuid(), PurchaseId = purchase.Id,
             Status = BindingStatus.AwaitingSignatures };
@@ -46,7 +46,7 @@ public class NominationBindingServiceTests
     {
         var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
         var farmId = Guid.NewGuid();
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = farmId };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = farmId };
         var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = buyer.Id, ListingId = listing.Id };
         var binding = new NominationBinding
         {
@@ -72,7 +72,7 @@ public class NominationBindingServiceTests
     public async Task Sign_WhenBuyerAlreadySigned_ReturnsBadRequest()
     {
         var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
         var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = buyer.Id, ListingId = listing.Id };
         var binding = new NominationBinding
         {
@@ -96,7 +96,7 @@ public class NominationBindingServiceTests
     public async Task Sign_WhenCallerIsNeitherPartyNorStaff_ReturnsForbidden()
     {
         var stranger = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
         var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = Guid.NewGuid(), ListingId = listing.Id };
         var binding = new NominationBinding { Id = Guid.NewGuid(), PurchaseId = purchase.Id,
             Status = BindingStatus.AwaitingSignatures };
@@ -118,7 +118,7 @@ public class NominationBindingServiceTests
         var farmId = Guid.NewGuid();
         var farm = new StudFarm { Id = farmId };
         var admin = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = farmId };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = farmId };
         var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = Guid.NewGuid(), ListingId = listing.Id };
         var binding = new NominationBinding
         {
@@ -143,7 +143,7 @@ public class NominationBindingServiceTests
     public async Task Acknowledge_WhenBuyerTries_ReturnsForbidden()
     {
         var buyer = new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
-        var listing = new FixedPriceListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = Guid.NewGuid() };
         var purchase = new Purchase { Id = Guid.NewGuid(), BuyerUserId = buyer.Id, ListingId = listing.Id };
         var binding = new NominationBinding
         {

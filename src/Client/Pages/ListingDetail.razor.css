@@ -60,8 +60,7 @@
     color: var(--text-muted);
 }
 
-.listing-auction-block,
-.listing-fp-block {
+.listing-auction-block {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -74,6 +73,49 @@
     align-items: center;
     flex-wrap: wrap;
 }
+
+.buyer-fee-notice {
+    border-left: 3px solid var(--gold);
+    background: var(--cream);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.buyer-fee-amount {
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+}
+
+.bid-history-title {
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--space-2);
+}
+
+.bid-history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-top: 1px solid var(--border);
+}
+
+.bid-history-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+        "bidder amount"
+        "time   amount";
+    column-gap: var(--space-4);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.bid-history-bidder { grid-area: bidder; font-size: var(--font-size-sm); }
+.bid-history-amount { grid-area: amount; align-self: center; font-weight: var(--font-weight-semibold); }
+.bid-history-time   { grid-area: time; }
 
 .bid-form {
     background: var(--warm-grey);
@@ -115,9 +157,6 @@
     margin-bottom: 0;
 }
 
-.listing-qty-label {
-    margin-bottom: var(--space-2);
-}
 
 .listing-enquire {
     margin-top: var(--space-4);

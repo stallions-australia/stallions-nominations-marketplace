@@ -24,7 +24,7 @@ public class CheckoutTests : TestContext
     }
 
     [Fact]
-    public void Checkout_Step1_ShowsMareNameInput()
+    public void Checkout_Start_ShowsReviewButton_AndNoMareInput()
     {
         var auth = this.AddTestAuthorization();
         auth.SetAuthorized("buyer@example.com");
@@ -35,11 +35,11 @@ public class CheckoutTests : TestContext
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         listingMock.Setup(s => s.GetByIdAsync(It.IsAny<Guid>()))
-            .ReturnsAsync(new FixedPriceListingDto
+            .ReturnsAsync(new AuctionListingDto
             {
                 Id = Guid.NewGuid(), StallionName = "Fastnet Rock", StudFarmName = "Coolmore",
-                ListingType = "FixedPrice", Status = "Active",
-                PriceIncGst = 10000m, QuantityRemaining = 3, Quantity = 10
+                ListingType = "Auction", Status = "Active",
+                EndDateTime = DateTime.UtcNow.AddHours(-1)
             });
         Services.AddSingleton(listingMock.Object);
         Services.AddSingleton(new Mock<CheckoutApiService>(MockBehavior.Loose,
@@ -48,11 +48,13 @@ public class CheckoutTests : TestContext
         var cut = RenderComponent<Checkout>(p =>
             p.Add(c => c.ListingId, Guid.NewGuid()));
 
-        cut.WaitForAssertion(() => cut.Find("input[id='mare-name']").Should().NotBeNull());
+        cut.WaitForAssertion(() => cut.Find("button.btn-gold").TextContent.Should().Contain("Review purchase"));
+        cut.FindAll("input[id='mare-name']").Should().BeEmpty();
+        cut.Markup.Should().NotContain("Mare");
     }
 
     [Fact]
-    public void Checkout_AfterMareSubmit_ShowsDisclosurePanel()
+    public void Checkout_AfterReviewClicked_ShowsDisclosurePanel()
     {
         var auth = this.AddTestAuthorization();
         auth.SetAuthorized("buyer@example.com");
@@ -65,11 +67,11 @@ public class CheckoutTests : TestContext
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         listingMock.Setup(s => s.GetByIdAsync(listingId))
-            .ReturnsAsync(new FixedPriceListingDto
+            .ReturnsAsync(new AuctionListingDto
             {
                 Id = listingId, StallionName = "Fastnet Rock",
-                ListingType = "FixedPrice", Status = "Active",
-                PriceIncGst = 10000m, QuantityRemaining = 3, Quantity = 10
+                ListingType = "Auction", Status = "Active",
+                EndDateTime = DateTime.UtcNow.AddHours(-1)
             });
         Services.AddSingleton(listingMock.Object);
 
@@ -82,9 +84,9 @@ public class CheckoutTests : TestContext
                 Disclosure = new CheckoutDisclosureDto
                 {
                     TotalPriceIncGst = 10000m,
-                    PlatformFeeIncGst = 250m,
-                    StudFarmBalanceArrangement = "Stud farm will contact you.",
-                    RefundPolicy = "90% refund if arrangement falls through."
+                    BuyerFeeIncGst = 150m,
+                    BalancePayableToStudIncGst = 9850m,
+                    StudFarmBalanceArrangement = "Stud farm will contact you."
                 }
             });
         Services.AddSingleton(checkoutMock.Object);
@@ -92,14 +94,13 @@ public class CheckoutTests : TestContext
         var cut = RenderComponent<Checkout>(p =>
             p.Add(c => c.ListingId, listingId));
 
-        // Step 1: mare name form visible
-        cut.WaitForAssertion(() => cut.Find("input[id='mare-name']").Should().NotBeNull());
+        // Start: review button visible
+        cut.WaitForAssertion(() => cut.Find("button.btn-gold").Should().NotBeNull());
 
-        // Fill mare name and submit
-        cut.Find("input[id='mare-name']").Change("Brilliant Star");
-        cut.Find("form").Submit();
+        cut.Find("button.btn-gold").Click();
 
-        // Step 2: disclosure panel should appear
+        // Disclosure panel should appear with the balance payable to the stud
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("disclosure-panel"));
+        cut.Markup.Should().Contain("9,850");
     }
 }

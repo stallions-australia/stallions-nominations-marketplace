@@ -135,14 +135,6 @@ public class AdminApiService
                ?? throw new ApiException(500, "Empty response.");
     }
 
-    public virtual async Task<ListingDto> CreateFixedPriceListingAsync(CreateFixedPriceListingRequest request)
-    {
-        var r = await _http.PostAsJsonAsync("api/listings/fixed-price", request);
-        if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, await ReadError(r, "Failed to create listing."));
-        return await r.Content.ReadFromJsonAsync<ListingDto>()
-               ?? throw new ApiException(500, "Empty response.");
-    }
 
     public virtual async Task<ListingDto> CreateAuctionListingAsync(CreateAuctionListingRequest request)
     {

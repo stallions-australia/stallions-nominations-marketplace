@@ -15,7 +15,6 @@ public class AppDbContext : DbContext
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Listing> Listings => Set<Listing>();
     public DbSet<AuctionListing> AuctionListings => Set<AuctionListing>();
-    public DbSet<FixedPriceListing> FixedPriceListings => Set<FixedPriceListing>();
     public DbSet<Bid> Bids => Set<Bid>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
     public DbSet<NominationBinding> NominationBindings => Set<NominationBinding>();
@@ -25,6 +24,8 @@ public class AppDbContext : DbContext
     public DbSet<StudDirectory> StudDirectories => Set<StudDirectory>();
     public DbSet<StallionDirectory> StallionDirectories => Set<StallionDirectory>();
     public DbSet<TermsDocument> TermsDocuments => Set<TermsDocument>();
+    public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
+    public DbSet<StallionSeasonSubscription> StallionSeasonSubscriptions => Set<StallionSeasonSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -124,7 +125,7 @@ public class AppDbContext : DbContext
             e.HasKey(l => l.Id);
             e.Property(l => l.ListingType).HasConversion<string>().HasMaxLength(20);
             e.Property(l => l.Status).HasConversion<string>().HasMaxLength(20);
-            e.Property(l => l.PlatformFeePercent).HasPrecision(5, 2);
+            e.Property(l => l.BuyerFeeIncGst).HasPrecision(12, 2);
 
             e.HasIndex(l => new { l.Status, l.SeasonId });
             e.HasIndex(l => new { l.StudFarmId, l.Status });
@@ -149,7 +150,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AuctionListing>(e =>
         {
             e.ToTable("AuctionListings");
-            e.Property(a => a.StartingPrice).HasPrecision(12, 2);
             e.Property(a => a.ReservePrice).HasPrecision(12, 2);
             e.Property(a => a.MinimumBidIncrement).HasPrecision(12, 2);
 
@@ -157,13 +157,6 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(a => a.WinningBidId)
                 .OnDelete(DeleteBehavior.NoAction);
-        });
-
-        // ── FixedPriceListings (TPT child) ───────────────────────────────────
-        modelBuilder.Entity<FixedPriceListing>(e =>
-        {
-            e.ToTable("FixedPriceListings");
-            e.Property(f => f.PriceIncGst).HasPrecision(12, 2);
         });
 
         // ── Bids ─────────────────────────────────────────────────────────────
@@ -191,14 +184,12 @@ public class AppDbContext : DbContext
         {
             e.HasKey(p => p.Id);
             e.Property(p => p.TotalPriceIncGst).HasPrecision(12, 2);
-            e.Property(p => p.PlatformFeeIncGst).HasPrecision(12, 2);
-            e.Property(p => p.PlatformFeeExGst).HasPrecision(12, 2);
-            e.Property(p => p.PlatformFeeGst).HasPrecision(12, 2);
+            e.Property(p => p.BuyerFeeIncGst).HasPrecision(12, 2);
+            e.Property(p => p.BuyerFeeExGst).HasPrecision(12, 2);
+            e.Property(p => p.BuyerFeeGst).HasPrecision(12, 2);
+            e.Property(p => p.BalancePayableToStudIncGst).HasPrecision(12, 2);
             e.Property(p => p.RefundAmount).HasPrecision(12, 2);
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
-            e.Property(p => p.MareName).HasMaxLength(200).IsRequired();
-            e.Property(p => p.MareRegistration).HasMaxLength(100);
-            e.Property(p => p.MareBreed).HasMaxLength(100);
             e.Property(p => p.PaymentProvider).HasMaxLength(50);
             e.Property(p => p.PaymentReference).HasMaxLength(200);
 
@@ -336,6 +327,68 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(t => t.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── PlatformSettings (single row) ──────────────────────────────────────
+        modelBuilder.Entity<PlatformSettings>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.BuyerFeeIncGst).HasPrecision(12, 2);
+            e.Property(s => s.StandardListingFeeIncGst).HasPrecision(12, 2);
+            e.Property(s => s.MinimumBidIncrement).HasPrecision(12, 2);
+
+            e.HasOne(s => s.UpdatedBy)
+                .WithMany()
+                .HasForeignKey(s => s.UpdatedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // The only place default fee amounts appear in code. Staff change them via api/settings.
+            e.HasData(new PlatformSettings
+            {
+                Id = Entities.PlatformSettings.SingletonId,
+                BuyerFeeIncGst = 150m,
+                StandardListingFeeIncGst = 990m,
+                MinimumBidIncrement = 25m,
+                ChargeGracePeriodHours = 2,
+                OfferExpiryDays = 7,
+                UpdatedAt = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc)
+            });
+        });
+
+        // ── StallionSeasonSubscriptions ───────────────────────────────────────
+        modelBuilder.Entity<StallionSeasonSubscription>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.HasIndex(s => new { s.StallionId, s.SeasonId }).IsUnique();
+            e.HasIndex(s => new { s.StudFarmId, s.SeasonId });
+            e.Property(s => s.FeeIncGst).HasPrecision(12, 2);
+            e.Property(s => s.FeeExGst).HasPrecision(12, 2);
+            e.Property(s => s.GstAmount).HasPrecision(12, 2);
+            e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(s => s.PaymentMethod).HasConversion<string>().HasMaxLength(20);
+            e.Property(s => s.PaymentReference).HasMaxLength(200);
+            e.Property(s => s.WaiverReason).HasMaxLength(500);
+            e.Property(s => s.Notes).HasMaxLength(1000);
+
+            e.HasOne(s => s.Stallion)
+                .WithMany()
+                .HasForeignKey(s => s.StallionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(s => s.Season)
+                .WithMany()
+                .HasForeignKey(s => s.SeasonId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(s => s.StudFarm)
+                .WithMany()
+                .HasForeignKey(s => s.StudFarmId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasOne(s => s.CreatedBy)
+                .WithMany()
+                .HasForeignKey(s => s.CreatedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

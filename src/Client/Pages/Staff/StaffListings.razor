@@ -34,8 +34,9 @@ else
                 <th>Farm</th>
                 <th>Type</th>
                 <th>Status</th>
-                <th>Price (inc. GST)</th>
-                <th>Fee %</th>
+                <th>High bid (inc. GST)</th>
+                <th>Reserve</th>
+                <th>Buyer fee</th>
                 <th>Published</th>
                 <th>Actions</th>
             </tr>
@@ -49,36 +50,11 @@ else
                     <td><span class="badge badge-type-@l.ListingType.ToLowerInvariant()">@l.ListingType</span></td>
                     <td>
                         <span class="badge badge-status-@l.Status.ToLowerInvariant()">@l.Status</span>
-                        @if (l.Status == "Draft" && !l.PlatformFeePercent.HasValue)
-                        {
-                            <span class="badge badge-fee-required" title="Platform fee must be set before this listing can be published">Fee required</span>
-                        }
                     </td>
-                    <td>@(l.PriceIncGst.HasValue ? l.PriceIncGst.Value.ToString("C") : "—")</td>
-                    <td>
-                        @if (_editingFeeId == l.Id)
-                        {
-                            <div style="display:flex;gap:var(--space-2);align-items:center">
-                                <input type="number" class="form-control" style="width:80px"
-                                       @bind="_editingFeeValue" min="0" max="100" step="0.1" />
-                                <button class="btn btn-sm btn-gold" @onclick="() => SaveFeeAsync(l.Id)"
-                                        disabled="@_busy">Save</button>
-                                <button class="btn btn-sm btn-outline" @onclick="CancelFeeEdit">Cancel</button>
-                            </div>
-                        }
-                        else if (!l.PlatformFeePercent.HasValue)
-                        {
-                            <button class="btn btn-sm btn-fee-required" @onclick="() => StartFeeEdit(l)">
-                                Set fee
-                            </button>
-                        }
-                        else
-                        {
-                            <span class="fee-set" @onclick="() => StartFeeEdit(l)"
-                                  title="Click to edit">
-                                @($"{l.PlatformFeePercent:0.##}%") ✎
-                            </span>
-                        }
+                    <td>@(l.HighestBidIncGst.HasValue ? l.HighestBidIncGst.Value.ToString("C") : "—")</td>
+                    <td>@(l.ReservePrice.HasValue ? l.ReservePrice.Value.ToString("C") : "No reserve")</td>
+                    <td title="Locked in when the listing is first published">
+                        @(l.BuyerFeeIncGst.HasValue ? l.BuyerFeeIncGst.Value.ToString("C") : "—")
                     </td>
                     <td>@(l.PublishedAt.HasValue ? l.PublishedAt.Value.ToString("d MMM yyyy") : "—")</td>
                     <td>
@@ -92,10 +68,6 @@ else
     </table>
 }
 
-@if (_actionError != null)
-{
-    <div class="alert alert-danger" style="margin-top:var(--space-4)">@_actionError</div>
-}
 
 @if (_modalListing != null)
 {
@@ -136,11 +108,9 @@ else
     private List<ListingStaffSummaryDto> _listings = [];
     private bool _loading = true;
     private string? _error;
-    private string? _actionError;
+
     private bool _busy;
 
-    private Guid? _editingFeeId;
-    private decimal _editingFeeValue;
 
     private ListingStaffSummaryDto? _modalListing;
     private string _modalStatus = "Draft";
@@ -162,22 +132,6 @@ else
         finally { _loading = false; }
     }
 
-    private void StartFeeEdit(ListingStaffSummaryDto listing)
-    {
-        _editingFeeId = listing.Id;
-        _editingFeeValue = listing.PlatformFeePercent ?? 0;
-        _actionError = null;
-    }
-
-    private void CancelFeeEdit() => _editingFeeId = null;
-
-    private async Task SaveFeeAsync(Guid id)
-    {
-        _busy = true; _actionError = null;
-        try { await StaffApi.SetListingFeeAsync(id, _editingFeeValue); _editingFeeId = null; await Load(); }
-        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to save fee."; }
-        finally { _busy = false; }
-    }
 
     private void OpenForceStatusModal(ListingStaffSummaryDto listing)
     {

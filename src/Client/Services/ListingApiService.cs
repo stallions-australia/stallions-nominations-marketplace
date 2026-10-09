@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using Stallions.Shared;
+using Stallions.Shared.DTOs.Bids;
+using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.DTOs.Listings;
 
 namespace Stallions.Client.Services;
@@ -42,8 +44,8 @@ public class ListingApiService
             // Use source-generated context options so the [JsonPolymorphic] /
             // [JsonDerivedType] discriminator is resolved at compile time, not via
             // reflection. Without this, IL trimming in a Release Blazor WASM build
-            // strips the reflection members needed to discover AuctionListingDto /
-            // FixedPriceListingDto at runtime.
+            // strips the reflection members needed to discover AuctionListingDto
+            // at runtime.
             return await response.Content.ReadFromJsonAsync<ListingDto>(
                        StallionsJsonContext.Default.Options)
                    ?? throw new ApiException(500, "Empty response from server.");
@@ -52,5 +54,23 @@ public class ListingApiService
         {
             throw new ApiException(500, $"Listing data could not be parsed: {ex.Message}");
         }
+    }
+
+    /// <summary>Public, anonymised bid history ("Bidder 1", "Bidder 2", …), highest first.</summary>
+    public virtual async Task<List<PublicBidDto>> GetBidHistoryAsync(Guid listingId)
+    {
+        var response = await _http.GetAsync($"api/listings/{listingId}/bids/history");
+        if (!response.IsSuccessStatusCode)
+            throw new ApiException((int)response.StatusCode, "Failed to load bid history.");
+        return await response.Content.ReadFromJsonAsync<List<PublicBidDto>>() ?? [];
+    }
+
+    /// <summary>Configured buyer-fee disclosure wording (public).</summary>
+    public virtual async Task<BuyerFeeDisclosureDto?> GetBuyerFeeDisclosureAsync()
+    {
+        var response = await _http.GetAsync("api/disclosures/buyer-fee");
+        if (!response.IsSuccessStatusCode)
+            throw new ApiException((int)response.StatusCode, "Failed to load buyer fee disclosure.");
+        return await response.Content.ReadFromJsonAsync<BuyerFeeDisclosureDto>();
     }
 }

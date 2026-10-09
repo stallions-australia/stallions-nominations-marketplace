@@ -1,5 +1,9 @@
 # Blazor WebAssembly Frontend Design — Plan 3 (Public + Buyer)
 
+> **Superseded transaction model (2026-10-09):** the fixed-price / Buy Now flow, starting prices,
+> percentage platform fee, 90% refund policy and mare-details checkout step described here were
+> replaced by `2026-10-09-business-model-v2-design.md`. Where the two conflict, the v2 spec wins.
+
 **Date:** 2026-05-21  
 **Status:** Approved  
 **Scope:** Public browsing and authenticated buyer flows. Stud Farm Admin and Staff admin panel are deferred to Plan 4.

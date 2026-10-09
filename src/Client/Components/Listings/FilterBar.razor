@@ -4,8 +4,6 @@
                 @onclick="() => SetFilter(null)">All</button>
         <button class="filter-pill @(ActiveFilter == "Auction" ? "active" : "")"
                 @onclick="@(() => SetFilter("Auction"))">Auctions</button>
-        <button class="filter-pill @(ActiveFilter == "FixedPrice" ? "active" : "")"
-                @onclick="@(() => SetFilter("FixedPrice"))">Buy Now</button>
     </div>
 </div>
 

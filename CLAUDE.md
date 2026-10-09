@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A web-based marketplace for the Australian thoroughbred horse racing industry, enabling stud farms to sell stallion nominations by auction, with unsold nominations able to stay listed as "Make an Offer". Registered buyers can browse, bid and make offers. Stallions Australia earns revenue from two flat fees: a **listing fee** paid by the stud (one per stallion per season) and a **buyer fee** charged to the buyer when a sale happens. The nomination price itself is paid by the buyer directly to the stud. Built and maintained by Stallions Australia.
+A web-based marketplace for the Australian thoroughbred horse racing industry, enabling stud farms to sell stallion nominations by auction, with unsold nominations able to stay listed as "Make an Offer". Registered buyers can browse, bid and make offers. Stallions Australia earns revenue from two flat fees: a **listing fee** paid by the stud (one per stallion per season) and a **buyer fee** charged to the buyer when a sale happens. The buyer fee forms part of the nomination price; the buyer pays the balance directly to the stud. Built and maintained by Stallions Australia.
 
 The business model was redesigned in October 2026 — see `docs/superpowers/specs/2026-10-09-business-model-v2-design.md`. Older specs and plans (May–June 2026) describe the previous percentage-fee / fixed-price model; where they conflict with this file, this file wins.
 
@@ -61,13 +61,14 @@ This is critical — get this right throughout the entire codebase.
 
 ### Buyer fee (flat, charged instantly)
 
-- The buyer pays a **flat buyer fee** (currently $250 inc. GST, Staff-configurable — never hardcoded) when:
+- The buyer pays a **flat buyer fee** (currently $150 inc. GST, Staff-configurable — never hardcoded) when:
   - they win an auction (reserve met), or
   - a stud accepts their Make an Offer offer
 - The fee is **charged automatically at that moment** to the buyer's saved card — there is no later payment window. This closes the "win then deal direct with the stud" leak
 - A buyer **must have a valid saved card** (via the payment provider) before they can bid or make an offer
 - The buyer fee amount is **snapshotted onto the listing at publish** — a settings change never alters a live listing
-- The nomination price is paid by the buyer **directly to the stud**, under the stud's own terms. The platform does not collect, hold or deduct from it
+- The buyer fee is **part of the nomination price, not on top of it**. The buyer pays the stud the **balance** (price − buyer fee) **directly**, under the stud's own terms; the stud carries the cost. The platform does not collect or hold the balance
+- Bids and offers below the buyer fee are rejected, so a sale is never worth less than the fee
 - There are **no percentage fees**, no deferred stud top-ups, and no 90% refund policy
 
 ### Auction rules
@@ -91,14 +92,14 @@ This is critical — get this right throughout the entire codebase.
 
 ### Sale record
 
-- Every completed sale (auction win or accepted offer) creates a sale record linking buyer, stud, stallion, season and price, and sends a confirmation to **both** buyer and stud
+- Every completed sale (auction win or accepted offer) creates a sale record linking buyer, stud, stallion, season and price — showing the price, the buyer fee paid to Stallions Australia and the balance payable to the stud — and sends a confirmation to **both** buyer and stud
 - Mare details are **not** collected — that is settled between buyer and stud
 
 ### Buyer transparency (mandatory)
 
 - Before bidding / making an offer, and in the win/acceptance confirmation and emails, the buyer must be shown clearly:
   - The buyer fee amount charged by Stallions Australia
-  - That the nomination price is paid directly to the stud, under the stud's terms
+  - That the buyer fee forms part of the price, and the balance is paid directly to the stud under the stud's terms
   - That the price arrangement is entirely between buyer and stud
 - All policy and T&C wording is **configurable content** (versioned T&C store) — never hardcode policy text
 
@@ -106,7 +107,7 @@ This is critical — get this right throughout the entire codebase.
 
 - All amounts displayed inclusive of GST
 - Every fee collected (listing fee and buyer fee) must be stored with **three values**: `FeeIncGst`, `FeeExGst`, `GstAmount` — required for BAS/tax reporting
-- Example: $250 buyer fee → `FeeIncGst` = $250.00, `GstAmount` = $250 / 11 = $22.73, `FeeExGst` = $227.27
+- Example: $150 buyer fee → `FeeIncGst` = $150.00, `GstAmount` = $150 / 11 = $13.64, `FeeExGst` = $136.36 (use `GstBreakdown.FromIncGst`)
 
 ### Payment provider
 

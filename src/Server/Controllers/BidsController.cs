@@ -30,6 +30,15 @@ public class BidsController : ControllerBase
         return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    // Public — anonymised history ("Bidder 1", "Bidder 2", …); no buyer identity
+    [HttpGet("listings/{id:guid}/bids/history")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetPublicHistory(Guid id)
+    {
+        var r = await _bids.GetPublicHistoryAsync(id);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     // Full history with buyer IDs — Staff only
     [HttpGet("listings/{id:guid}/bids")]
     [Authorize(Policy = "StaffOnly")]

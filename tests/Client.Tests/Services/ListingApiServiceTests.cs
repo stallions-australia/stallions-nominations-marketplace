@@ -19,7 +19,7 @@ public class ListingApiServiceTests
     {
         var cards = new List<ListingCardDto>
         {
-            new() { Id = Guid.NewGuid(), StallionName = "Fastnet Rock", ListingType = "FixedPrice" }
+            new() { Id = Guid.NewGuid(), StallionName = "Fastnet Rock", ListingType = "Auction" }
         };
         var sut = new ListingApiService(FakeClient(HttpStatusCode.OK, cards));
 

@@ -61,6 +61,11 @@ public class BidService : IBidService
         if (listing.EndDateTime <= DateTime.UtcNow)
             return ServiceResult<BidDto>.BadRequest("This auction has ended.");
 
+        // Snapshotted at publish; an active listing always has one. The fee is part of the price,
+        // so no bid may be below it.
+        if (listing.BuyerFeeIncGst is not { } buyerFee)
+            return ServiceResult<BidDto>.BadRequest("This auction is not open for bidding.");
+
         // Transactional section: re-read, validate, and mutate atomically.
         // The DbContext is configured with EnableRetryOnFailure, so a user-initiated
         // transaction must be executed through the retrying execution strategy as a
@@ -73,13 +78,18 @@ public class BidService : IBidService
             try
             {
                 var highest = await _bidRepo.GetHighestBidAsync(auctionListingId);
-                var minimumRequired = highest != null
-                    ? highest.AmountIncGst + listing.MinimumBidIncrement
-                    : listing.StartingPrice;
 
-                if (request.AmountIncGst < minimumRequired)
+                if (highest == null && request.AmountIncGst < buyerFee)
                     return ServiceResult<BidDto>.BadRequest(
-                        $"Bid must be at least ${minimumRequired:N2} (minimum increment: ${listing.MinimumBidIncrement:N2}).");
+                        $"Bids must be at least ${buyerFee:N2}, the buyer fee, which forms part of the price.");
+
+                if (highest != null)
+                {
+                    var minimumRequired = Math.Max(highest.AmountIncGst + listing.MinimumBidIncrement, buyerFee);
+                    if (request.AmountIncGst < minimumRequired)
+                        return ServiceResult<BidDto>.BadRequest(
+                            $"Bid must be at least ${minimumRequired:N2} (minimum increment: ${listing.MinimumBidIncrement:N2}).");
+                }
 
                 if (highest != null && highest.BuyerUserId == caller.Id)
                     return ServiceResult<BidDto>.BadRequest("You already hold the highest bid on this auction.");
@@ -114,6 +124,31 @@ public class BidService : IBidService
     {
         var bids = await _bidRepo.GetByAuctionListingIdAsync(auctionListingId);
         return ServiceResult<IReadOnlyList<BidDto>>.Ok(bids.Select(MapToDto).ToList());
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<PublicBidDto>>> GetPublicHistoryAsync(Guid auctionListingId)
+    {
+        var bids = await _bidRepo.GetByAuctionListingIdAsync(auctionListingId);
+
+        // Number bidders by their first bid so the labels are stable as new bids arrive.
+        var labels = bids
+            .GroupBy(b => b.BuyerUserId)
+            .OrderBy(g => g.Min(b => b.PlacedAt))
+            .Select((g, i) => (g.Key, Label: $"Bidder {i + 1}"))
+            .ToDictionary(x => x.Key, x => x.Label);
+
+        var history = bids
+            .OrderByDescending(b => b.AmountIncGst)
+            .ThenByDescending(b => b.PlacedAt)
+            .Select(b => new PublicBidDto
+            {
+                AmountIncGst = b.AmountIncGst,
+                PlacedAt = b.PlacedAt,
+                Bidder = labels[b.BuyerUserId]
+            })
+            .ToList();
+
+        return ServiceResult<IReadOnlyList<PublicBidDto>>.Ok(history);
     }
 
     public async Task<ServiceResult<IReadOnlyList<BidDto>>> GetMineAsync()

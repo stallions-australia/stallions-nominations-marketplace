@@ -1,0 +1,180 @@
+@page "/staff/settings"
+@layout StaffLayout
+@attribute [Authorize]
+@inject PlatformSettingsApiService SettingsApi
+@inject UserStateService UserState
+@inject NavigationManager Nav
+
+<PageTitle>Platform Settings — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Platform Settings</h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_loadError is not null)
+{
+    <div class="alert alert-danger">@_loadError</div>
+}
+else
+{
+    <p class="text-secondary text-sm">
+        All amounts are inclusive of GST. Changes apply to listings published and subscriptions
+        created after you save — live listings keep the buyer fee they were published with.
+        @if (_current is not null)
+        {
+            <text> Last updated @_current.UpdatedAt.ToLocalTime().ToString("d MMM yyyy h:mm tt").</text>
+        }
+    </p>
+
+    <div class="admin-form settings-form">
+        <div class="form-section">
+            <div class="form-section-title">Fees</div>
+            <div class="form-group">
+                <label class="form-label" for="buyer-fee">Buyer fee (inc. GST)</label>
+                <div class="input-prefix">
+                    <span>$</span>
+                    <input id="buyer-fee" type="number" class="form-input" min="0.01" step="0.01"
+                           @bind="_form.BuyerFeeIncGst" />
+                </div>
+                <p class="form-hint">Charged to the buyer on an auction win or accepted offer. Forms part of the price.</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="listing-fee">Standard listing fee (inc. GST)</label>
+                <div class="input-prefix">
+                    <span>$</span>
+                    <input id="listing-fee" type="number" class="form-input" min="0.01" step="0.01"
+                           @bind="_form.StandardListingFeeIncGst" />
+                </div>
+                <p class="form-hint">Per stallion, per season. Pre-fills new listing fee subscriptions.</p>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <div class="form-section-title">Auctions &amp; offers</div>
+            <div class="form-group">
+                <label class="form-label" for="increment">Minimum bid increment (inc. GST)</label>
+                <div class="input-prefix">
+                    <span>$</span>
+                    <input id="increment" type="number" class="form-input" min="0.01" step="0.01"
+                           @bind="_form.MinimumBidIncrement" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="grace">Charge grace period (hours)</label>
+                <input id="grace" type="number" class="form-input" min="1" step="1"
+                       @bind="_form.ChargeGracePeriodHours" />
+                <p class="form-hint">Time a winner has to update their card after a failed buyer-fee charge.</p>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="offer-expiry">Offer expiry (days)</label>
+                <input id="offer-expiry" type="number" class="form-input" min="1" step="1"
+                       @bind="_form.OfferExpiryDays" />
+            </div>
+        </div>
+
+        @if (_error is not null) { <div class="alert alert-danger">@_error</div> }
+        @if (_saved) { <div class="alert alert-success">Settings saved.</div> }
+
+        <div class="form-actions">
+            <button class="btn btn-gold" @onclick="ReviewChanges" disabled="@_busy">Save settings</button>
+        </div>
+    </div>
+}
+
+<Modal IsOpen="@_confirmOpen" Title="Confirm settings change" OnClose="() => _confirmOpen = false">
+    @if (_current is not null)
+    {
+        <p>These values affect every new listing and listing fee subscription.</p>
+        <table class="admin-table settings-diff">
+            <thead><tr><th>Setting</th><th>Current</th><th>New</th></tr></thead>
+            <tbody>
+                <tr><td>Buyer fee</td><td>@Money(_current.BuyerFeeIncGst)</td><td>@Money(_form.BuyerFeeIncGst)</td></tr>
+                <tr><td>Standard listing fee</td><td>@Money(_current.StandardListingFeeIncGst)</td><td>@Money(_form.StandardListingFeeIncGst)</td></tr>
+                <tr><td>Minimum bid increment</td><td>@Money(_current.MinimumBidIncrement)</td><td>@Money(_form.MinimumBidIncrement)</td></tr>
+                <tr><td>Charge grace period</td><td>@_current.ChargeGracePeriodHours h</td><td>@_form.ChargeGracePeriodHours h</td></tr>
+                <tr><td>Offer expiry</td><td>@_current.OfferExpiryDays days</td><td>@_form.OfferExpiryDays days</td></tr>
+            </tbody>
+        </table>
+    }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_busy">@(_busy ? "Saving…" : "Confirm and save")</button>
+        <button class="btn btn-outline" @onclick="() => _confirmOpen = false" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@code {
+    private PlatformSettingsDto? _current;
+    private UpdatePlatformSettingsRequest _form = new();
+    private bool _loading = true;
+    private bool _busy;
+    private bool _saved;
+    private bool _confirmOpen;
+    private string? _loadError;
+    private string? _error;
+
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+    private static string Money(decimal amount) => amount.ToString("C", AuCulture);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        try
+        {
+            _current = await SettingsApi.GetAsync();
+            ResetForm();
+        }
+        catch (Exception ex) { _loadError = ex is ApiException ae ? ae.Message : "Failed to load settings."; }
+        finally { _loading = false; }
+    }
+
+    private void ResetForm() => _form = new UpdatePlatformSettingsRequest
+    {
+        BuyerFeeIncGst = _current!.BuyerFeeIncGst,
+        StandardListingFeeIncGst = _current.StandardListingFeeIncGst,
+        MinimumBidIncrement = _current.MinimumBidIncrement,
+        ChargeGracePeriodHours = _current.ChargeGracePeriodHours,
+        OfferExpiryDays = _current.OfferExpiryDays
+    };
+
+    // Client-side checks mirror the server's (which remains the authority).
+    private string? Validate()
+    {
+        if (_form.BuyerFeeIncGst <= 0) return "Buyer fee must be greater than zero.";
+        if (_form.StandardListingFeeIncGst <= 0) return "Standard listing fee must be greater than zero.";
+        if (_form.MinimumBidIncrement <= 0) return "Minimum bid increment must be greater than zero.";
+        if (_form.ChargeGracePeriodHours <= 0) return "Charge grace period must be greater than zero.";
+        if (_form.OfferExpiryDays <= 0) return "Offer expiry must be greater than zero.";
+        return null;
+    }
+
+    private void ReviewChanges()
+    {
+        _saved = false;
+        _error = Validate();
+        if (_error is null) _confirmOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            _current = await SettingsApi.UpdateAsync(_form);
+            ResetForm();
+            _saved = true;
+            _confirmOpen = false;
+        }
+        catch (Exception ex)
+        {
+            _error = ex is ApiException ae ? ae.Message : "Failed to save settings.";
+            _confirmOpen = false;
+        }
+        finally { _busy = false; }
+    }
+}

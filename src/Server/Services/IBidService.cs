@@ -7,5 +7,6 @@ public interface IBidService
     Task<ServiceResult<CurrentBidDto>> GetCurrentBidAsync(Guid auctionListingId);
     Task<ServiceResult<BidDto>> PlaceBidAsync(Guid auctionListingId, PlaceBidRequest request);
     Task<ServiceResult<IReadOnlyList<BidDto>>> GetHistoryAsync(Guid auctionListingId);
+    Task<ServiceResult<IReadOnlyList<PublicBidDto>>> GetPublicHistoryAsync(Guid auctionListingId);
     Task<ServiceResult<IReadOnlyList<BidDto>>> GetMineAsync();
 }

@@ -20,10 +20,6 @@ public class ListingRepository : IListingRepository
         await _db.AuctionListings.Include(l => l.Stallion).ThenInclude(s => s.Images)
             .FirstOrDefaultAsync(l => l.Id == id);
 
-    public async Task<FixedPriceListing?> GetFixedPriceByIdAsync(Guid id) =>
-        await _db.FixedPriceListings.Include(l => l.Stallion).ThenInclude(s => s.Images)
-            .FirstOrDefaultAsync(l => l.Id == id);
-
     public async Task<IReadOnlyList<Listing>> GetActiveAsync(
         Guid? seasonId = null, Guid? studFarmId = null, ListingType? type = null)
     {
@@ -58,7 +54,10 @@ public class ListingRepository : IListingRepository
 
     public async Task<IReadOnlyList<Listing>> GetByStudFarmIdAsync(Guid studFarmId) =>
         await _db.Listings.Where(l => l.StudFarmId == studFarmId)
-            .Include(l => l.Stallion).OrderByDescending(l => l.CreatedAt).ToListAsync();
+            .Include(l => l.Stallion)
+            .Include(l => l.Season)
+            .Include(l => l.StudFarm)
+            .OrderByDescending(l => l.CreatedAt).ToListAsync();
 
     public async Task<IReadOnlyList<AuctionListing>> GetExpiredAuctionsAsync() =>
         await _db.AuctionListings

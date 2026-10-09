@@ -7,8 +7,8 @@ namespace Stallions.Shared;
 /// Source-generated STJ context for trim-safe JSON serialisation in Blazor WASM.
 ///
 /// Without this, <see cref="System.Text.Json.JsonSerializer"/> falls back to reflection
-/// to discover polymorphic derived types (<see cref="AuctionListingDto"/>,
-/// <see cref="FixedPriceListingDto"/>). IL linking strips those reflection members in a
+/// to discover polymorphic derived types (<see cref="AuctionListingDto"/>).
+/// IL linking strips those reflection members in a
 /// Release Blazor WASM build, causing JsonException at runtime.
 ///
 /// Including the polymorphic base type <see cref="ListingDto"/> here causes the source
@@ -17,7 +17,6 @@ namespace Stallions.Shared;
 /// </summary>
 [JsonSerializable(typeof(ListingDto))]
 [JsonSerializable(typeof(AuctionListingDto))]
-[JsonSerializable(typeof(FixedPriceListingDto))]
 [JsonSerializable(typeof(List<ListingCardDto>))]
 [JsonSerializable(typeof(ListingCardDto))]
 [JsonSourceGenerationOptions(

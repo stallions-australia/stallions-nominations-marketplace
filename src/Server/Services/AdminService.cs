@@ -2,6 +2,7 @@ using Stallions.Server.Auth;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Shared.DTOs.Admin;
+using Stallions.Shared.DTOs.Stallions;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Services;
@@ -16,6 +17,7 @@ public class AdminService : IAdminService
     private readonly IAuditLogRepository _auditRepo;
     private readonly ICurrentUserService _currentUser;
     private readonly IUserService _users;
+    private readonly IStallionRepository _stallionRepo;
 
     public AdminService(
         IListingRepository listingRepo,
@@ -25,8 +27,10 @@ public class AdminService : IAdminService
         IStudDirectoryRepository studDirRepo,
         IAuditLogRepository auditRepo,
         ICurrentUserService currentUser,
-        IUserService users)
+        IUserService users,
+        IStallionRepository stallionRepo)
     {
+        _stallionRepo = stallionRepo;
         _listingRepo = listingRepo;
         _purchaseRepo = purchaseRepo;
         _userRepo = userRepo;
@@ -52,9 +56,8 @@ public class AdminService : IAdminService
         {
             ActiveListingCount = activeListings.Count,
             AuctionListingCount = activeListings.Count(l => l.ListingType == ListingType.Auction),
-            FixedPriceListingCount = activeListings.Count(l => l.ListingType == ListingType.FixedPrice),
             RecentPurchaseCount = recentCompleted.Count,
-            RecentFeeRevenueIncGst = recentCompleted.Sum(p => p.PlatformFeeIncGst),
+            RecentFeeRevenueIncGst = recentCompleted.Sum(p => p.BuyerFeeIncGst),
             PendingVerificationCount = pendingUsers.Count
         };
         return ServiceResult<DashboardDto>.Ok(dto);
@@ -70,9 +73,10 @@ public class AdminService : IAdminService
             BuyerDisplayName = p.Buyer?.DisplayName ?? string.Empty,
             StudFarmName = p.Listing?.StudFarm?.Name ?? string.Empty,
             TotalPriceIncGst = p.TotalPriceIncGst,
-            PlatformFeeIncGst = p.PlatformFeeIncGst,
-            PlatformFeeExGst = p.PlatformFeeExGst,
-            PlatformFeeGst = p.PlatformFeeGst,
+            BuyerFeeIncGst = p.BuyerFeeIncGst,
+            BuyerFeeExGst = p.BuyerFeeExGst,
+            BuyerFeeGst = p.BuyerFeeGst,
+            BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
             PaidAt = p.PaidAt,
             Status = p.Status.ToString()
         }).ToList();
@@ -97,42 +101,18 @@ public class AdminService : IAdminService
                     PurchaseId = p.Id,
                     StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
                     SalePriceIncGst = p.TotalPriceIncGst,
-                    PlatformFeeIncGst = p.PlatformFeeIncGst,
-                    RemittanceAmount = p.TotalPriceIncGst - p.PlatformFeeIncGst,
+                    BuyerFeeIncGst = p.BuyerFeeIncGst,
+                    BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
                     PaidAt = p.PaidAt!.Value
                 }).ToList(),
                 TotalSalesIncGst = g.Sum(p => p.TotalPriceIncGst),
-                TotalPlatformFeesIncGst = g.Sum(p => p.PlatformFeeIncGst),
-                TotalRemittance = g.Sum(p => p.TotalPriceIncGst - p.PlatformFeeIncGst)
+                TotalBuyerFeesIncGst = g.Sum(p => p.BuyerFeeIncGst),
+                TotalBalancePayableToStudIncGst = g.Sum(p => p.BalancePayableToStudIncGst)
             }).ToList();
 
         return ServiceResult<IReadOnlyList<InvoiceDto>>.Ok(invoices);
     }
 
-    public async Task<ServiceResult> SetListingFeeAsync(Guid listingId, SetListingFeeRequest request)
-    {
-        var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult.Forbidden();
-
-        if (request.PlatformFeePercent < 0 || request.PlatformFeePercent > 100)
-            return ServiceResult.BadRequest("Fee percent must be between 0 and 100.");
-
-        var listing = await _listingRepo.GetByIdAsync(listingId);
-        if (listing == null) return ServiceResult.NotFound("Listing not found.");
-
-        var previousFee = listing.PlatformFeePercent;
-        listing.PlatformFeePercent = request.PlatformFeePercent;
-        await _listingRepo.UpdateAsync(listing);
-
-        await _auditRepo.LogAsync(
-            "Listing",
-            listingId,
-            "SetListingFee",
-            caller.Id,
-            $"Fee changed from {previousFee?.ToString() ?? "unset"} to {request.PlatformFeePercent}");
-
-        return ServiceResult.Ok();
-    }
 
     public async Task<ServiceResult<IReadOnlyList<StudFarmSummaryDto>>> GetAllStudFarmsAsync()
     {
@@ -183,6 +163,25 @@ public class AdminService : IAdminService
             CreatedAt = farm.CreatedAt
         };
         return ServiceResult<StudFarmSummaryDto>.Ok(dto);
+    }
+
+    public async Task<ServiceResult<IReadOnlyList<StallionSummaryDto>>> GetStudFarmStallionsAsync(Guid farmId)
+    {
+        var farm = await _studFarmRepo.GetByIdAsync(farmId);
+        if (farm == null)
+            return ServiceResult<IReadOnlyList<StallionSummaryDto>>.NotFound("Stud farm not found.");
+
+        var stallions = await _stallionRepo.GetByStudFarmIdAsync(farmId);
+        var dtos = stallions.Select(s => new StallionSummaryDto
+        {
+            Id = s.Id,
+            StudFarmId = s.StudFarmId,
+            Name = s.Name,
+            YearOfBirth = s.YearOfBirth,
+            Colour = s.Colour,
+            IsActive = s.IsActive
+        }).OrderBy(s => s.Name).ToList();
+        return ServiceResult<IReadOnlyList<StallionSummaryDto>>.Ok(dtos);
     }
 
     public async Task<ServiceResult> LinkStudFarmToDirectoryAsync(Guid farmId, Guid studDirectoryId)
@@ -270,25 +269,22 @@ public class AdminService : IAdminService
     public async Task<ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>> GetAllListingsStaffAsync()
     {
         var listings = await _listingRepo.GetAllStaffAsync();
-        var dtos = listings.Select(l =>
+        var auctionIds = listings.OfType<AuctionListing>().Select(l => l.Id).ToList();
+        var bids = auctionIds.Count > 0
+            ? await _listingRepo.GetBidAggregatesAsync(auctionIds)
+            : new Dictionary<Guid, (int Count, decimal? Highest)>();
+
+        var dtos = listings.Select(l => new ListingStaffSummaryDto
         {
-            decimal? price = l switch
-            {
-                FixedPriceListing fp => fp.PriceIncGst,
-                AuctionListing al => al.StartingPrice,
-                _ => null
-            };
-            return new ListingStaffSummaryDto
-            {
-                Id = l.Id,
-                StallionName = l.Stallion?.Name ?? string.Empty,
-                StudFarmName = l.StudFarm?.Name ?? string.Empty,
-                ListingType = l.ListingType.ToString(),
-                Status = l.Status.ToString(),
-                PriceIncGst = price,
-                PlatformFeePercent = l.PlatformFeePercent,
-                PublishedAt = l.PublishedAt
-            };
+            Id = l.Id,
+            StallionName = l.Stallion?.Name ?? string.Empty,
+            StudFarmName = l.StudFarm?.Name ?? string.Empty,
+            ListingType = l.ListingType.ToString(),
+            Status = l.Status.ToString(),
+            HighestBidIncGst = bids.TryGetValue(l.Id, out var b) ? b.Highest : null,
+            ReservePrice = l is AuctionListing { HasReserve: true } al ? al.ReservePrice : null,
+            BuyerFeeIncGst = l.BuyerFeeIncGst,
+            PublishedAt = l.PublishedAt
         }).ToList();
         return ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>.Ok(dtos);
     }

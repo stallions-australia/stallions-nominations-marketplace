@@ -19,6 +19,7 @@ public class AdminServiceTests
     private readonly Mock<IAuditLogRepository> _auditRepoMock = new();
     private readonly Mock<ICurrentUserService> _currentUserMock = new();
     private readonly Mock<IUserService> _userServiceMock = new();
+    private readonly Mock<IStallionRepository> _stallionRepoMock = new();
 
     private AdminService CreateSut() => new(
         _listingRepoMock.Object,
@@ -28,56 +29,8 @@ public class AdminServiceTests
         _studDirRepoMock.Object,
         _auditRepoMock.Object,
         _currentUserMock.Object,
-        _userServiceMock.Object);
-
-    [Fact]
-    public async Task SetListingFee_WhenListingExists_UpdatesFeeAndWritesAuditLog()
-    {
-        var listing = new AuctionListing
-        {
-            Id = Guid.NewGuid(), Status = ListingStatus.Draft, PlatformFeePercent = null
-        };
-        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
-        _currentUserMock.Setup(u => u.ObjectId).Returns("staff-oid");
-        _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
-
-        var result = await CreateSut().SetListingFeeAsync(listing.Id, new SetListingFeeRequest { PlatformFeePercent = 2.5m });
-
-        result.Succeeded.Should().BeTrue();
-        listing.PlatformFeePercent.Should().Be(2.5m);
-        _auditRepoMock.Verify(r => r.LogAsync(
-            "Listing",
-            listing.Id,
-            "SetListingFee",
-            It.IsAny<Guid?>(),
-            It.IsAny<string?>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task SetListingFee_WhenListingNotFound_ReturnsNotFound()
-    {
-        var id = Guid.NewGuid();
-        _listingRepoMock.Setup(r => r.GetByIdAsync(id)).ReturnsAsync((Listing?)null);
-        _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
-
-        var result = await CreateSut().SetListingFeeAsync(id, new SetListingFeeRequest { PlatformFeePercent = 2m });
-
-        result.Succeeded.Should().BeFalse();
-        result.HttpStatusCode.Should().Be(404);
-    }
-
-    [Fact]
-    public async Task SetListingFee_WhenFeeOutOfRange_ReturnsBadRequest()
-    {
-        var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.Draft };
-        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
-        _userServiceMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
-
-        var result = await CreateSut().SetListingFeeAsync(listing.Id, new SetListingFeeRequest { PlatformFeePercent = 101m });
-
-        result.Succeeded.Should().BeFalse();
-        result.HttpStatusCode.Should().Be(400);
-    }
+        _userServiceMock.Object,
+        _stallionRepoMock.Object);
 
     [Fact]
     public async Task GetAllStudFarmsAsync_ReturnsMappedDtos()
@@ -283,5 +236,133 @@ public class AdminServiceTests
         _studFarmRepoMock.Verify(
             r => r.AddAsync(It.Is<StudFarm>(f => f.StudDirectoryId == studDirId)),
             Times.Once);
+    }
+
+    private static Purchase CompletedSale(StudFarm farm, decimal price, decimal buyerFee) => new()
+    {
+        Id = Guid.NewGuid(),
+        Status = PurchaseStatus.Completed,
+        PaidAt = DateTime.UtcNow.AddDays(-1),
+        TotalPriceIncGst = price,
+        BuyerFeeIncGst = buyerFee,
+        BuyerFeeExGst = buyerFee - Math.Round(buyerFee / 11m, 2),
+        BuyerFeeGst = Math.Round(buyerFee / 11m, 2),
+        BalancePayableToStudIncGst = price - buyerFee,
+        Listing = new AuctionListing
+        {
+            StudFarmId = farm.Id, StudFarm = farm,
+            Stallion = new Stallion { Name = "Snitzel" }
+        },
+        Buyer = new User { DisplayName = "Jane Buyer" }
+    };
+
+    [Fact]
+    public async Task GetStudFarmStallions_ReturnsThatFarmsActiveStallions()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _studFarmRepoMock.Setup(r => r.GetByIdAsync(farm.Id)).ReturnsAsync(farm);
+        _stallionRepoMock.Setup(r => r.GetByStudFarmIdAsync(farm.Id)).ReturnsAsync(new List<Stallion>
+        {
+            new() { Id = Guid.NewGuid(), StudFarmId = farm.Id, Name = "Snitzel", IsActive = true }
+        });
+
+        var result = await CreateSut().GetStudFarmStallionsAsync(farm.Id);
+
+        result.Value!.Should().ContainSingle().Which.Name.Should().Be("Snitzel");
+    }
+
+    [Fact]
+    public async Task GetStudFarmStallions_WhenFarmMissing_ReturnsNotFound()
+    {
+        var id = Guid.NewGuid();
+        _studFarmRepoMock.Setup(r => r.GetByIdAsync(id)).ReturnsAsync((StudFarm?)null);
+
+        var result = await CreateSut().GetStudFarmStallionsAsync(id);
+
+        result.HttpStatusCode.Should().Be(404);
+    }
+
+    [Fact]
+    public async Task GetAllListingsStaff_ShowsHighBidReserveAndBuyerFee()
+    {
+        var withReserve = new AuctionListing
+        {
+            Id = Guid.NewGuid(), ListingType = ListingType.Auction, Status = ListingStatus.Active,
+            ReservePrice = 20000m, BuyerFeeIncGst = 150m
+        };
+        var noReserve = new AuctionListing
+        {
+            Id = Guid.NewGuid(), ListingType = ListingType.Auction, Status = ListingStatus.Draft,
+            IsNoReserve = true
+        };
+        _listingRepoMock.Setup(r => r.GetAllStaffAsync()).ReturnsAsync(new List<Listing> { withReserve, noReserve });
+        _listingRepoMock.Setup(r => r.GetBidAggregatesAsync(It.IsAny<IEnumerable<Guid>>()))
+            .ReturnsAsync(new Dictionary<Guid, (int Count, decimal? Highest)> { { withReserve.Id, (4, 18500m) } });
+
+        var result = await CreateSut().GetAllListingsStaffAsync();
+
+        var first = result.Value!.Single(d => d.Id == withReserve.Id);
+        first.HighestBidIncGst.Should().Be(18500m);
+        first.ReservePrice.Should().Be(20000m);
+        first.BuyerFeeIncGst.Should().Be(150m);
+        var second = result.Value!.Single(d => d.Id == noReserve.Id);
+        second.HighestBidIncGst.Should().BeNull();
+        second.ReservePrice.Should().BeNull();
+        second.BuyerFeeIncGst.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetInvoices_ShowsBuyerFeesAndBalancePayableToStud()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
+        {
+            CompletedSale(farm, 10000m, 150m),
+            CompletedSale(farm, 20000m, 150m)
+        });
+
+        var result = await CreateSut().GetInvoicesAsync();
+
+        var invoice = result.Value!.Should().ContainSingle().Subject;
+        invoice.TotalSalesIncGst.Should().Be(30000m);
+        invoice.TotalBuyerFeesIncGst.Should().Be(300m);
+        invoice.TotalBalancePayableToStudIncGst.Should().Be(29700m);
+        invoice.Lines.Should().Contain(l => l.BuyerFeeIncGst == 150m && l.BalancePayableToStudIncGst == 9850m);
+    }
+
+    [Fact]
+    public async Task GetTransactions_MapsBuyerFeeGstSplitAndBalance()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
+        {
+            CompletedSale(farm, 10000m, 150m)
+        });
+
+        var result = await CreateSut().GetTransactionsAsync();
+
+        var t = result.Value!.Should().ContainSingle().Subject;
+        t.BuyerFeeIncGst.Should().Be(150m);
+        t.BuyerFeeExGst.Should().Be(136.36m);
+        t.BuyerFeeGst.Should().Be(13.64m);
+        t.BalancePayableToStudIncGst.Should().Be(9850m);
+    }
+
+    [Fact]
+    public async Task GetDashboard_FeeRevenueSumsRecentBuyerFees()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        _listingRepoMock.Setup(r => r.GetActiveAsync(null, null, null)).ReturnsAsync(new List<Listing>());
+        _userRepoMock.Setup(r => r.GetAllAsync(It.IsAny<UserRole?>(), It.IsAny<UserStatus?>()))
+            .ReturnsAsync(new List<User>());
+        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
+        {
+            CompletedSale(farm, 10000m, 150m),
+            CompletedSale(farm, 20000m, 150m)
+        });
+
+        var result = await CreateSut().GetDashboardAsync();
+
+        result.Value!.RecentFeeRevenueIncGst.Should().Be(300m);
     }
 }

@@ -10,7 +10,11 @@ public class Listing
     public Guid StudFarmId { get; set; }
     public ListingType ListingType { get; set; }
     public ListingStatus Status { get; set; } = ListingStatus.Draft;
-    public decimal? PlatformFeePercent { get; set; }
+    /// <summary>
+    /// Buyer fee (inc. GST) copied from PlatformSettings on first publish, so a later settings
+    /// change never alters a live listing. Null until the listing is first published.
+    /// </summary>
+    public decimal? BuyerFeeIncGst { get; set; }
     public string? Description { get; set; }
     public string? TermsAndConditions { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

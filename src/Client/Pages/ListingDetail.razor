@@ -23,9 +23,7 @@ else
         <div class="listing-hero-placeholder"></div>
         <div class="listing-hero-overlay"></div>
         <div class="listing-hero-text container">
-            <span class="badge @(_listing.ListingType == "Auction" ? "badge-auction" : "badge-buynow")">
-                @(_listing.ListingType == "Auction" ? "Auction" : "Buy Now")
-            </span>
+            <span class="badge badge-auction">@_listing.ListingType</span>
             <h1 class="listing-hero-name">@_listing.StallionName</h1>
             <p class="listing-hero-farm">
                 <a href="/studfarms/@_listing.StudFarmId">@_listing.StudFarmName</a>
@@ -37,8 +35,15 @@ else
         <div class="listing-main">
 
             <div class="listing-price-block">
-                <PriceDisplay Amount="@GetDisplayPrice()" Large="true" />
-                <span class="listing-gst-label">inc. GST</span>
+                @if (GetHighestBid() is decimal highBid)
+                {
+                    <PriceDisplay Amount="@highBid" Large="true" />
+                    <span class="listing-gst-label">inc. GST &middot; current high bid</span>
+                }
+                else
+                {
+                    <span class="listing-gst-label">No bids yet</span>
+                }
                 @if (_listing is AuctionListingDto { IsNoReserve: true })
                 {
                     <span class="badge" style="margin-left: var(--space-3)">No reserve</span>
@@ -51,13 +56,31 @@ else
                     <div class="auction-meta">
                         <span class="text-secondary text-sm">Live auction</span>
                         <AuctionTimer ClosesAt="@auction.EndDateTime" />
-                        @if (!auction.IsNoReserve)
+                        @* The reserve amount is never shown to buyers — only whether it has been met. *@
+                        @if (auction.ReserveMet is bool reserveMet)
                         {
-                            <span class="@(IsReserveMet(auction) ? "text-success" : "text-muted") text-sm">
-                                @(IsReserveMet(auction) ? "Reserve met" : "Reserve not met")
+                            <span class="@(reserveMet ? "text-success" : "text-muted") text-sm">
+                                @(reserveMet ? "Reserve met" : "Reserve not met")
                             </span>
                         }
+                        else if (!auction.IsNoReserve)
+                        {
+                            <span class="text-muted text-sm">Reserve applies</span>
+                        }
                     </div>
+
+                    @if (auction.BuyerFeeIncGst is decimal buyerFee)
+                    {
+                        <div class="buyer-fee-notice">
+                            <p class="buyer-fee-amount">
+                                Buyer fee: <strong>@FormatPrice(buyerFee)</strong> inc. GST, paid to Stallions Australia
+                            </p>
+                            @if (!string.IsNullOrWhiteSpace(_disclosure?.BuyerFeeExplanation))
+                            {
+                                <p class="text-secondary text-sm">@_disclosure.BuyerFeeExplanation</p>
+                            }
+                        </div>
+                    }
 
                     <AuthorizeView>
                         <Authorized>
@@ -65,12 +88,11 @@ else
                             {
                                 <div class="bid-form">
                                     <p class="bid-form-hint">
-                                        Current: <strong>@FormatPrice(GetDisplayPrice())</strong>
-                                        &middot; Min next bid: <strong>@FormatPrice(GetDisplayPrice() + auction.MinimumBidIncrement)</strong>
+                                        Min next bid: <strong>@FormatPrice(GetMinimumNextBid(auction))</strong>
                                     </p>
                                     <div class="bid-form-row">
                                         <input class="form-input" type="number" step="25"
-                                               min="@(GetDisplayPrice() + auction.MinimumBidIncrement)"
+                                               min="@GetMinimumNextBid(auction)"
                                                @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
                                         <button class="btn btn-gold" @onclick="StartBid" disabled="@_bidBusy">
                                             @(_bidBusy ? "Placing…" : "Place bid")
@@ -92,26 +114,30 @@ else
                             <a href="authentication/login" class="btn btn-gold btn-full">Sign in to bid</a>
                         </NotAuthorized>
                     </AuthorizeView>
+
+                    <div class="bid-history">
+                        <h3 class="bid-history-title">Bid history</h3>
+                        @if (_bidHistory.Count == 0)
+                        {
+                            <p class="text-muted text-sm">No bids yet.</p>
+                        }
+                        else
+                        {
+                            <ol class="bid-history-list">
+                                @foreach (var b in _bidHistory)
+                                {
+                                    <li class="bid-history-row">
+                                        <span class="bid-history-bidder">@b.Bidder</span>
+                                        <span class="bid-history-amount">@FormatPrice(b.AmountIncGst)</span>
+                                        <span class="bid-history-time text-muted text-xs">@b.PlacedAt.ToLocalTime().ToString("d MMM, h:mm tt")</span>
+                                    </li>
+                                }
+                            </ol>
+                        }
+                    </div>
                 </div>
             }
 
-            @if (_listing is FixedPriceListingDto fp)
-            {
-                <div class="listing-fp-block">
-                    <p class="listing-qty-label text-secondary text-sm">@fp.QuantityRemaining nominations remaining</p>
-                    <AuthorizeView>
-                        <Authorized>
-                            @if (UserState.IsBuyer)
-                            {
-                                <a href="/checkout/@_listing.Id" class="btn btn-gold btn-full">Purchase nomination</a>
-                            }
-                        </Authorized>
-                        <NotAuthorized>
-                            <a href="authentication/login" class="btn btn-gold btn-full">Sign in to purchase</a>
-                        </NotAuthorized>
-                    </AuthorizeView>
-                </div>
-            }
 
             <div class="listing-enquire">
                 <AuthorizeView>
@@ -136,7 +162,9 @@ else
 
 @if (_showBidConfirm)
 {
-    <BidConfirmationModal OnConfirm="ConfirmBidAndPlace" OnCancel="() => _showBidConfirm = false" />
+    <BidConfirmationModal BuyerFeeIncGst="@((_listing as AuctionListingDto)?.BuyerFeeIncGst)"
+                          BuyerFeeExplanation="@_disclosure?.BuyerFeeExplanation"
+                          OnConfirm="ConfirmBidAndPlace" OnCancel="() => _showBidConfirm = false" />
 }
 
 @code {
@@ -150,6 +178,8 @@ else
     private bool _bidSuccess;
     // Updated price after a successful bid
     private decimal? _refreshedHighestBid;
+    private List<PublicBidDto> _bidHistory = [];
+    private BuyerFeeDisclosureDto? _disclosure;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -160,6 +190,11 @@ else
         try
         {
             _listing = await ListingApi.GetByIdAsync(Id);
+            if (_listing is AuctionListingDto)
+            {
+                await LoadBidHistoryAsync();
+                await LoadDisclosureAsync();
+            }
         }
         catch (ApiException ex) when (ex.StatusCode == 404)
         {
@@ -173,22 +208,28 @@ else
         }
     }
 
-    private decimal GetDisplayPrice()
+    // Secondary content: a failure here must not hide the listing itself.
+    private async Task LoadBidHistoryAsync()
     {
-        if (_refreshedHighestBid.HasValue) return _refreshedHighestBid.Value;
-        return _listing switch
-        {
-            AuctionListingDto al when al.CurrentHighestBidIncGst.HasValue => al.CurrentHighestBidIncGst.Value,
-            AuctionListingDto al => al.StartingPrice,
-            FixedPriceListingDto fp => fp.PriceIncGst,
-            _ => 0m
-        };
+        try { _bidHistory = await ListingApi.GetBidHistoryAsync(Id) ?? []; }
+        catch (ApiException) { _bidHistory = []; }
     }
 
-    private static bool IsReserveMet(AuctionListingDto auction) =>
-        !auction.IsNoReserve &&
-        auction.ReservePrice.HasValue &&
-        auction.CurrentHighestBidIncGst >= auction.ReservePrice;
+    private async Task LoadDisclosureAsync()
+    {
+        try { _disclosure = await ListingApi.GetBuyerFeeDisclosureAsync(); }
+        catch (ApiException) { _disclosure = null; }
+    }
+
+    // No starting or asking price is ever shown — only the current high bid, if any.
+    private decimal? GetHighestBid() =>
+        _refreshedHighestBid ?? (_listing as AuctionListingDto)?.CurrentHighestBidIncGst;
+
+    // First bid: at least the buyer fee (it forms part of the price). Later bids: high bid + increment.
+    private decimal GetMinimumNextBid(AuctionListingDto auction) =>
+        GetHighestBid() is decimal high
+            ? high + auction.MinimumBidIncrement
+            : auction.BuyerFeeIncGst ?? auction.MinimumBidIncrement;
 
     private static string FormatPrice(decimal amount) =>
         amount.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("en-AU"));
@@ -235,6 +276,7 @@ else
             _bidSuccess = true;
             var refreshed = await BidApi.GetCurrentBidAsync(Id);
             _refreshedHighestBid = refreshed?.HighestBidIncGst;
+            await LoadBidHistoryAsync();
         }
         catch (ApiException ex)
         {

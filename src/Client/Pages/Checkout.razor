@@ -35,15 +35,7 @@
         <div class="checkout-header">
             <h1>Purchase nomination</h1>
             <p class="text-secondary">@_listing.StallionName — @_listing.StudFarmName</p>
-            <div class="checkout-steps">
-                <span class="step @(_step == CheckoutStep.MareDetails ? "step--active" : "")">
-                    1. Mare details
-                </span>
-                <span class="step-sep">›</span>
-                <span class="step @(_step == CheckoutStep.Disclosure ? "step--active" : "")">
-                    2. Review &amp; confirm
-                </span>
-            </div>
+
         </div>
 
         @if (_initiateError is not null)
@@ -51,9 +43,9 @@
             <ErrorMessage Message="@_initiateError" style="margin-bottom: var(--space-4)" />
         }
 
-        @if (_step == CheckoutStep.MareDetails)
+        @if (_step == CheckoutStep.Start)
         {
-            <MareDetailsForm Model="@_request" OnSubmit="AdvanceToDisclosure" />
+            <button class="btn btn-gold" @onclick="AdvanceToDisclosure">Review purchase</button>
         }
         else if (_step == CheckoutStep.Disclosure)
         {
@@ -64,9 +56,11 @@
             else
             {
                 <BuyerDisclosure TotalPriceIncGst="@_disclosure.TotalPriceIncGst"
-                                 PlatformFeeIncGst="@_disclosure.PlatformFeeIncGst"
+                                 BuyerFeeIncGst="@_disclosure.BuyerFeeIncGst"
+                                 BalancePayableToStudIncGst="@_disclosure.BalancePayableToStudIncGst"
                                  BalanceArrangementText="@_disclosure.StudFarmBalanceArrangement"
-                                 RefundPolicyText="@_disclosure.RefundPolicy"
+                                 BuyerFeeExplanation="@_disclosure.BuyerFeeExplanation"
+                                 StudTermsAndConditions="@_disclosure.StudTermsAndConditions"
                                  OnConfirmed="Confirm" />
             }
         }
@@ -76,13 +70,13 @@
 @code {
     [Parameter] public Guid ListingId { get; set; }
 
-    private enum CheckoutStep { MareDetails, Disclosure, Success }
-    private CheckoutStep _step = CheckoutStep.MareDetails;
+    private enum CheckoutStep { Start, Disclosure, Success }
+    private CheckoutStep _step = CheckoutStep.Start;
 
     private ListingDto? _listing;
     private CheckoutDisclosureDto? _disclosure;
     private Guid _purchaseId;
-    private CheckoutRequest _request = new() { MareName = string.Empty };
+    private readonly CheckoutRequest _request = new();
     private string? _error;
     private string? _initiateError;
 
