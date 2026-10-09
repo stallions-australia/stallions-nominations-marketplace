@@ -15,10 +15,43 @@ public class ListingServiceTests
     private readonly Mock<IStallionRepository> _stallionRepoMock = new();
     private readonly Mock<IStudFarmRepository> _farmRepoMock = new();
     private readonly Mock<IUserService> _usersMock = new();
+    private readonly Mock<IPlatformSettingsRepository> _settingsRepoMock = new();
+
+    public ListingServiceTests()
+    {
+        _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
+        {
+            BuyerFeeIncGst = 150m, StandardListingFeeIncGst = 990m, MinimumBidIncrement = 25m,
+            ChargeGracePeriodHours = 2, OfferExpiryDays = 7
+        });
+    }
 
     private ListingService CreateSut() => new(
         _listingRepoMock.Object, _seasonRepoMock.Object,
-        _stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object);
+        _stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object,
+        _settingsRepoMock.Object);
+
+    private void SetBuyerFeeSetting(decimal fee) =>
+        _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
+        {
+            BuyerFeeIncGst = fee, StandardListingFeeIncGst = 990m, MinimumBidIncrement = 25m,
+            ChargeGracePeriodHours = 2, OfferExpiryDays = 7
+        });
+
+    private (User caller, StudFarm farm) SignedInFarm()
+    {
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        return (caller, farm);
+    }
+
+    private static AuctionListing DraftAuction(Guid farmId, decimal? buyerFee = null) => new()
+    {
+        Id = Guid.NewGuid(), StudFarmId = farmId, Status = ListingStatus.Draft,
+        StartingPrice = 8000m, BuyerFeeIncGst = buyerFee,
+        EndDateTime = DateTime.UtcNow.AddDays(7)
+    };
 
     private static User FarmUser() => new() { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active };
     private static StudFarm FarmFor(User u) => new() { Id = Guid.NewGuid(), UserId = u.Id };
@@ -46,21 +79,15 @@ public class ListingServiceTests
     }
 
     [Fact]
-    public async Task UpdateListing_NeverUpdatesPlatformFeePercent()
+    public async Task UpdateListing_NeverChangesBuyerFee()
     {
-        var caller = FarmUser(); var farm = FarmFor(caller);
-        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
-        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new AuctionListing
-        {
-            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Draft,
-            PlatformFeePercent = 2.5m, StartingPrice = 8000m
-        };
+        var (_, farm) = SignedInFarm();
+        var listing = DraftAuction(farm.Id, buyerFee: 150m);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
         await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { StartingPrice = 9000m });
 
-        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l => l.PlatformFeePercent == 2.5m)), Times.Once);
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l => l.BuyerFeeIncGst == 150m)), Times.Once);
     }
 
     [Fact]
@@ -170,21 +197,65 @@ public class ListingServiceTests
     }
 
     [Fact]
-    public async Task PublishListing_WhenNoFeeSet_ReturnsBadRequest()
+    public async Task PublishListing_FirstPublish_SnapshotsBuyerFeeFromSettings()
     {
-        var caller = FarmUser(); var farm = FarmFor(caller);
-        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
-        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
-        var listing = new AuctionListing
-        {
-            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Draft,
-            PlatformFeePercent = null, StartingPrice = 8000m
-        };
+        var (_, farm) = SignedInFarm();
+        var listing = DraftAuction(farm.Id);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        SetBuyerFeeSetting(150m);
 
         var result = await CreateSut().PublishListingAsync(listing.Id);
 
-        result.Succeeded.Should().BeFalse();
-        result.HttpStatusCode.Should().Be(400);
+        result.Succeeded.Should().BeTrue();
+        listing.Status.Should().Be(ListingStatus.Active);
+        listing.BuyerFeeIncGst.Should().Be(150m);
+    }
+
+    [Fact]
+    public async Task PublishListing_Republish_KeepsOriginalBuyerFee()
+    {
+        // Published at $150, unpublished, then Staff raised the setting to $200.
+        var (_, farm) = SignedInFarm();
+        var listing = DraftAuction(farm.Id, buyerFee: 150m);
+        listing.PublishedAt = DateTime.UtcNow.AddDays(-2);
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        SetBuyerFeeSetting(200m);
+
+        var result = await CreateSut().PublishListingAsync(listing.Id);
+
+        result.Succeeded.Should().BeTrue();
+        listing.BuyerFeeIncGst.Should().Be(150m);
+    }
+
+    [Fact]
+    public async Task GetById_AfterSettingsChange_StillShowsSnapshottedBuyerFee()
+    {
+        var listing = DraftAuction(Guid.NewGuid(), buyerFee: 150m);
+        listing.Status = ListingStatus.Active;
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        SetBuyerFeeSetting(200m);
+
+        var result = await CreateSut().GetByIdAsync(listing.Id, isStaff: false);
+
+        // Visible to buyers (isStaff: false) and unaffected by the new setting.
+        result.Value!.BuyerFeeIncGst.Should().Be(150m);
+    }
+
+    [Fact]
+    public async Task Relist_NewListingHasNoBuyerFeeUntilPublished()
+    {
+        var (_, farm) = SignedInFarm();
+        var expired = DraftAuction(farm.Id, buyerFee: 150m);
+        expired.Status = ListingStatus.Expired;
+        _listingRepoMock.Setup(r => r.GetByIdAsync(expired.Id)).ReturnsAsync(expired);
+        Listing? added = null;
+        _listingRepoMock.Setup(r => r.AddAsync(It.IsAny<Listing>()))
+            .ReturnsAsync((Listing l) => { added = l; return l; });
+
+        var result = await CreateSut().RelistAsync(expired.Id);
+
+        result.Succeeded.Should().BeTrue();
+        added!.BuyerFeeIncGst.Should().BeNull();
+        added.Status.Should().Be(ListingStatus.Draft);
     }
 }

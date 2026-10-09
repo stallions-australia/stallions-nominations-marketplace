@@ -45,10 +45,10 @@ public class CheckoutServiceTests
     private static User VerifiedBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
 
-    private static AuctionListing EndedAuction(decimal? feePercent) => new()
+    private static AuctionListing EndedAuction(decimal? buyerFee) => new()
     {
         Id = Guid.NewGuid(), Status = ListingStatus.Active,
-        PlatformFeePercent = feePercent,
+        BuyerFeeIncGst = buyerFee,
         EndDateTime = DateTime.UtcNow.AddHours(-1)
     };
 
@@ -57,7 +57,7 @@ public class CheckoutServiceTests
     {
         var buyer = VerifiedBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var listing = EndedAuction(feePercent: 2.5m);
+        var listing = EndedAuction(buyerFee: 150m);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
         var result = await CreateSut().InitiateCheckoutAsync(listing.Id,
@@ -72,7 +72,7 @@ public class CheckoutServiceTests
     {
         var buyer = VerifiedBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var listing = EndedAuction(feePercent: null);
+        var listing = EndedAuction(buyerFee: null);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
         var result = await CreateSut().InitiateCheckoutAsync(listing.Id,
@@ -85,10 +85,10 @@ public class CheckoutServiceTests
     [Fact]
     public async Task Initiate_CalculatesGstCorrectly()
     {
-        // $10,000 at 2.5% fee: FeeIncGst=$250, FeeGst=$250/11=$22.73, FeeExGst=$227.27
+        // $150 buyer fee snapshotted on the listing: FeeGst=$150/11=$13.64, FeeExGst=$136.36
         var buyer = VerifiedBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var listing = EndedAuction(feePercent: 2.5m);
+        var listing = EndedAuction(buyerFee: 150m);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
         _bidRepoMock.Setup(r => r.GetHighestBidAsync(listing.Id)).ReturnsAsync(new Bid
         {
@@ -104,10 +104,10 @@ public class CheckoutServiceTests
 
         result.Succeeded.Should().BeTrue();
         captured.Should().NotBeNull();
-        captured!.PlatformFeeIncGst.Should().Be(250.00m);
-        captured.PlatformFeeGst.Should().Be(22.73m);
-        captured.PlatformFeeExGst.Should().Be(227.27m);
-        result.Value!.Disclosure.PlatformFeeIncGst.Should().Be(250.00m);
+        captured!.PlatformFeeIncGst.Should().Be(150.00m);
+        captured.PlatformFeeGst.Should().Be(13.64m);
+        captured.PlatformFeeExGst.Should().Be(136.36m);
+        result.Value!.Disclosure.PlatformFeeIncGst.Should().Be(150.00m);
     }
 
     [Fact]

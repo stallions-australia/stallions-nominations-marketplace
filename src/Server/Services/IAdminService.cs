@@ -7,7 +7,7 @@ public interface IAdminService
     Task<ServiceResult<DashboardDto>> GetDashboardAsync();
     Task<ServiceResult<IReadOnlyList<TransactionDto>>> GetTransactionsAsync();
     Task<ServiceResult<IReadOnlyList<InvoiceDto>>> GetInvoicesAsync();
-    Task<ServiceResult> SetListingFeeAsync(Guid listingId, SetListingFeeRequest request);
+
     Task<ServiceResult<IReadOnlyList<StudFarmSummaryDto>>> GetAllStudFarmsAsync();
     Task<ServiceResult<StudFarmSummaryDto>> GetStudFarmByIdAsync(Guid id);
     Task<ServiceResult<StudFarmSummaryDto>> CreateStudFarmAsync(CreateStudFarmRequest request);

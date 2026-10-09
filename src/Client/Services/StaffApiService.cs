@@ -135,13 +135,6 @@ public class StaffApiService
         return await r.Content.ReadFromJsonAsync<List<ListingStaffSummaryDto>>() ?? [];
     }
 
-    public virtual async Task SetListingFeeAsync(Guid id, decimal feePercent)
-    {
-        var r = await _http.PutAsJsonAsync($"api/admin/listings/{id}/fee",
-            new { PlatformFeePercent = feePercent });
-        if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to set listing fee.");
-    }
 
     public virtual async Task ForceListingStatusAsync(Guid id, ForceListingStatusRequest request)
     {

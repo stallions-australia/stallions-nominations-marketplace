@@ -6,6 +6,7 @@ using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Options;
+using Stallions.Shared;
 using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.Enums;
 
@@ -61,7 +62,7 @@ public class CheckoutService : ICheckoutService
         if (listing.Status != ListingStatus.Active)
             return ServiceResult<CheckoutResponse>.BadRequest("This listing is no longer available.");
 
-        if (listing.PlatformFeePercent == null)
+        if (listing.BuyerFeeIncGst == null)
             return ServiceResult<CheckoutResponse>.BadRequest("This listing is not ready for purchase. Please contact Stallions Australia.");
 
         decimal totalPrice;
@@ -84,11 +85,8 @@ public class CheckoutService : ICheckoutService
             return ServiceResult<CheckoutResponse>.BadRequest("Unknown listing type.");
         }
 
-        // Calculate GST breakdown
-        var feePercent = listing.PlatformFeePercent!.Value;
-        var feeIncGst = Math.Round(totalPrice * (feePercent / 100m), 2);
-        var feeGst = Math.Round(feeIncGst / 11m, 2);
-        var feeExGst = feeIncGst - feeGst;
+        // Flat buyer fee snapshotted on the listing at publish
+        var (feeIncGst, feeExGst, feeGst) = GstBreakdown.FromIncGst(listing.BuyerFeeIncGst!.Value);
 
         var purchase = new Purchase
         {

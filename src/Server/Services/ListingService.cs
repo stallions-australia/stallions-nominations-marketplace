@@ -12,19 +12,22 @@ public class ListingService : IListingService
     private readonly IStallionRepository _stallionRepo;
     private readonly IStudFarmRepository _farmRepo;
     private readonly IUserService _users;
+    private readonly IPlatformSettingsRepository _settingsRepo;
 
     public ListingService(
         IListingRepository listingRepo,
         ISeasonRepository seasonRepo,
         IStallionRepository stallionRepo,
         IStudFarmRepository farmRepo,
-        IUserService users)
+        IUserService users,
+        IPlatformSettingsRepository settingsRepo)
     {
         _listingRepo = listingRepo;
         _seasonRepo = seasonRepo;
         _stallionRepo = stallionRepo;
         _farmRepo = farmRepo;
         _users = users;
+        _settingsRepo = settingsRepo;
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff)
@@ -150,7 +153,7 @@ public class ListingService : IListingService
         if (listing.Status == ListingStatus.Cancelled || listing.Status == ListingStatus.Sold)
             return ServiceResult<ListingDto>.BadRequest("This listing can no longer be edited.");
 
-        // CRITICAL: PlatformFeePercent is never touched here — only AdminService.SetListingFeeAsync can set it.
+        // CRITICAL: BuyerFeeIncGst is never touched here — it is snapshotted from settings on publish.
 
         // Safe edits: description is always editable (Draft or Active).
         if (request.Description is not null)
@@ -202,11 +205,13 @@ public class ListingService : IListingService
         if (listing.Status != ListingStatus.Draft)
             return ServiceResult.BadRequest("Only Draft listings can be published.");
 
-        if (!listing.PlatformFeePercent.HasValue)
-            return ServiceResult.BadRequest("A platform fee must be set by a Stallions Australia staff member before this listing can be published.");
-
         if (listing is AuctionListing al && al.EndDateTime <= DateTime.UtcNow)
             return ServiceResult.BadRequest("Auction end date must be in the future.");
+
+        // Lock the buyer fee in on first publish only — unpublishing and republishing keeps the
+        // original amount, so a Staff settings change never alters a listing buyers have seen.
+        if (!listing.BuyerFeeIncGst.HasValue)
+            listing.BuyerFeeIncGst = (await _settingsRepo.GetAsync()).BuyerFeeIncGst;
 
         listing.Status = ListingStatus.Active;
         listing.PublishedAt = DateTime.UtcNow;
@@ -307,7 +312,7 @@ public class ListingService : IListingService
         if (listing is not AuctionListing al)
             return ServiceResult<ListingDto>.BadRequest("Only auction listings can be relisted.");
 
-        // PlatformFeePercent is NOT carried over — must be set again by staff before publishing.
+        // BuyerFeeIncGst is NOT carried over — the new listing picks up the current setting when published.
         // TermsAndConditions is NOT carried over — new listing requires fresh T&C acceptance.
         var newListing = new AuctionListing
         {
@@ -316,7 +321,7 @@ public class ListingService : IListingService
             StudFarmId = al.StudFarmId,
             ListingType = ListingType.Auction,
             Status = ListingStatus.Draft,
-            PlatformFeePercent = null,
+            BuyerFeeIncGst = null,
             Description = al.Description,
             StartingPrice = al.StartingPrice,
             ReservePrice = al.ReservePrice,
@@ -399,7 +404,7 @@ public class ListingService : IListingService
             StudFarmName = al.StudFarm?.Name ?? string.Empty,
             ListingType = al.ListingType.ToString(),
             Status = al.Status.ToString(),
-            PlatformFeePercent = isStaff ? al.PlatformFeePercent : null,
+            BuyerFeeIncGst = al.BuyerFeeIncGst,
             CreatedAt = al.CreatedAt,
             PublishedAt = al.PublishedAt,
             ClosedAt = al.ClosedAt,

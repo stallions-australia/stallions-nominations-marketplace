@@ -1,7 +1,7 @@
 namespace Stallions.Shared.DTOs.Listings;
 
 // Only fields editable by the stud farm on a Draft listing.
-// PlatformFeePercent is deliberately absent — it is only writable via PUT /admin/listings/{id}/fee.
+// BuyerFeeIncGst is deliberately absent — it is snapshotted from Staff-managed settings on publish.
 public class UpdateListingRequest
 {
     public decimal? StartingPrice { get; set; }

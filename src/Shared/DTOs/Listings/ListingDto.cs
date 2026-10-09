@@ -25,7 +25,9 @@ public class ListingDto
     [JsonPropertyOrder(-1)]
     public string ListingType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
-    public decimal? PlatformFeePercent { get; set; }  // null when caller is not Staff
+    // Flat buyer fee (inc. GST) locked in at first publish; null for never-published drafts.
+    // Shown to everyone — buyers must see it before bidding.
+    public decimal? BuyerFeeIncGst { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? PublishedAt { get; set; }
     public DateTime? ClosedAt { get; set; }

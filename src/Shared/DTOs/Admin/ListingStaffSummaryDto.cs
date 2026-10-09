@@ -8,6 +8,6 @@ public class ListingStaffSummaryDto
     public string ListingType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public decimal? PriceIncGst { get; set; }
-    public decimal? PlatformFeePercent { get; set; }
+    public decimal? BuyerFeeIncGst { get; set; }  // null until first published
     public DateTime? PublishedAt { get; set; }
 }

@@ -108,30 +108,6 @@ public class AdminService : IAdminService
         return ServiceResult<IReadOnlyList<InvoiceDto>>.Ok(invoices);
     }
 
-    public async Task<ServiceResult> SetListingFeeAsync(Guid listingId, SetListingFeeRequest request)
-    {
-        var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult.Forbidden();
-
-        if (request.PlatformFeePercent < 0 || request.PlatformFeePercent > 100)
-            return ServiceResult.BadRequest("Fee percent must be between 0 and 100.");
-
-        var listing = await _listingRepo.GetByIdAsync(listingId);
-        if (listing == null) return ServiceResult.NotFound("Listing not found.");
-
-        var previousFee = listing.PlatformFeePercent;
-        listing.PlatformFeePercent = request.PlatformFeePercent;
-        await _listingRepo.UpdateAsync(listing);
-
-        await _auditRepo.LogAsync(
-            "Listing",
-            listingId,
-            "SetListingFee",
-            caller.Id,
-            $"Fee changed from {previousFee?.ToString() ?? "unset"} to {request.PlatformFeePercent}");
-
-        return ServiceResult.Ok();
-    }
 
     public async Task<ServiceResult<IReadOnlyList<StudFarmSummaryDto>>> GetAllStudFarmsAsync()
     {
@@ -284,7 +260,7 @@ public class AdminService : IAdminService
                 ListingType = l.ListingType.ToString(),
                 Status = l.Status.ToString(),
                 PriceIncGst = price,
-                PlatformFeePercent = l.PlatformFeePercent,
+                BuyerFeeIncGst = l.BuyerFeeIncGst,
                 PublishedAt = l.PublishedAt
             };
         }).ToList();

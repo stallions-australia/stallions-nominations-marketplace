@@ -124,7 +124,7 @@ public class AppDbContext : DbContext
             e.HasKey(l => l.Id);
             e.Property(l => l.ListingType).HasConversion<string>().HasMaxLength(20);
             e.Property(l => l.Status).HasConversion<string>().HasMaxLength(20);
-            e.Property(l => l.PlatformFeePercent).HasPrecision(5, 2);
+            e.Property(l => l.BuyerFeeIncGst).HasPrecision(12, 2);
 
             e.HasIndex(l => new { l.Status, l.SeasonId });
             e.HasIndex(l => new { l.StudFarmId, l.Status });

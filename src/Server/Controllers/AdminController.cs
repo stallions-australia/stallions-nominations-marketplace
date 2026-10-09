@@ -34,12 +34,6 @@ public class AdminController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
-    [HttpPut("listings/{id:guid}/fee")]
-    public async Task<IActionResult> SetListingFee(Guid id, [FromBody] SetListingFeeRequest request)
-    {
-        var r = await _admin.SetListingFeeAsync(id, request);
-        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
-    }
 
     [HttpGet("studfarms")]
     public async Task<IActionResult> GetStudFarms()
