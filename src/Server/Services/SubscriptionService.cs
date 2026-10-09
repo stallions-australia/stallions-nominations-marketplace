@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Payments;
@@ -22,6 +23,7 @@ public class SubscriptionService : ISubscriptionService
     private readonly IAuditLogRepository _auditRepo;
     private readonly IUserService _users;
     private readonly IPaymentProvider _provider;
+    private readonly ILogger<SubscriptionService> _log;
 
     public SubscriptionService(
         ISubscriptionRepository repo,
@@ -31,7 +33,8 @@ public class SubscriptionService : ISubscriptionService
         IPlatformSettingsRepository settingsRepo,
         IAuditLogRepository auditRepo,
         IUserService users,
-        IPaymentProvider provider)
+        IPaymentProvider provider,
+        ILogger<SubscriptionService> log)
     {
         _repo = repo;
         _stallionRepo = stallionRepo;
@@ -41,6 +44,7 @@ public class SubscriptionService : ISubscriptionService
         _auditRepo = auditRepo;
         _users = users;
         _provider = provider;
+        _log = log;
     }
 
     public async Task<ServiceResult<SubscriptionDto>> CreateAsync(CreateSubscriptionRequest request)
@@ -129,6 +133,8 @@ public class SubscriptionService : ISubscriptionService
         subscription.PaymentReference = string.IsNullOrWhiteSpace(request.PaymentReference)
             ? null : request.PaymentReference.Trim();
         subscription.PaidAt = DateTime.UtcNow;
+        subscription.PendingCheckoutUrl = null;
+        subscription.PendingCheckoutExpiresAt = null;
         await _repo.UpdateAsync(subscription);
 
         await _auditRepo.LogAsync(AuditEntity, subscription.Id, "MarkSubscriptionPaid", staff.Id,
@@ -166,6 +172,8 @@ public class SubscriptionService : ISubscriptionService
         subscription.Status = SubscriptionStatus.Waived;
         subscription.PaymentMethod = SubscriptionPaymentMethod.Waived;
         subscription.WaiverReason = request.Reason.Trim();
+        subscription.PendingCheckoutUrl = null;
+        subscription.PendingCheckoutExpiresAt = null;
         await _repo.UpdateAsync(subscription);
 
         await _auditRepo.LogAsync(AuditEntity, subscription.Id, "WaiveSubscription", staff.Id,
@@ -215,25 +223,51 @@ public class SubscriptionService : ISubscriptionService
                 Status = SubscriptionStatus.Pending,
                 CreatedByUserId = caller.Id
             };
+            var created = true;
             try
             {
                 await _repo.AddAsync(subscription);
-                await _auditRepo.LogAsync(AuditEntity, subscription.Id, "CreateSubscription", caller.Id,
-                    JsonSerializer.Serialize(new { subscription.StallionId, subscription.SeasonId, subscription.FeeIncGst, SelfServe = true }));
             }
             catch (DbUpdateException)
             {
                 // A concurrent click created it first — use that one.
+                _repo.Detach(subscription);
+                created = false;
                 subscription = await _repo.GetByStallionAndSeasonAsync(stallion.Id, season.Id);
                 if (subscription == null) throw;
             }
+
+            if (created)
+                await _auditRepo.LogAsync(AuditEntity, subscription.Id, "CreateSubscription", caller.Id,
+                    JsonSerializer.Serialize(new { subscription.StallionId, subscription.SeasonId, subscription.FeeIncGst, SelfServe = true }));
         }
+
+        if (subscription.Status is SubscriptionStatus.Paid or SubscriptionStatus.Waived)
+            return ServiceResult<PaymentRedirectDto>.BadRequest($"{stallion.Name} is already active for {season.Name}.");
 
         if (subscription.FeeIncGst <= 0)
             return ServiceResult<PaymentRedirectDto>.BadRequest("This subscription has no fee to pay. Contact Stallions Australia.");
 
-        var url = await _provider.CreateListingFeeSessionAsync(subscription.Id, subscription.FeeIncGst,
-            $"Listing fee — {stallion.Name}, {season.Name}", caller.Email, successUrl, cancelUrl);
+        // A payment page is already open (double-click, second tab): reuse it rather than create a second payable session.
+        if (!string.IsNullOrEmpty(subscription.PendingCheckoutUrl)
+            && subscription.PendingCheckoutExpiresAt > DateTime.UtcNow.AddMinutes(5))
+            return ServiceResult<PaymentRedirectDto>.Ok(new PaymentRedirectDto { Url = subscription.PendingCheckoutUrl });
+
+        string url;
+        try
+        {
+            url = await _provider.CreateListingFeeSessionAsync(subscription.Id, subscription.FeeIncGst,
+                $"Listing fee — {stallion.Name}, {season.Name}", caller.Email, successUrl, cancelUrl);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Could not start a listing fee payment for subscription {SubscriptionId}", subscription.Id);
+            return ServiceResult<PaymentRedirectDto>.BadRequest("The payment page is unavailable right now. Please try again shortly.");
+        }
+
+        subscription.PendingCheckoutUrl = url;
+        subscription.PendingCheckoutExpiresAt = DateTime.UtcNow.AddHours(1); // matches the Stripe session's expiry
+        await _repo.UpdateAsync(subscription);
         return ServiceResult<PaymentRedirectDto>.Ok(new PaymentRedirectDto { Url = url });
     }
 

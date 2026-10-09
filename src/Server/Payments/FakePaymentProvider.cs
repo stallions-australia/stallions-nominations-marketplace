@@ -52,8 +52,8 @@ public class FakePaymentProvider : IPaymentProvider
     /// <summary>Puts a session back after its event could not be processed, so the approval can be retried.</summary>
     public void Restore(FakeSession session) => _sessions[session.Id] = session;
 
-    /// <summary>Abandons the session. Returns the cancel URL, or null if it doesn't exist.</summary>
-    public string? Decline(string id) => _sessions.TryRemove(id, out var s) ? s.CancelUrl : null;
+    /// <summary>Returns the cancel URL, or null if the session doesn't exist. Like Stripe, the session stays open and payable until it is approved.</summary>
+    public string? Decline(string id) => _sessions.TryGetValue(id, out var s) ? s.CancelUrl : null;
 
     private string Start(FakeSession session)
     {

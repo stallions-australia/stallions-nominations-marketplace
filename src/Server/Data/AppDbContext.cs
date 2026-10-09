@@ -373,6 +373,7 @@ public class AppDbContext : DbContext
             e.Property(s => s.PaymentReference).HasMaxLength(200);
             e.Property(s => s.WaiverReason).HasMaxLength(500);
             e.Property(s => s.Notes).HasMaxLength(1000);
+            e.Property(s => s.PendingCheckoutUrl).HasMaxLength(2048);
 
             e.HasOne(s => s.Stallion)
                 .WithMany()

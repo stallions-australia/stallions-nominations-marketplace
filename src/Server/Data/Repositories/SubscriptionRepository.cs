@@ -49,4 +49,7 @@ public class SubscriptionRepository : ISubscriptionRepository
         _db.StallionSeasonSubscriptions.Update(subscription);
         await _db.SaveChangesAsync();
     }
+
+    public void Detach(StallionSeasonSubscription subscription) =>
+        _db.Entry(subscription).State = EntityState.Detached;
 }

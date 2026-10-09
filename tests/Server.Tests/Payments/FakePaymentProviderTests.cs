@@ -41,14 +41,26 @@ public class FakePaymentProviderTests
     }
 
     [Fact]
-    public async Task Session_CanOnlyBeCompletedOnce()
+    public async Task Session_ApproveIsSingleUse()
     {
         var url = await _fake.CreateCardSetupSessionAsync(Guid.NewGuid(), "cus", "https://ok", "https://no");
         var id = url.Split('/').Last();
 
-        _fake.Decline(id).Should().Be("https://no");
+        _fake.Approve(id).Should().NotBeNull();
         _fake.Approve(id).Should().BeNull();
         _fake.GetSession(id).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Session_StaysPayableAfterDecline()
+    {
+        // Like Stripe: cancelling leaves the Checkout session open until it expires.
+        var url = await _fake.CreateCardSetupSessionAsync(Guid.NewGuid(), "cus", "https://ok", "https://no");
+        var id = url.Split('/').Last();
+
+        _fake.Decline(id).Should().Be("https://no");
+        _fake.GetSession(id).Should().NotBeNull();
+        _fake.Approve(id).Should().NotBeNull();
     }
 
     [Fact]

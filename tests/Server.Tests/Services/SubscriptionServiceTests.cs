@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
@@ -59,7 +60,8 @@ public class SubscriptionServiceTests : IDisposable
         new PlatformSettingsRepository(_db),
         new AuditLogRepository(_db),
         _users.Object,
-        _provider.Object);
+        _provider.Object,
+        NullLogger<SubscriptionService>.Instance);
 
     private void SignInAs(User user) =>
         _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
@@ -397,4 +399,140 @@ public class SubscriptionServiceTests : IDisposable
     [Fact]
     public async Task Activate_AsStaff_IsForbidden() =>
         (await ActivateAs(_staff, _stallionA)).HttpStatusCode.Should().Be(403);
+
+    private async Task SetPendingCheckoutAsync(Guid subscriptionId, string url, DateTime expiresAt)
+    {
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync(s => s.Id == subscriptionId);
+        sub.PendingCheckoutUrl = url;
+        sub.PendingCheckoutExpiresAt = expiresAt;
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Activate_ReusingStaffPending_CallsProviderWithTheExistingSubscriptionId()
+    {
+        var created = await CreatePendingAsync(_stallionA, feeOverride: 495m);
+        PaymentPageReturns("https://pay/fee");
+
+        await ActivateAs(_studUserA, _stallionA);
+
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(created.Id, 495m,
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activate_StoresTheCheckoutUrl_AndASecondClickReusesIt()
+    {
+        PaymentPageReturns("https://pay/fee");
+
+        await ActivateAs(_studUserA, _stallionA);
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
+        sub.PendingCheckoutUrl.Should().Be("https://pay/fee");
+        sub.PendingCheckoutExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddHours(1), TimeSpan.FromMinutes(1));
+
+        PaymentPageReturns("https://pay/other");
+        var second = await ActivateAs(_studUserA, _stallionA);
+
+        second.Value!.Url.Should().Be("https://pay/fee");
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), It.IsAny<decimal>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activate_WithAnExpiredOrNearlyExpiredCheckout_StartsANewSession()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await SetPendingCheckoutAsync(created.Id, "https://pay/old", DateTime.UtcNow.AddMinutes(2));
+        PaymentPageReturns("https://pay/new");
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.Value!.Url.Should().Be("https://pay/new");
+        (await _db.StallionSeasonSubscriptions.SingleAsync()).PendingCheckoutUrl.Should().Be("https://pay/new");
+    }
+
+    [Fact]
+    public async Task Activate_InactiveStallion_IsBadRequest()
+    {
+        _stallionA.IsActive = false;
+        await _db.SaveChangesAsync();
+
+        (await ActivateAs(_studUserA, _stallionA)).HttpStatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task Activate_Waived_IsBadRequest()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await CreateSut().WaiveAsync(created.Id, new WaiveSubscriptionRequest { Reason = "Founding stud" });
+
+        (await ActivateAs(_studUserA, _stallionA)).HttpStatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task Activate_WithZeroFee_IsBadRequestAndStartsNoPayment()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync(s => s.Id == created.Id);
+        sub.FeeIncGst = 0m;
+        await _db.SaveChangesAsync();
+
+        (await ActivateAs(_studUserA, _stallionA)).HttpStatusCode.Should().Be(400);
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), It.IsAny<decimal>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activate_WithNoFarm_IsForbidden()
+    {
+        var orphan = new User { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active, ObjectId = "o", Email = "o@x", DisplayName = "O" };
+        _db.Users.Add(orphan);
+        await _db.SaveChangesAsync();
+
+        (await ActivateAs(orphan, _stallionA)).HttpStatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task Activate_WhenTheProviderFails_IsBadRequestAndKeepsThePendingSubscription()
+    {
+        _provider.Setup(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), It.IsAny<decimal>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ThrowsAsync(new InvalidOperationException("stripe down"));
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("The payment page is unavailable right now. Please try again shortly.");
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
+        sub.Status.Should().Be(SubscriptionStatus.Pending);
+        sub.PendingCheckoutUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task MarkPaid_ClearsAnOpenCheckout()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await SetPendingCheckoutAsync(created.Id, "https://pay/open", DateTime.UtcNow.AddMinutes(30));
+        SignInAs(_staff);
+
+        await CreateSut().MarkPaidAsync(created.Id, new MarkSubscriptionPaidRequest { PaymentMethod = "Invoice" });
+
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
+        sub.PendingCheckoutUrl.Should().BeNull();
+        sub.PendingCheckoutExpiresAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Waive_ClearsAnOpenCheckout()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await SetPendingCheckoutAsync(created.Id, "https://pay/open", DateTime.UtcNow.AddMinutes(30));
+        SignInAs(_staff);
+
+        await CreateSut().WaiveAsync(created.Id, new WaiveSubscriptionRequest { Reason = "Founding stud" });
+
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
+        sub.PendingCheckoutUrl.Should().BeNull();
+        sub.PendingCheckoutExpiresAt.Should().BeNull();
+    }
 }

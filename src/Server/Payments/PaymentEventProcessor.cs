@@ -180,6 +180,8 @@ public class PaymentEventProcessor : IPaymentEventProcessor
         subscription.PaymentMethod = SubscriptionPaymentMethod.Card;
         subscription.PaymentReference = e.PaymentReference;
         subscription.PaidAt = DateTime.UtcNow;
+        subscription.PendingCheckoutUrl = null;
+        subscription.PendingCheckoutExpiresAt = null;
         await _subscriptions.UpdateAsync(subscription);
 
         await _audit.LogAsync("StallionSeasonSubscription", subscription.Id, "ListingFeePaidByCard", null,

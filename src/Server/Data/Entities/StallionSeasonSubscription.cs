@@ -25,6 +25,11 @@ public class StallionSeasonSubscription
     public DateTime? PaidAt { get; set; }
     public string? WaiverReason { get; set; }
     public string? Notes { get; set; }
+    // The hosted payment page currently open for this Pending subscription; reused while it has
+    // at least 5 minutes left so a double-click or second tab can't create a second payable session.
+    public string? PendingCheckoutUrl { get; set; }
+    public DateTime? PendingCheckoutExpiresAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Guid CreatedByUserId { get; set; }
 

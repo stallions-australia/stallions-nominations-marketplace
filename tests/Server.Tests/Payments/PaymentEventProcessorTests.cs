@@ -101,6 +101,9 @@ public class PaymentEventProcessorTests : IDisposable
     public async Task ListingFeePaid_MarksThePendingSubscriptionPaidByCard()
     {
         var sub = PendingSubscription(990m);
+        sub.PendingCheckoutUrl = "https://pay/open";
+        sub.PendingCheckoutExpiresAt = DateTime.UtcNow.AddMinutes(30);
+        await _db.SaveChangesAsync();
 
         var outcome = await CreateSut().ProcessAsync(
             new ListingFeePaidEvent("evt_p", sub.Id, 99000, "aud", "pi_123"));
@@ -110,6 +113,8 @@ public class PaymentEventProcessorTests : IDisposable
         saved.Status.Should().Be(SubscriptionStatus.Paid);
         saved.PaymentMethod.Should().Be(SubscriptionPaymentMethod.Card);
         saved.PaymentReference.Should().Be("pi_123");
+        saved.PendingCheckoutUrl.Should().BeNull();
+        saved.PendingCheckoutExpiresAt.Should().BeNull();
         saved.PaidAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(10));
         (await _db.AuditLogs.SingleAsync()).Action.Should().Be("ListingFeePaidByCard");
     }
