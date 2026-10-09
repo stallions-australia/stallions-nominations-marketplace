@@ -14,7 +14,7 @@ public class FakePaymentProviderTests
         var url = await _fake.CreateCardSetupSessionAsync(userId, "cus_fake_1", "https://app/ok", "https://app/no");
         var sessionId = url.Split('/').Last();
 
-        var (evt, redirect) = _fake.Approve(sessionId)!.Value;
+        var (_, evt, redirect, _) = _fake.Approve(sessionId)!.Value;
 
         url.Should().StartWith("/payments/fake/");
         redirect.Should().Be("https://app/ok");
@@ -32,7 +32,7 @@ public class FakePaymentProviderTests
         var url = await _fake.CreateListingFeeSessionAsync(subscriptionId, 990m, "Listing fee", "stud@x",
             "https://app/ok", "https://app/no");
 
-        var (evt, _) = _fake.Approve(url.Split('/').Last())!.Value;
+        var (_, evt, _, _) = _fake.Approve(url.Split('/').Last())!.Value;
 
         var paid = evt.Should().BeOfType<ListingFeePaidEvent>().Subject;
         paid.SubscriptionId.Should().Be(subscriptionId);

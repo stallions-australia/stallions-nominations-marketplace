@@ -10,7 +10,7 @@ public static class PaymentServiceCollectionExtensions
         services.Configure<PaymentOptions>(section);
         var options = section.Get<PaymentOptions>() ?? new PaymentOptions();
 
-        var error = PaymentOptionsValidator.Validate(options, environment.IsProduction());
+        var error = PaymentOptionsValidator.Validate(options, environment.EnvironmentName);
         if (error != null) throw new InvalidOperationException($"Payment configuration: {error}");
 
         if (options.Provider == PaymentOptions.ProviderFake)

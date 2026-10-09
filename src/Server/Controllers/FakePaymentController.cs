@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +16,8 @@ namespace Stallions.Server.Controllers;
 [ApiExplorerSettings(IgnoreApi = true)]
 public class FakePaymentController : ControllerBase
 {
+    private static readonly CultureInfo AuCulture = CultureInfo.GetCultureInfo("en-AU");
+
     private readonly IPaymentProvider _provider;
     private readonly IPaymentEventProcessor _processor;
 
@@ -30,7 +33,7 @@ public class FakePaymentController : ControllerBase
         if (_provider is not FakePaymentProvider fake || fake.GetSession(id) is not { } s) return NotFound();
         var what = s.IsCardSetup
             ? "Save a card (simulated Visa •••• 4242)"
-            : $"{WebUtility.HtmlEncode(s.Description)} — {s.AmountCents / 100m:C} AUD";
+            : $"{WebUtility.HtmlEncode(s.Description)} — {(s.AmountCents / 100m).ToString("C", AuCulture)} AUD";
         var html = $$"""
             <!doctype html><html lang="en"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -45,6 +48,7 @@ public class FakePaymentController : ControllerBase
             <form method="post" action="/payments/fake/{{id}}/decline" style="display:inline"><button type="submit">Decline</button></form>
             </body></html>
             """;
+        Response.Headers.CacheControl = "no-store";
         return Content(html, "text/html");
     }
 
@@ -52,8 +56,20 @@ public class FakePaymentController : ControllerBase
     public async Task<IActionResult> Approve(string id)
     {
         if (_provider is not FakePaymentProvider fake || fake.Approve(id) is not { } result) return NotFound();
-        await _processor.ProcessAsync(result.Event);
-        return Redirect(result.RedirectUrl);
+        PaymentEventOutcome outcome;
+        try
+        {
+            outcome = await _processor.ProcessAsync(result.Event);
+        }
+        catch
+        {
+            fake.Restore(result.Session); // nothing was applied; let the approval be retried
+            throw;
+        }
+
+        return Redirect(outcome is PaymentEventOutcome.Processed or PaymentEventOutcome.Duplicate
+            ? result.SuccessUrl
+            : result.CancelUrl);
     }
 
     [HttpPost("{id}/decline")]

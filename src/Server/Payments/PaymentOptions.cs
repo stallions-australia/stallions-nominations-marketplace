@@ -22,12 +22,12 @@ public class StripeSettings
 public static class PaymentOptionsValidator
 {
     /// <summary>Returns an error message, or null when the configuration is usable.</summary>
-    public static string? Validate(PaymentOptions options, bool isProduction)
+    public static string? Validate(PaymentOptions options, string environmentName)
     {
         switch (options.Provider)
         {
             case PaymentOptions.ProviderFake:
-                return isProduction ? "The fake payment provider cannot run in Production." : null;
+                return IsFakeAllowed(environmentName) ? null : "The fake payment provider can only run in Development or Staging.";
             case PaymentOptions.ProviderStripe:
                 if (!IsUsable(options.Stripe.SecretKey))
                     return "Payments:Stripe:SecretKey is missing or its Key Vault reference did not resolve.";
@@ -38,6 +38,11 @@ public static class PaymentOptionsValidator
                 return $"Unknown payment provider '{options.Provider}'. Use Fake or Stripe.";
         }
     }
+
+    // Allow-list, not a Production deny-list: an unexpected environment name must not enable the fake.
+    private static bool IsFakeAllowed(string? environmentName) =>
+        string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase);
 
     // App Service leaves the literal "@Microsoft.KeyVault(...)" in place when it can't resolve a reference.
     private static bool IsUsable(string value) =>
