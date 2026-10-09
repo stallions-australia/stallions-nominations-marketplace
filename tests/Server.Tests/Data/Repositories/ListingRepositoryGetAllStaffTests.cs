@@ -32,6 +32,29 @@ public class ListingRepositoryGetAllStaffTests
     }
 
     [Fact]
+    public async Task GetByStudFarmIdAsync_LoadsSeasonAndStallion()
+    {
+        // My Listings shows each listing's season — it was blank because Season wasn't loaded.
+        await using var db = DbContextFactory.Create(nameof(GetByStudFarmIdAsync_LoadsSeasonAndStallion));
+        var (_, farm, stallion, season) = SeedCommon(db, "M");
+        db.AuctionListings.Add(new AuctionListing
+        {
+            Id = Guid.NewGuid(), StallionId = stallion.Id, SeasonId = season.Id, StudFarmId = farm.Id,
+            ListingType = ListingType.Auction, Status = ListingStatus.Active,
+            EndDateTime = DateTime.UtcNow.AddDays(7)
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear(); // force the query to load navigations itself
+
+        var result = await new ListingRepository(db).GetByStudFarmIdAsync(farm.Id);
+
+        var listing = result.Should().ContainSingle().Subject;
+        listing.Season.Should().NotBeNull();
+        listing.Season.Name.Should().Be("Season M");
+        listing.Stallion.Name.Should().Be("Stallion M");
+    }
+
+    [Fact]
     public async Task GetAllStaffAsync_ReturnsAllListings_WithNavigations()
     {
         await using var db = DbContextFactory.Create(

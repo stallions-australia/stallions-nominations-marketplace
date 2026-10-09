@@ -54,7 +54,10 @@ public class ListingRepository : IListingRepository
 
     public async Task<IReadOnlyList<Listing>> GetByStudFarmIdAsync(Guid studFarmId) =>
         await _db.Listings.Where(l => l.StudFarmId == studFarmId)
-            .Include(l => l.Stallion).OrderByDescending(l => l.CreatedAt).ToListAsync();
+            .Include(l => l.Stallion)
+            .Include(l => l.Season)
+            .Include(l => l.StudFarm)
+            .OrderByDescending(l => l.CreatedAt).ToListAsync();
 
     public async Task<IReadOnlyList<AuctionListing>> GetExpiredAuctionsAsync() =>
         await _db.AuctionListings
