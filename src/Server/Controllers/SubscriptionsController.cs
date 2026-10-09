@@ -36,6 +36,16 @@ public class SubscriptionsController : ControllerBase
         return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpPost("activate")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
+    public async Task<IActionResult> Activate([FromBody] ActivateStallionRequest request)
+    {
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var r = await _subscriptions.ActivateAsync(request,
+            $"{baseUrl}/admin/stallions?payment=success", $"{baseUrl}/admin/stallions?payment=cancelled");
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpPost("{id:guid}/mark-paid")]
     [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> MarkPaid(Guid id, [FromBody] MarkSubscriptionPaidRequest request)

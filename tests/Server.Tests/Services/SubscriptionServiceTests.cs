@@ -4,8 +4,10 @@ using Moq;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Payments;
 using Stallions.Server.Services;
 using Stallions.Server.Tests.Helpers;
+using Stallions.Shared.DTOs.Payments;
 using Stallions.Shared.DTOs.Subscriptions;
 using Stallions.Shared.Enums;
 
@@ -19,6 +21,7 @@ public class SubscriptionServiceTests : IDisposable
 {
     private readonly AppDbContext _db;
     private readonly Mock<IUserService> _users = new();
+    private readonly Mock<IPaymentProvider> _provider = new();
 
     private readonly User _staff = new() { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active, ObjectId = "staff", Email = "staff@x", DisplayName = "Staff" };
     private readonly User _studUserA = new() { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active, ObjectId = "a", Email = "a@x", DisplayName = "A" };
@@ -55,7 +58,8 @@ public class SubscriptionServiceTests : IDisposable
         new StudFarmRepository(_db),
         new PlatformSettingsRepository(_db),
         new AuditLogRepository(_db),
-        _users.Object);
+        _users.Object,
+        _provider.Object);
 
     private void SignInAs(User user) =>
         _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
@@ -320,4 +324,77 @@ public class SubscriptionServiceTests : IDisposable
 
         index.IsUnique.Should().BeTrue();
     }
+
+    // ── Self-serve activation ───────────────────────────────────────────────
+
+    private void PaymentPageReturns(string url) =>
+        _provider.Setup(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), It.IsAny<decimal>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(url);
+
+    private Task<ServiceResult<PaymentRedirectDto>> ActivateAs(User user, Stallion stallion)
+    {
+        SignInAs(user);
+        return CreateSut().ActivateAsync(new ActivateStallionRequest { StallionId = stallion.Id },
+            "https://app/ok", "https://app/no");
+    }
+
+    [Fact]
+    public async Task Activate_OwnStallion_CreatesPendingAtStandardFeeAndStartsPayment()
+    {
+        PaymentPageReturns("https://pay/fee");
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.Value!.Url.Should().Be("https://pay/fee");
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
+        sub.Status.Should().Be(SubscriptionStatus.Pending);
+        (sub.FeeIncGst, sub.FeeExGst, sub.GstAmount).Should().Be((990m, 900m, 90m));
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(sub.Id, 990m,
+            "Listing fee — Stallion A, 2026 Season", _studUserA.Email, "https://app/ok", "https://app/no"), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activate_ReusesStaffPendingSubscriptionWithItsDiscount()
+    {
+        await CreatePendingAsync(_stallionA, feeOverride: 495m);
+        PaymentPageReturns("https://pay/fee");
+
+        await ActivateAs(_studUserA, _stallionA);
+
+        (await _db.StallionSeasonSubscriptions.CountAsync()).Should().Be(1);
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), 495m,
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activate_AnotherFarmsStallion_IsNotFound()
+    {
+        (await ActivateAs(_studUserA, _stallionB)).HttpStatusCode.Should().Be(404);
+        (await _db.StallionSeasonSubscriptions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Activate_AlreadyPaid_IsBadRequest()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await CreateSut().MarkPaidAsync(created.Id, new MarkSubscriptionPaidRequest { PaymentMethod = "Invoice" });
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Contain("already active");
+    }
+
+    [Fact]
+    public async Task Activate_WithNoOpenSeason_IsBadRequest()
+    {
+        _season.IsOpen = false;
+        await _db.SaveChangesAsync();
+
+        (await ActivateAs(_studUserA, _stallionA)).HttpStatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task Activate_AsStaff_IsForbidden() =>
+        (await ActivateAs(_staff, _stallionA)).HttpStatusCode.Should().Be(403);
 }
