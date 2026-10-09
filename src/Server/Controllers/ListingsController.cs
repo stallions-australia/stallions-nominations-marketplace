@@ -13,7 +13,6 @@ public class ListingsController : ControllerBase
     private readonly IListingService _listings;
     public ListingsController(IListingService listings) => _listings = listings;
 
-    private bool IsStaff => User.IsInRole("Staff");
 
     [HttpGet]
     [AllowAnonymous]
@@ -30,7 +29,8 @@ public class ListingsController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var r = await _listings.GetByIdAsync(id, IsStaff);
+        // Reserve visibility (Staff / owning stud only) is decided in the service from the DB role.
+        var r = await _listings.GetByIdAsync(id);
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 

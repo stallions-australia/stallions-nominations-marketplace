@@ -7,7 +7,8 @@ public class ListingStaffSummaryDto
     public string StudFarmName { get; set; } = string.Empty;
     public string ListingType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
-    public decimal? PriceIncGst { get; set; }
+    public decimal? HighestBidIncGst { get; set; }  // null when no bids
+    public decimal? ReservePrice { get; set; }      // Staff-only view; null when no reserve
     public decimal? BuyerFeeIncGst { get; set; }  // null until first published
     public DateTime? PublishedAt { get; set; }
 }

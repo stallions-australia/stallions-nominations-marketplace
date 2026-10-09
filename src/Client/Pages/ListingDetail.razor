@@ -35,8 +35,15 @@ else
         <div class="listing-main">
 
             <div class="listing-price-block">
-                <PriceDisplay Amount="@GetDisplayPrice()" Large="true" />
-                <span class="listing-gst-label">inc. GST</span>
+                @if (GetHighestBid() is decimal highBid)
+                {
+                    <PriceDisplay Amount="@highBid" Large="true" />
+                    <span class="listing-gst-label">inc. GST &middot; current high bid</span>
+                }
+                else
+                {
+                    <span class="listing-gst-label">No bids yet</span>
+                }
                 @if (_listing is AuctionListingDto { IsNoReserve: true })
                 {
                     <span class="badge" style="margin-left: var(--space-3)">No reserve</span>
@@ -49,10 +56,10 @@ else
                     <div class="auction-meta">
                         <span class="text-secondary text-sm">Live auction</span>
                         <AuctionTimer ClosesAt="@auction.EndDateTime" />
-                        @if (!auction.IsNoReserve)
+                        @if (auction.ReserveMet is bool reserveMet)
                         {
-                            <span class="@(IsReserveMet(auction) ? "text-success" : "text-muted") text-sm">
-                                @(IsReserveMet(auction) ? "Reserve met" : "Reserve not met")
+                            <span class="@(reserveMet ? "text-success" : "text-muted") text-sm">
+                                @(reserveMet ? "Reserve met" : "Reserve not met")
                             </span>
                         }
                     </div>
@@ -63,12 +70,11 @@ else
                             {
                                 <div class="bid-form">
                                     <p class="bid-form-hint">
-                                        Current: <strong>@FormatPrice(GetDisplayPrice())</strong>
-                                        &middot; Min next bid: <strong>@FormatPrice(GetDisplayPrice() + auction.MinimumBidIncrement)</strong>
+                                        Min next bid: <strong>@FormatPrice(GetMinimumNextBid(auction))</strong>
                                     </p>
                                     <div class="bid-form-row">
                                         <input class="form-input" type="number" step="25"
-                                               min="@(GetDisplayPrice() + auction.MinimumBidIncrement)"
+                                               min="@GetMinimumNextBid(auction)"
                                                @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
                                         <button class="btn btn-gold" @onclick="StartBid" disabled="@_bidBusy">
                                             @(_bidBusy ? "Placing…" : "Place bid")
@@ -154,21 +160,15 @@ else
         }
     }
 
-    private decimal GetDisplayPrice()
-    {
-        if (_refreshedHighestBid.HasValue) return _refreshedHighestBid.Value;
-        return _listing switch
-        {
-            AuctionListingDto al when al.CurrentHighestBidIncGst.HasValue => al.CurrentHighestBidIncGst.Value,
-            AuctionListingDto al => al.StartingPrice,
-            _ => 0m
-        };
-    }
+    // No starting or asking price is ever shown — only the current high bid, if any.
+    private decimal? GetHighestBid() =>
+        _refreshedHighestBid ?? (_listing as AuctionListingDto)?.CurrentHighestBidIncGst;
 
-    private static bool IsReserveMet(AuctionListingDto auction) =>
-        !auction.IsNoReserve &&
-        auction.ReservePrice.HasValue &&
-        auction.CurrentHighestBidIncGst >= auction.ReservePrice;
+    // First bid: at least the buyer fee (it forms part of the price). Later bids: high bid + increment.
+    private decimal GetMinimumNextBid(AuctionListingDto auction) =>
+        GetHighestBid() is decimal high
+            ? high + auction.MinimumBidIncrement
+            : auction.BuyerFeeIncGst ?? auction.MinimumBidIncrement;
 
     private static string FormatPrice(decimal amount) =>
         amount.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("en-AU"));

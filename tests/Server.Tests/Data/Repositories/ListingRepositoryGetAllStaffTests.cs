@@ -58,7 +58,6 @@ public class ListingRepositoryGetAllStaffTests
             StudFarmId = farm2.Id,
             ListingType = ListingType.Auction,
             Status = ListingStatus.Active,
-            StartingPrice = 5000m,
             EndDateTime = DateTime.UtcNow.AddDays(7)
         };
 

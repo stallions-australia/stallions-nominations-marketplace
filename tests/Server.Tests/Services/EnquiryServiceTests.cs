@@ -177,7 +177,6 @@ public class EnquiryServiceTests
             Id = Guid.NewGuid(),
             StudFarmId = Guid.NewGuid(),
             Status = ListingStatus.Active,
-            StartingPrice = 10_000m,
             Stallion = stallion,
             Season = season
         };

@@ -41,7 +41,7 @@ public class ListingServiceCardTests
             StudFarm = studFarm, StudFarmId = studFarm.Id,
             Stallion = stallion, StallionId = stallion.Id,
             Season = new Season { Name = "2025 Season" },
-            StartingPrice = 5000m, ReservePrice = 8000m, IsNoReserve = false,
+            ReservePrice = 8000m, IsNoReserve = false,
             MinimumBidIncrement = 25m,
             EndDateTime = DateTime.UtcNow.AddDays(3),
             Status = ListingStatus.Active, ListingType = ListingType.Auction
@@ -65,6 +65,7 @@ public class ListingServiceCardTests
         card.BidCount.Should().Be(3);
         card.CurrentHighestBidIncGst.Should().Be(7500m);
         card.ReserveMet.Should().BeFalse(); // 7500 < 8000 reserve
+        card.CurrentHighestBidIncGst.Should().Be(7500m);
         card.AuctionClosesAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(3), TimeSpan.FromSeconds(5));
     }
 
@@ -84,7 +85,7 @@ public class ListingServiceCardTests
             StudFarm = studFarm, StudFarmId = studFarm.Id,
             Stallion = stallion, StallionId = stallion.Id,
             Season = new Season { Name = "2025 Season" },
-            StartingPrice = 5000m, ReservePrice = 10000m, IsNoReserve = false,
+            ReservePrice = 10000m, IsNoReserve = false,
             MinimumBidIncrement = 25m,
             EndDateTime = DateTime.UtcNow.AddDays(5),
             Status = ListingStatus.Active, ListingType = ListingType.Auction

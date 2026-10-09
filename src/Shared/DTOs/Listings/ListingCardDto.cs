@@ -11,10 +11,7 @@ public class ListingCardDto
     public string StudFarmName { get; set; } = string.Empty;
     public string? SeasonName { get; set; }
 
-    /// <summary>Starting price for auctions.</summary>
-    public decimal PriceIncGst { get; set; }
-
-    // Auction-specific
+    // Auction-specific. No starting or asking price is ever shown — only the current high bid.
     public decimal? CurrentHighestBidIncGst { get; set; }
     public int? BidCount { get; set; }
     public DateTime? AuctionClosesAt { get; set; }

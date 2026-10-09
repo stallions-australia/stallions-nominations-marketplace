@@ -4,10 +4,8 @@ namespace Stallions.Shared.DTOs.Listings;
 // BuyerFeeIncGst is deliberately absent — it is snapshotted from Staff-managed settings on publish.
 public class UpdateListingRequest
 {
-    public decimal? StartingPrice { get; set; }
     public decimal? ReservePrice { get; set; }
     public bool? IsNoReserve { get; set; }
-    public decimal? MinimumBidIncrement { get; set; }
     public DateTime? EndDateTime { get; set; }
     public string? Description { get; set; }
     public string? TermsAndConditions { get; set; }

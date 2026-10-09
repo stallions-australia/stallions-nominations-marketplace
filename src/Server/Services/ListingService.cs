@@ -36,16 +36,27 @@ public class ListingService : IListingService
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff)
     {
         var listings = await _listingRepo.GetActiveAsync(seasonId, null, type);
-        var dtos = listings.Select(l => MapToDto(l, isStaff)).ToList();
-        return ServiceResult<IReadOnlyList<ListingDto>>.Ok(dtos);
+        return ServiceResult<IReadOnlyList<ListingDto>>.Ok(await ToDtosAsync(listings, canSeeReserve: isStaff));
     }
 
-    public async Task<ServiceResult<ListingDto>> GetByIdAsync(Guid id, bool isStaff)
+    public async Task<ServiceResult<ListingDto>> GetByIdAsync(Guid id)
     {
         var listing = await _listingRepo.GetByIdAsync(id);
         if (listing == null)
             return ServiceResult<ListingDto>.NotFound("Listing not found.");
-        return ServiceResult<ListingDto>.Ok(MapToDto(listing, isStaff));
+        return ServiceResult<ListingDto>.Ok(await ToDtoAsync(listing, await CanSeeReserveAsync(listing)));
+    }
+
+    // The reserve amount is visible only to Staff and the owning stud's admin. Roles come from the
+    // database (tokens carry no role claims); anonymous visitors resolve to no user.
+    private async Task<bool> CanSeeReserveAsync(Listing listing)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null) return false;
+        if (caller.Role == UserRole.Staff) return true;
+        if (caller.Role != UserRole.StudFarmAdmin) return false;
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        return farm != null && farm.Id == listing.StudFarmId;
     }
 
     public async Task<ServiceResult<ListingDto>> GetMineByIdAsync(Guid id)
@@ -65,7 +76,7 @@ public class ListingService : IListingService
         if (listing.StudFarmId != farm.Id)
             return ServiceResult<ListingDto>.Forbidden("You do not have permission to view this listing.");
 
-        return ServiceResult<ListingDto>.Ok(MapToDto(listing, true));
+        return ServiceResult<ListingDto>.Ok(await ToDtoAsync(listing, canSeeReserve: true));
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetMineAsync()
@@ -79,9 +90,8 @@ public class ListingService : IListingService
             return ServiceResult<IReadOnlyList<ListingDto>>.NotFound("No stud farm found for the current user.");
 
         var listings = await _listingRepo.GetByStudFarmIdAsync(farm.Id);
-        // Farm admin sees full details (isStaff = true so fee/reserve are visible)
-        var dtos = listings.Select(l => MapToDto(l, true)).ToList();
-        return ServiceResult<IReadOnlyList<ListingDto>>.Ok(dtos);
+        // The farm's own admin sees full details, including the reserve.
+        return ServiceResult<IReadOnlyList<ListingDto>>.Ok(await ToDtosAsync(listings, canSeeReserve: true));
     }
 
     public async Task<ServiceResult<ListingDto>> CreateAuctionListingAsync(CreateAuctionListingRequest request)
@@ -109,11 +119,13 @@ public class ListingService : IListingService
         if (request.IsNoReserve && request.ReservePrice.HasValue)
             return ServiceResult<ListingDto>.BadRequest("Cannot set a reserve price on a no-reserve auction.");
 
+        if (request.ReservePrice is <= 0)
+            return ServiceResult<ListingDto>.BadRequest("Reserve price must be greater than zero.");
+
         if (request.EndDateTime <= DateTime.UtcNow)
             return ServiceResult<ListingDto>.BadRequest("End date/time must be in the future.");
 
-        if (request.MinimumBidIncrement <= 0)
-            return ServiceResult<ListingDto>.BadRequest("Minimum bid increment must be greater than zero.");
+        var settings = await _settingsRepo.GetAsync();
 
         var listing = new AuctionListing
         {
@@ -124,15 +136,14 @@ public class ListingService : IListingService
             Status = ListingStatus.Draft,
             Description = request.Description,
             TermsAndConditions = request.TermsAndConditions,
-            StartingPrice = request.StartingPrice,
             ReservePrice = request.ReservePrice,
             IsNoReserve = request.IsNoReserve,
-            MinimumBidIncrement = request.MinimumBidIncrement,
+            MinimumBidIncrement = settings.MinimumBidIncrement,
             EndDateTime = request.EndDateTime
         };
 
         var created = await _listingRepo.AddAsync(listing);
-        return ServiceResult<ListingDto>.Created(MapToDto(created, true));
+        return ServiceResult<ListingDto>.Created(MapToDto(created, canSeeReserve: true, highestBid: null));
     }
 
     public async Task<ServiceResult<ListingDto>> UpdateListingAsync(Guid id, UpdateListingRequest request)
@@ -175,17 +186,17 @@ public class ListingService : IListingService
 
             if (listing is AuctionListing al)
             {
-                if (request.StartingPrice.HasValue) al.StartingPrice = request.StartingPrice.Value;
+                if (request.ReservePrice is <= 0)
+                    return ServiceResult<ListingDto>.BadRequest("Reserve price must be greater than zero.");
                 if (request.ReservePrice.HasValue) al.ReservePrice = request.ReservePrice;
                 if (request.IsNoReserve.HasValue) al.IsNoReserve = request.IsNoReserve.Value;
-                if (request.MinimumBidIncrement.HasValue) al.MinimumBidIncrement = request.MinimumBidIncrement.Value;
                 if (request.EndDateTime.HasValue) al.EndDateTime = request.EndDateTime.Value;
             }
         }
         // Once published, only the description is editable (already handled above).
 
         await _listingRepo.UpdateAsync(listing);
-        return ServiceResult<ListingDto>.Ok(MapToDto(listing, true));
+        return ServiceResult<ListingDto>.Ok(await ToDtoAsync(listing, canSeeReserve: true));
     }
 
     public async Task<ServiceResult> PublishListingAsync(Guid id)
@@ -332,15 +343,14 @@ public class ListingService : IListingService
             Status = ListingStatus.Draft,
             BuyerFeeIncGst = null,
             Description = al.Description,
-            StartingPrice = al.StartingPrice,
             ReservePrice = al.ReservePrice,
             IsNoReserve = al.IsNoReserve,
-            MinimumBidIncrement = al.MinimumBidIncrement,
+            MinimumBidIncrement = (await _settingsRepo.GetAsync()).MinimumBidIncrement,
             EndDateTime = DateTime.UtcNow.AddDays(7) // Stale end date not carried over — admin must update before publishing
         };
 
         var created = await _listingRepo.AddAsync(newListing);
-        return ServiceResult<ListingDto>.Created(MapToDto(created, true));
+        return ServiceResult<ListingDto>.Created(MapToDto(created, canSeeReserve: true, highestBid: null));
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingCardDto>>> GetListingCardsAsync(
@@ -385,22 +395,31 @@ public class ListingService : IListingService
                 StudFarmId       = al.StudFarmId,
                 StudFarmName     = al.StudFarm?.Name ?? string.Empty,
                 SeasonName       = al.Season?.Name,
-                PriceIncGst      = al.StartingPrice,
                 CurrentHighestBidIncGst = bidData.Highest,
                 BidCount         = bidData.Count,
                 AuctionClosesAt  = al.EndDateTime,
-                ReserveMet       = al.IsNoReserve
-                    ? null
-                    : bidData.Highest.HasValue
-                        ? al.ReservePrice.HasValue && bidData.Highest >= al.ReservePrice
-                        : (bool?)null   // no bids yet — unknown, avoid showing "Reserve not met" on day 1
+                ReserveMet       = al.IsReserveMetBy(bidData.Highest)
             };
         }
 
         throw new InvalidOperationException($"Unknown listing type: {l.GetType().Name}");
     }
 
-    private static ListingDto MapToDto(Listing l, bool isStaff) => l switch
+    private async Task<ListingDto> ToDtoAsync(Listing listing, bool canSeeReserve) =>
+        (await ToDtosAsync(new[] { listing }, canSeeReserve))[0];
+
+    private async Task<IReadOnlyList<ListingDto>> ToDtosAsync(IReadOnlyList<Listing> listings, bool canSeeReserve)
+    {
+        var auctionIds = listings.OfType<AuctionListing>().Select(l => l.Id).ToList();
+        var bids = auctionIds.Count > 0
+            ? await _listingRepo.GetBidAggregatesAsync(auctionIds)
+            : new Dictionary<Guid, (int Count, decimal? Highest)>();
+        return listings
+            .Select(l => MapToDto(l, canSeeReserve, bids.TryGetValue(l.Id, out var b) ? b.Highest : null))
+            .ToList();
+    }
+
+    private static ListingDto MapToDto(Listing l, bool canSeeReserve, decimal? highestBid) => l switch
     {
         AuctionListing al => new AuctionListingDto
         {
@@ -419,11 +438,12 @@ public class ListingService : IListingService
             ClosedAt = al.ClosedAt,
             Description = al.Description,
             TermsAndConditions = al.TermsAndConditions,
-            StartingPrice = al.StartingPrice,
-            ReservePrice = isStaff ? al.ReservePrice : null,
-            IsNoReserve = al.IsNoReserve,
+            ReservePrice = canSeeReserve ? al.ReservePrice : null,
+            IsNoReserve = !al.HasReserve,
+            ReserveMet = al.IsReserveMetBy(highestBid),
             MinimumBidIncrement = al.MinimumBidIncrement,
-            EndDateTime = al.EndDateTime
+            EndDateTime = al.EndDateTime,
+            CurrentHighestBidIncGst = highestBid
         },
         _ => throw new InvalidOperationException($"Unknown listing type: {l.GetType().Name}")
     };

@@ -255,6 +255,35 @@ public class AdminServiceTests
     };
 
     [Fact]
+    public async Task GetAllListingsStaff_ShowsHighBidReserveAndBuyerFee()
+    {
+        var withReserve = new AuctionListing
+        {
+            Id = Guid.NewGuid(), ListingType = ListingType.Auction, Status = ListingStatus.Active,
+            ReservePrice = 20000m, BuyerFeeIncGst = 150m
+        };
+        var noReserve = new AuctionListing
+        {
+            Id = Guid.NewGuid(), ListingType = ListingType.Auction, Status = ListingStatus.Draft,
+            IsNoReserve = true
+        };
+        _listingRepoMock.Setup(r => r.GetAllStaffAsync()).ReturnsAsync(new List<Listing> { withReserve, noReserve });
+        _listingRepoMock.Setup(r => r.GetBidAggregatesAsync(It.IsAny<IEnumerable<Guid>>()))
+            .ReturnsAsync(new Dictionary<Guid, (int Count, decimal? Highest)> { { withReserve.Id, (4, 18500m) } });
+
+        var result = await CreateSut().GetAllListingsStaffAsync();
+
+        var first = result.Value!.Single(d => d.Id == withReserve.Id);
+        first.HighestBidIncGst.Should().Be(18500m);
+        first.ReservePrice.Should().Be(20000m);
+        first.BuyerFeeIncGst.Should().Be(150m);
+        var second = result.Value!.Single(d => d.Id == noReserve.Id);
+        second.HighestBidIncGst.Should().BeNull();
+        second.ReservePrice.Should().BeNull();
+        second.BuyerFeeIncGst.Should().BeNull();
+    }
+
+    [Fact]
     public async Task GetInvoices_ShowsBuyerFeesAndBalancePayableToStud()
     {
         var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };

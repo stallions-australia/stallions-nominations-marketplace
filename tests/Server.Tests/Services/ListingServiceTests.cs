@@ -23,6 +23,9 @@ public class ListingServiceTests
         // Default: the stallion has a paid listing fee, so publish tests not about the guard pass it.
         _subscriptionsMock.Setup(s => s.HasActiveSubscriptionAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
             .ReturnsAsync(true);
+        // Default: no bids on any auction.
+        _listingRepoMock.Setup(r => r.GetBidAggregatesAsync(It.IsAny<IEnumerable<Guid>>()))
+            .ReturnsAsync(new Dictionary<Guid, (int Count, decimal? Highest)>());
         _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
         {
             BuyerFeeIncGst = 150m, StandardListingFeeIncGst = 990m, MinimumBidIncrement = 25m,
@@ -53,7 +56,7 @@ public class ListingServiceTests
     private static AuctionListing DraftAuction(Guid farmId, decimal? buyerFee = null) => new()
     {
         Id = Guid.NewGuid(), StudFarmId = farmId, Status = ListingStatus.Draft,
-        StartingPrice = 8000m, BuyerFeeIncGst = buyerFee,
+        BuyerFeeIncGst = buyerFee,
         EndDateTime = DateTime.UtcNow.AddDays(7)
     };
 
@@ -74,7 +77,7 @@ public class ListingServiceTests
         var result = await CreateSut().CreateAuctionListingAsync(new CreateAuctionListingRequest
         {
             StallionId = stallion.Id, SeasonId = closedSeason.Id,
-            StartingPrice = 5000m, EndDateTime = DateTime.UtcNow.AddDays(7),
+            EndDateTime = DateTime.UtcNow.AddDays(7),
             TermsAndConditions = "Standard terms."
         });
 
@@ -89,7 +92,7 @@ public class ListingServiceTests
         var listing = DraftAuction(farm.Id, buyerFee: 150m);
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
-        await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { StartingPrice = 9000m });
+        await CreateSut().UpdateListingAsync(listing.Id, new UpdateListingRequest { ReservePrice = 9000m });
 
         _listingRepoMock.Verify(r => r.UpdateAsync(It.Is<Listing>(l => l.BuyerFeeIncGst == 150m)), Times.Once);
     }
@@ -103,7 +106,6 @@ public class ListingServiceTests
         var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Cancelled,
-            StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -124,7 +126,6 @@ public class ListingServiceTests
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
             PublishedAt = DateTime.UtcNow.AddDays(-1),
-            StartingPrice = 8000m,
             Description = "Old description"
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
@@ -146,7 +147,6 @@ public class ListingServiceTests
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Draft,
             PublishedAt = DateTime.UtcNow.AddDays(-1),   // was published — T&C now locked
-            StartingPrice = 8000m,
             TermsAndConditions = "Original T&C"
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
@@ -169,7 +169,6 @@ public class ListingServiceTests
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
             PublishedAt = publishedAt,
-            StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -189,7 +188,6 @@ public class ListingServiceTests
         var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
-            StartingPrice = 8000m
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -239,7 +237,9 @@ public class ListingServiceTests
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
         SetBuyerFeeSetting(200m);
 
-        var result = await CreateSut().GetByIdAsync(listing.Id, isStaff: false);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync((User?)null); // anonymous
+
+        var result = await CreateSut().GetByIdAsync(listing.Id);
 
         // Visible to buyers (isStaff: false) and unaffected by the new setting.
         result.Value!.BuyerFeeIncGst.Should().Be(150m);
@@ -282,6 +282,145 @@ public class ListingServiceTests
 
         result.Succeeded.Should().BeTrue();
         listing.Status.Should().Be(ListingStatus.Active);
+    }
+
+    // ── Auction rules: increment from settings, hidden reserve ─────────────
+
+    [Fact]
+    public async Task CreateAuctionListing_TakesMinimumBidIncrementFromSettings()
+    {
+        var (_, farm) = SignedInFarm();
+        var stallion = new Stallion { Id = Guid.NewGuid(), StudFarmId = farm.Id, IsActive = true };
+        _stallionRepoMock.Setup(r => r.GetByIdAsync(stallion.Id)).ReturnsAsync(stallion);
+        var season = new Season { Id = Guid.NewGuid(), IsOpen = true };
+        _seasonRepoMock.Setup(r => r.GetByIdAsync(season.Id)).ReturnsAsync(season);
+        _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
+        {
+            BuyerFeeIncGst = 150m, StandardListingFeeIncGst = 990m, MinimumBidIncrement = 50m,
+            ChargeGracePeriodHours = 2, OfferExpiryDays = 7
+        });
+        AuctionListing? added = null;
+        _listingRepoMock.Setup(r => r.AddAsync(It.IsAny<Listing>()))
+            .ReturnsAsync((Listing l) => { added = (AuctionListing)l; return l; });
+
+        var result = await CreateSut().CreateAuctionListingAsync(new CreateAuctionListingRequest
+        {
+            StallionId = stallion.Id, SeasonId = season.Id, ReservePrice = 20000m,
+            EndDateTime = DateTime.UtcNow.AddDays(7), TermsAndConditions = "Standard terms."
+        });
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        added!.MinimumBidIncrement.Should().Be(50m);
+        ((AuctionListingDto)result.Value!).MinimumBidIncrement.Should().Be(50m);
+    }
+
+    private AuctionListing ActiveAuctionWithReserve(Guid farmId, decimal? reserve, decimal? highestBid)
+    {
+        var listing = DraftAuction(farmId, buyerFee: 150m);
+        listing.Status = ListingStatus.Active;
+        listing.ReservePrice = reserve;
+        listing.IsNoReserve = reserve == null;
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        var aggregates = new Dictionary<Guid, (int Count, decimal? Highest)>();
+        if (highestBid.HasValue) aggregates[listing.Id] = (2, highestBid);
+        _listingRepoMock.Setup(r => r.GetBidAggregatesAsync(It.Is<IEnumerable<Guid>>(ids => ids.Contains(listing.Id))))
+            .ReturnsAsync(aggregates);
+        return listing;
+    }
+
+    private void SignInAs(UserRole role, StudFarm? farm = null)
+    {
+        var user = new User { Id = farm?.UserId ?? Guid.NewGuid(), Role = role, Status = UserStatus.Active };
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(user.Id)).ReturnsAsync(farm);
+    }
+
+    [Fact]
+    public async Task GetById_HidesReserveAmountFromBuyer_ButReportsReserveMet()
+    {
+        var listing = ActiveAuctionWithReserve(Guid.NewGuid(), reserve: 20000m, highestBid: 21000m);
+        SignInAs(UserRole.Buyer);
+
+        var dto = (AuctionListingDto)(await CreateSut().GetByIdAsync(listing.Id)).Value!;
+
+        dto.ReservePrice.Should().BeNull();
+        dto.ReserveMet.Should().BeTrue();
+        dto.CurrentHighestBidIncGst.Should().Be(21000m);
+    }
+
+    [Fact]
+    public async Task GetById_HidesReserveAmountFromAnonymousVisitor()
+    {
+        var listing = ActiveAuctionWithReserve(Guid.NewGuid(), reserve: 20000m, highestBid: null);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync((User?)null);
+
+        var dto = (AuctionListingDto)(await CreateSut().GetByIdAsync(listing.Id)).Value!;
+
+        dto.ReservePrice.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetById_HidesReserveAmountFromAnotherFarmsAdmin()
+    {
+        var listing = ActiveAuctionWithReserve(Guid.NewGuid(), reserve: 20000m, highestBid: null);
+        SignInAs(UserRole.StudFarmAdmin, new StudFarm { Id = Guid.NewGuid(), UserId = Guid.NewGuid() });
+
+        var dto = (AuctionListingDto)(await CreateSut().GetByIdAsync(listing.Id)).Value!;
+
+        dto.ReservePrice.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetById_ShowsReserveAmountToOwningStudAdmin()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), UserId = Guid.NewGuid() };
+        var listing = ActiveAuctionWithReserve(farm.Id, reserve: 20000m, highestBid: null);
+        SignInAs(UserRole.StudFarmAdmin, farm);
+
+        var dto = (AuctionListingDto)(await CreateSut().GetByIdAsync(listing.Id)).Value!;
+
+        dto.ReservePrice.Should().Be(20000m);
+    }
+
+    [Fact]
+    public async Task GetById_ShowsReserveAmountToStaff()
+    {
+        var listing = ActiveAuctionWithReserve(Guid.NewGuid(), reserve: 20000m, highestBid: null);
+        SignInAs(UserRole.Staff);
+
+        var dto = (AuctionListingDto)(await CreateSut().GetByIdAsync(listing.Id)).Value!;
+
+        dto.ReservePrice.Should().Be(20000m);
+    }
+
+    [Theory]
+    [InlineData(20000, null, null)]      // no bids yet → unknown
+    [InlineData(null, 5000, null)]       // no reserve → not applicable
+    [InlineData(20000, 19975, false)]    // below reserve
+    [InlineData(20000, 20000, true)]     // at reserve
+    [InlineData(20000, 25000, true)]     // above reserve
+    public async Task GetById_ReserveMet_ForEachCase(int? reserve, int? highestBid, bool? expected)
+    {
+        var listing = ActiveAuctionWithReserve(Guid.NewGuid(), reserve, highestBid);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync((User?)null);
+
+        var dto = (AuctionListingDto)(await CreateSut().GetByIdAsync(listing.Id)).Value!;
+
+        dto.ReserveMet.Should().Be(expected);
+        dto.IsNoReserve.Should().Be(reserve == null);
+    }
+
+    [Fact]
+    public async Task GetById_ReserveNotSetAndNotFlagged_IsTreatedAsNoReserve()
+    {
+        var listing = ActiveAuctionWithReserve(Guid.NewGuid(), reserve: null, highestBid: 5000m);
+        listing.IsNoReserve = false; // stud left the reserve blank without ticking "No reserve"
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync((User?)null);
+
+        var dto = (AuctionListingDto)(await CreateSut().GetByIdAsync(listing.Id)).Value!;
+
+        dto.IsNoReserve.Should().BeTrue();
+        dto.ReserveMet.Should().BeNull();
     }
 
     [Fact]

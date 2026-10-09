@@ -29,7 +29,6 @@ public class ListingDtoSerializationTests
             ListingType = "Auction",   // matches the JsonDerivedType discriminator value
             Status = "Active",
             CreatedAt = DateTime.UtcNow,
-            StartingPrice = 5000m,
             IsNoReserve = false,
             MinimumBidIncrement = 25m,
             EndDateTime = DateTime.UtcNow.AddDays(3)
@@ -45,7 +44,6 @@ public class ListingDtoSerializationTests
         deserialized.Should().BeOfType<AuctionListingDto>();
         var result = (AuctionListingDto)deserialized!;
         result.StallionName.Should().Be("Snitzel");
-        result.StartingPrice.Should().Be(5000m);
         result.ListingType.Should().Be("Auction");
     }
 

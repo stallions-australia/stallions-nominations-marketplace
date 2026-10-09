@@ -34,7 +34,8 @@ else
                 <th>Farm</th>
                 <th>Type</th>
                 <th>Status</th>
-                <th>Price (inc. GST)</th>
+                <th>High bid (inc. GST)</th>
+                <th>Reserve</th>
                 <th>Buyer fee</th>
                 <th>Published</th>
                 <th>Actions</th>
@@ -50,7 +51,8 @@ else
                     <td>
                         <span class="badge badge-status-@l.Status.ToLowerInvariant()">@l.Status</span>
                     </td>
-                    <td>@(l.PriceIncGst.HasValue ? l.PriceIncGst.Value.ToString("C") : "—")</td>
+                    <td>@(l.HighestBidIncGst.HasValue ? l.HighestBidIncGst.Value.ToString("C") : "—")</td>
+                    <td>@(l.ReservePrice.HasValue ? l.ReservePrice.Value.ToString("C") : "No reserve")</td>
                     <td title="Locked in when the listing is first published">
                         @(l.BuyerFeeIncGst.HasValue ? l.BuyerFeeIncGst.Value.ToString("C") : "—")
                     </td>

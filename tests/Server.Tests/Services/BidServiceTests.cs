@@ -32,10 +32,10 @@ public class BidServiceTests
     private static User ActiveBuyer() => new()
         { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
 
-    private static AuctionListing OpenAuction(decimal startingPrice = 1000m, decimal increment = 25m) => new()
+    private static AuctionListing OpenAuction(decimal? buyerFee = 150m, decimal increment = 25m) => new()
     {
         Id = Guid.NewGuid(), Status = ListingStatus.Active,
-        StartingPrice = startingPrice, MinimumBidIncrement = increment,
+        BuyerFeeIncGst = buyerFee, MinimumBidIncrement = increment,
         EndDateTime = DateTime.UtcNow.AddDays(3)
     };
 
@@ -54,18 +54,66 @@ public class BidServiceTests
     }
 
     [Fact]
-    public async Task PlaceBid_WhenAmountBelowStartingPrice_ReturnsBadRequest()
+    public async Task PlaceBid_FirstBidBelowBuyerFee_ReturnsBadRequest()
     {
+        // A sale must never be worth less than the buyer fee, which comes out of the price.
         var buyer = ActiveBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var auction = OpenAuction(startingPrice: 1000m);
+        var auction = OpenAuction(buyerFee: 150m);
         _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
         _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync((Bid?)null);
 
-        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 999m });
+        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 149.99m });
 
         result.Succeeded.Should().BeFalse();
         result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Contain("$150.00").And.Contain("buyer fee");
+        _bidRepoMock.Verify(r => r.AddAsync(It.IsAny<Bid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PlaceBid_FirstBidEqualToBuyerFee_IsAccepted()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction(buyerFee: 150m);
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync((Bid?)null);
+        _bidRepoMock.Setup(r => r.AddAsync(It.IsAny<Bid>())).ReturnsAsync((Bid b) => b);
+
+        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 150m });
+
+        result.Succeeded.Should().BeTrue(result.Error);
+    }
+
+    [Fact]
+    public async Task PlaceBid_WhenListingHasNoBuyerFee_ReturnsBadRequest()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction(buyerFee: null);
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+
+        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 5000m });
+
+        result.HttpStatusCode.Should().Be(400);
+        _bidRepoMock.Verify(r => r.AddAsync(It.IsAny<Bid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PlaceBid_AtHighestPlusIncrement_IsAccepted()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction(increment: 50m);
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id))
+            .ReturnsAsync(new Bid { Id = Guid.NewGuid(), AmountIncGst = 2000m, Status = BidStatus.Active });
+        _bidRepoMock.Setup(r => r.AddAsync(It.IsAny<Bid>())).ReturnsAsync((Bid b) => b);
+
+        var result = await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 2050m });
+
+        result.Succeeded.Should().BeTrue(result.Error);
     }
 
     [Fact]
@@ -73,7 +121,7 @@ public class BidServiceTests
     {
         var buyer = ActiveBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var auction = OpenAuction(startingPrice: 1000m, increment: 25m);
+        var auction = OpenAuction(increment: 25m);
         _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
         var highest = new Bid { Id = Guid.NewGuid(), AmountIncGst = 2000m, Status = BidStatus.Active };
         _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync(highest);
@@ -90,7 +138,7 @@ public class BidServiceTests
     {
         var buyer = ActiveBuyer();
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var auction = OpenAuction(startingPrice: 1000m, increment: 25m);
+        var auction = OpenAuction(increment: 25m);
         _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
         var previous = new Bid { Id = Guid.NewGuid(), AmountIncGst = 2000m, Status = BidStatus.Active };
         _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync(previous);
@@ -126,7 +174,7 @@ public class BidServiceTests
         var buyer = ActiveBuyer();
         buyer.AcceptedTermsVersion = 2;
         _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
-        var auction = OpenAuction(startingPrice: 1000m);
+        var auction = OpenAuction();
         _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
         _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync((Bid?)null);
         _bidRepoMock.Setup(r => r.AddAsync(It.IsAny<Bid>())).ReturnsAsync((Bid b) => b);

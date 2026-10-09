@@ -61,18 +61,9 @@ else
 
             <div class="form-section">
                 <div class="form-section-title">Auction Details</div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Starting Price (inc. GST) <span class="required">*</span></label>
-                        <div class="input-prefix">
-                            <span>$</span>
-                            <input type="number" class="form-input" @bind="_auctionStartPrice" min="1" step="100" />
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">End Date &amp; Time <span class="required">*</span></label>
-                        <input type="datetime-local" class="form-input" @bind="_auctionEndDate" />
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">End Date &amp; Time <span class="required">*</span></label>
+                    <input type="datetime-local" class="form-input" @bind="_auctionEndDate" />
                 </div>
                 <div class="form-group">
                     <label class="form-check-label">
@@ -138,7 +129,7 @@ else
     private string? _error;
 
     // Auction fields
-    private decimal _auctionStartPrice;
+
     private decimal? _auctionReserve;
     private bool _noReserve;
     private DateTime _auctionEndDate = DateTime.Now.AddDays(7);
@@ -192,13 +183,12 @@ else
         _saving = true;
         try
         {
-            if (_auctionStartPrice <= 0)       { _error = "Please enter a starting price."; return; }
             if (_auctionEndDate <= DateTime.Now) { _error = "End date must be in the future."; return; }
             var created = await AdminApi.CreateAuctionListingAsync(new CreateAuctionListingRequest
             {
                 StallionId         = _selectedStallionId,
                 SeasonId           = _selectedSeasonId,
-                StartingPrice      = _auctionStartPrice,
+
                 ReservePrice       = _noReserve ? null : _auctionReserve,
                 IsNoReserve        = _noReserve,
                 EndDateTime        = _auctionEndDate.ToUniversalTime(),

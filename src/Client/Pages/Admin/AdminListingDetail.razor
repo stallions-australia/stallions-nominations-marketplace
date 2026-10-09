@@ -73,19 +73,6 @@ else
             <div class="form-section">
                 <div class="form-section-title">Auction</div>
                 <dl class="detail-list">
-                    <dt>Starting price</dt>
-                    <dd>
-                        @if (_neverPublished)
-                        {
-                            <input type="number" class="form-input" style="width:180px"
-                                   @bind="_editAuctionStart" min="1" step="100" />
-                        }
-                        else
-                        {
-                            <span>$@al.StartingPrice.ToString("N0")</span>
-                            <span class="lock-notice" style="margin-left:var(--space-2)">🔒 locked</span>
-                        }
-                    </dd>
                     <dt>Current high bid</dt>
                     <dd>@(al.CurrentHighestBidIncGst.HasValue ? $"${al.CurrentHighestBidIncGst:N0}" : "No bids yet")</dd>
                     <dt>End date/time</dt>
@@ -168,7 +155,7 @@ else
     private string? _error;
 
     // Edit fields — populated from _listing on load
-    private decimal _editAuctionStart;
+
     private DateTime _editAuctionEnd;
     private string _editTerms = string.Empty;
     private string? _editDescription;
@@ -206,7 +193,7 @@ else
     {
         if (_listing is AuctionListingDto al)
         {
-            _editAuctionStart = al.StartingPrice;
+
             _editAuctionEnd   = al.EndDateTime.ToLocalTime();
         }
         _editTerms       = _listing?.TermsAndConditions ?? string.Empty;
@@ -226,7 +213,7 @@ else
 
             if (_listing is AuctionListingDto && _neverPublished)
             {
-                request.StartingPrice = _editAuctionStart;
+
                 request.EndDateTime   = _editAuctionEnd.ToUniversalTime();
             }
 

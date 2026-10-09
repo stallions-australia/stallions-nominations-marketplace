@@ -58,7 +58,6 @@ public class ListingDetailTests : TestContext
         {
             Id = Guid.NewGuid(), StallionName = "Snitzel", StudFarmName = "Arrowfield",
             ListingType = "Auction", Status = "Active",
-            StartingPrice = 5000m,
             EndDateTime = DateTime.UtcNow.AddDays(3)
         };
         RegisterServices(listing);

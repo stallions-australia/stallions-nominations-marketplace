@@ -159,7 +159,7 @@ public class EnquiryService : IEnquiryService
     private static string BuildListingTitle(Listing? listing) => listing switch
     {
         AuctionListing al =>
-            $"{al.Stallion?.Name} — Auction from ${al.StartingPrice:N0} ({al.Season?.Name})",
+            $"{al.Stallion?.Name} — Auction ({al.Season?.Name})",
         _ => string.Empty
     };
 

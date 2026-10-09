@@ -246,24 +246,22 @@ public class AdminService : IAdminService
     public async Task<ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>> GetAllListingsStaffAsync()
     {
         var listings = await _listingRepo.GetAllStaffAsync();
-        var dtos = listings.Select(l =>
+        var auctionIds = listings.OfType<AuctionListing>().Select(l => l.Id).ToList();
+        var bids = auctionIds.Count > 0
+            ? await _listingRepo.GetBidAggregatesAsync(auctionIds)
+            : new Dictionary<Guid, (int Count, decimal? Highest)>();
+
+        var dtos = listings.Select(l => new ListingStaffSummaryDto
         {
-            decimal? price = l switch
-            {
-                AuctionListing al => al.StartingPrice,
-                _ => null
-            };
-            return new ListingStaffSummaryDto
-            {
-                Id = l.Id,
-                StallionName = l.Stallion?.Name ?? string.Empty,
-                StudFarmName = l.StudFarm?.Name ?? string.Empty,
-                ListingType = l.ListingType.ToString(),
-                Status = l.Status.ToString(),
-                PriceIncGst = price,
-                BuyerFeeIncGst = l.BuyerFeeIncGst,
-                PublishedAt = l.PublishedAt
-            };
+            Id = l.Id,
+            StallionName = l.Stallion?.Name ?? string.Empty,
+            StudFarmName = l.StudFarm?.Name ?? string.Empty,
+            ListingType = l.ListingType.ToString(),
+            Status = l.Status.ToString(),
+            HighestBidIncGst = bids.TryGetValue(l.Id, out var b) ? b.Highest : null,
+            ReservePrice = l is AuctionListing { HasReserve: true } al ? al.ReservePrice : null,
+            BuyerFeeIncGst = l.BuyerFeeIncGst,
+            PublishedAt = l.PublishedAt
         }).ToList();
         return ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>.Ok(dtos);
     }

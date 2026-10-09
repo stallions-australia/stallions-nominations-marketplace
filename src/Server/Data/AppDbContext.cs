@@ -150,7 +150,6 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AuctionListing>(e =>
         {
             e.ToTable("AuctionListings");
-            e.Property(a => a.StartingPrice).HasPrecision(12, 2);
             e.Property(a => a.ReservePrice).HasPrecision(12, 2);
             e.Property(a => a.MinimumBidIncrement).HasPrecision(12, 2);
 

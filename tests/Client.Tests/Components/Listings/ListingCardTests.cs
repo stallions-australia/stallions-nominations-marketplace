@@ -17,7 +17,6 @@ public class ListingCardTests : TestContext
         ListingType = "Auction",
         StallionName = "Snitzel",
         StudFarmName = "Arrowfield Stud",
-        PriceIncGst = 5000m,
         CurrentHighestBidIncGst = 6500m,
         BidCount = 3,
         AuctionClosesAt = DateTime.UtcNow.AddDays(2)
