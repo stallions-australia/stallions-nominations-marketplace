@@ -20,6 +20,10 @@
 > - Idempotency is claim-first: `IProcessedPaymentEventRepository.TryClaimAsync` inserts the event
 >   id (false = already claimed, including a concurrent duplicate) and `ReleaseAsync` removes it when
 >   processing fails so the provider's retry is processed. Tasks 3 and 6 below reflect this.
+> - A failed save is only treated as "already claimed" if the row really exists; anything else
+>   rethrows. `ReleaseAsync` clears the change tracker first. Each claim records `CompletedAt` via
+>   `MarkCompletedAsync`; an incomplete claim older than 10 minutes (a crash mid-processing) can be
+>   re-claimed by the provider's retry.
 
 ---
 
@@ -726,7 +730,9 @@ public class PaymentEventProcessorTests : IDisposable
         var outcome = await CreateSut().ProcessAsync(new UnhandledPaymentEvent("evt_x", "customer.created"));
 
         outcome.Should().Be(PaymentEventOutcome.Ignored);
-        (await _db.ProcessedPaymentEvents.SingleAsync()).EventId.Should().Be("evt_x");
+        var processed = await _db.ProcessedPaymentEvents.SingleAsync();
+        processed.EventId.Should().Be("evt_x");
+        processed.CompletedAt.Should().NotBeNull();
     }
 }
 ```
@@ -783,12 +789,15 @@ public class PaymentEventProcessor : IPaymentEventProcessor
 
         try
         {
-            return paymentEvent switch
+            var outcome = paymentEvent switch
             {
                 CardSavedEvent card => await SaveCardAsync(card),
                 ListingFeePaidEvent fee => await MarkListingFeePaidAsync(fee),
                 _ => PaymentEventOutcome.Ignored
             };
+            // Rejected and Ignored are final too — a retry wouldn't change them.
+            await _processed.MarkCompletedAsync(paymentEvent.EventId);
+            return outcome;
         }
         catch
         {
