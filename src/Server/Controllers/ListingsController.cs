@@ -47,7 +47,13 @@ public class ListingsController : ControllerBase
     public async Task<IActionResult> GetMine()
     {
         var r = await _listings.GetMineAsync();
-        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+        // Serialize each listing as its concrete type (as the single-listing endpoints do). A list
+        // declared as ListingDto makes System.Text.Json 10 throw: the ListingType property clashes
+        // with the "listingType" discriminator under camelCase. The concrete type still writes
+        // "listingType" first, which the client reads as the discriminator.
+        return r.Succeeded
+            ? Ok(r.Value!.Cast<object>().ToList())
+            : StatusCode(r.HttpStatusCode, r.Error);
     }
 
     [HttpPost("auction")]
