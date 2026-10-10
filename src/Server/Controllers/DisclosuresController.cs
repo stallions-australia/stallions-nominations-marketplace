@@ -10,8 +10,8 @@ namespace Stallions.Server.Controllers;
 [Route("api/disclosures")]
 public class DisclosuresController : ControllerBase
 {
-    private readonly IOptions<CheckoutOptions> _options;
-    public DisclosuresController(IOptions<CheckoutOptions> options) => _options = options;
+    private readonly IOptions<DisclosureOptions> _options;
+    public DisclosuresController(IOptions<DisclosureOptions> options) => _options = options;
 
     // Public — shown on listing pages before a buyer signs in. Wording comes from configuration.
     [HttpGet("buyer-fee")]

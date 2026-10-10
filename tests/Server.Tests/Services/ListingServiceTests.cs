@@ -179,6 +179,23 @@ public class ListingServiceTests
             l.Status == ListingStatus.Draft && l.PublishedAt == publishedAt)), Times.Once);
     }
 
+    [Theory]
+    [InlineData(ListingStatus.AwaitingPayment)]
+    [InlineData(ListingStatus.Unsold)]
+    public async Task CloseByStudFarmAsync_AfterTheAuctionClosed_IsRejected(ListingStatus status)
+    {
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = status };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().CloseByStudFarmAsync(listing.Id);
+
+        result.Succeeded.Should().BeFalse();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
     [Fact]
     public async Task CloseByStudFarmAsync_SetsCancelledAndClosedAt()
     {

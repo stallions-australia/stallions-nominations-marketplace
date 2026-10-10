@@ -164,7 +164,7 @@ public class ListingService : IListingService
             return ServiceResult<ListingDto>.Forbidden("You do not have permission to update this listing.");
 
         // Cancelled and Sold listings are permanently read-only.
-        if (listing.Status == ListingStatus.Cancelled || listing.Status == ListingStatus.Sold)
+        if (IsFinished(listing.Status))
             return ServiceResult<ListingDto>.BadRequest("This listing can no longer be edited.");
 
         // CRITICAL: BuyerFeeIncGst is never touched here — it is snapshotted from settings on publish.
@@ -283,7 +283,7 @@ public class ListingService : IListingService
         if (listing.StudFarmId != farm.Id)
             return ServiceResult.Forbidden("You do not have permission to close this listing.");
 
-        if (listing.Status == ListingStatus.Cancelled || listing.Status == ListingStatus.Sold)
+        if (IsFinished(listing.Status))
             return ServiceResult.BadRequest($"Listing is already closed (status: {listing.Status}).");
 
         listing.Status = ListingStatus.Cancelled;
@@ -291,6 +291,11 @@ public class ListingService : IListingService
         await _listingRepo.UpdateAsync(listing);
         return ServiceResult.Ok();
     }
+
+    // Closed or being charged: the stud and Staff edit flows cannot change it any more.
+    private static bool IsFinished(ListingStatus status) =>
+        status is ListingStatus.Cancelled or ListingStatus.Sold
+            or ListingStatus.AwaitingPayment or ListingStatus.Unsold;
 
     public async Task<ServiceResult> CancelListingAsync(Guid id)
     {
@@ -300,7 +305,7 @@ public class ListingService : IListingService
         if (listing == null)
             return ServiceResult.NotFound("Listing not found.");
 
-        if (listing.Status == ListingStatus.Cancelled || listing.Status == ListingStatus.Sold)
+        if (IsFinished(listing.Status))
             return ServiceResult.BadRequest($"Listing cannot be cancelled: status is {listing.Status}.");
 
         listing.Status = ListingStatus.Cancelled;

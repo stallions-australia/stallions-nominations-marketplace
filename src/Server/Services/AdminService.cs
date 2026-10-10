@@ -298,6 +298,8 @@ public class AdminService : IAdminService
 
         if (!Enum.TryParse<ListingStatus>(request.Status, ignoreCase: true, out var newStatus))
             return ServiceResult.BadRequest($"'{request.Status}' is not a valid listing status.");
+        if (newStatus is ListingStatus.AwaitingPayment or ListingStatus.Unsold)
+            return ServiceResult.BadRequest("Awaiting payment and Unsold are set only when an auction closes.");
 
         var previousStatus = listing.Status;
         listing.Status = newStatus;

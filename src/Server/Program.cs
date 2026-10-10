@@ -74,7 +74,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddScoped<IAuthorizationHandler, DbRoleHandler>();
 
 // Config options
-builder.Services.Configure<CheckoutOptions>(builder.Configuration.GetSection("Checkout"));
+builder.Services.Configure<DisclosureOptions>(builder.Configuration.GetSection(DisclosureOptions.Section));
 
 // Payments — Stripe or the dev-only fake (refused in Production)
 builder.Services.AddPayments(builder.Configuration, builder.Environment);
@@ -121,7 +121,7 @@ builder.Services.AddScoped<ISeasonService, SeasonService>();
 builder.Services.AddScoped<IStallionService, StallionService>();
 builder.Services.AddScoped<IListingService, ListingService>();
 builder.Services.AddScoped<IBidService, BidService>();
-builder.Services.AddScoped<ICheckoutService, CheckoutService>();
+builder.Services.AddScoped<IPurchaseService, PurchaseService>();
 builder.Services.AddScoped<ICardService, CardService>();
 builder.Services.AddScoped<INominationBindingService, NominationBindingService>();
 builder.Services.AddScoped<IEnquiryService, EnquiryService>();

@@ -18,7 +18,7 @@ public class MyPurchasesTests : TestContext
         auth.SetAuthorized("buyer@test.com");
         auth.SetRoles("Buyer");
 
-        var mock = new Mock<CheckoutApiService>(MockBehavior.Loose,
+        var mock = new Mock<PurchaseApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         mock.Setup(s => s.GetMyPurchasesAsync()).ReturnsAsync(new List<PurchaseDto>());
         Services.AddSingleton(mock.Object);

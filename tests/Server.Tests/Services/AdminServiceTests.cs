@@ -159,6 +159,21 @@ public class AdminServiceTests
         result.HttpStatusCode.Should().Be(400);
     }
 
+    [Theory]
+    [InlineData("AwaitingPayment")]
+    [InlineData("Unsold")]
+    public async Task ForceListingStatus_CannotSetStatusesOwnedByTheAuctionCloser(string status)
+    {
+        var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.Active };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().ForceListingStatusAsync(listing.Id,
+            new ForceListingStatusRequest { Status = status });
+
+        result.HttpStatusCode.Should().Be(400);
+        listing.Status.Should().Be(ListingStatus.Active);
+    }
+
     [Fact]
     public async Task ForceListingStatusAsync_WhenValid_SetsStatusAndAuditLogs()
     {

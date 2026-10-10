@@ -1,6 +1,6 @@
 @page "/my-purchases"
 @attribute [Authorize]
-@inject CheckoutApiService CheckoutApi
+@inject PurchaseApiService PurchaseApi
 
 <PageTitle>My Purchases — Stallions Australia</PageTitle>
 
@@ -57,7 +57,7 @@
     {
         _error = null;
         _purchases = null;
-        try { _purchases = await CheckoutApi.GetMyPurchasesAsync(); }
+        try { _purchases = await PurchaseApi.GetMyPurchasesAsync(); }
         catch (ApiException) { _error = "Failed to load purchases. Please try again."; }
     }
 
