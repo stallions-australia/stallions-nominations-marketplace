@@ -17,7 +17,7 @@ public class AccountCardTests : TestContext
     private static HttpClient Http() => new() { BaseAddress = new Uri("https://localhost/") };
     private readonly Mock<PaymentsApiService> _payments = new(MockBehavior.Loose, Http());
 
-    private IRenderedComponent<AccountCard> Render(string? query = null)
+    private IRenderedComponent<AccountCard> Render(string? query = null, TimeSpan? pollInterval = null)
     {
         this.AddTestAuthorization().SetAuthorized("buyer@example.com");
         Services.AddSingleton(_payments.Object);
@@ -33,7 +33,7 @@ public class AccountCardTests : TestContext
         Services.AddSingleton(new UserStateService(userApi.Object));
 
         if (query != null) Services.GetRequiredService<NavigationManager>().NavigateTo($"/account/card?{query}");
-        return RenderComponent<AccountCard>(p => p.Add(c => c.PollInterval, TimeSpan.FromMilliseconds(10)));
+        return RenderComponent<AccountCard>(p => p.Add(c => c.PollInterval, pollInterval ?? TimeSpan.FromMilliseconds(10)));
     }
 
     // WaitForAssertion only re-checks after a render; a pending API call doesn't render.
@@ -157,12 +157,16 @@ public class AccountCardTests : TestContext
         var calls = 0;
         _payments.Setup(s => s.GetMyCardAsync())
             .Returns(() => ++calls == 1 ? Task.FromResult<SavedCardDto?>(null) : slow.Task);
-        var cut = Render("result=success");
-        await Until(() => calls == 2);
+        // A zero interval keeps every poll on the renderer's queue (no timers), so the test
+        // needs no waits: the first poll's call is already pending when the render returns,
+        // and a poll that kept going after the page was left would call again at once.
+        Render("result=success", TimeSpan.Zero);
+        calls.Should().Be(2);
 
         DisposeComponents();
         slow.SetResult(null);
-        await Task.Delay(100);
+        // SetResult queues the page's continuation on the renderer; this runs after it.
+        await Renderer.Dispatcher.InvokeAsync(() => { });
 
         Renderer.UnhandledException.IsCompleted.Should().BeFalse();
         calls.Should().Be(2, "polling stops once the page is gone");
