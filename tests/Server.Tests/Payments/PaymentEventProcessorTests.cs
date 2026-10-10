@@ -31,8 +31,8 @@ public class PaymentEventProcessorTests : IDisposable
 
     private PaymentEventProcessor CreateSut() => new(
         new ProcessedPaymentEventRepository(_db), new SavedCardRepository(_db), new UserRepository(_db),
-        new SubscriptionRepository(_db), _provider.Object, new AuditLogRepository(_db), new InlineTransactionRunner(),
-        NullLogger<PaymentEventProcessor>.Instance);
+        new SubscriptionRepository(_db), new PurchaseRepository(_db), _provider.Object, new AuditLogRepository(_db),
+        new InlineTransactionRunner(), NullLogger<PaymentEventProcessor>.Instance);
 
     private CardSavedEvent CardSaved(string eventId, string pm = "pm_1", string last4 = "4242") =>
         new(eventId, _buyer.Id, "cus_1", pm, "visa", last4, 8, 2028);
@@ -54,6 +54,37 @@ public class PaymentEventProcessorTests : IDisposable
         _db.StallionSeasonSubscriptions.Add(sub);
         _db.SaveChanges();
         return sub;
+    }
+
+    private Purchase FailedCharge(Guid buyerId, DateTime? dueBy)
+    {
+        var purchase = new Purchase
+        {
+            BuyerUserId = buyerId, Status = PurchaseStatus.Pending, ChargeAttempts = 1, ChargeDueBy = dueBy
+        };
+        _db.Purchases.Add(purchase);
+        _db.SaveChanges();
+        return purchase;
+    }
+
+    [Fact]
+    public async Task CardSaved_FlagsTheBuyersFailedChargeForRetry()
+    {
+        var failed = FailedCharge(_buyer.Id, DateTime.UtcNow.AddHours(1));
+
+        await CreateSut().ProcessAsync(CardSaved("evt_1"));
+
+        (await _db.Purchases.SingleAsync(p => p.Id == failed.Id)).RetryRequested.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CardSaved_LeavesSaleRecordsWithoutAFailedCharge_Alone()
+    {
+        var notYetCharged = FailedCharge(_buyer.Id, dueBy: null);
+
+        await CreateSut().ProcessAsync(CardSaved("evt_1"));
+
+        (await _db.Purchases.SingleAsync(p => p.Id == notYetCharged.Id)).RetryRequested.Should().BeFalse();
     }
 
     [Fact]
@@ -155,7 +186,8 @@ public class PaymentEventProcessorTests : IDisposable
             .ThrowsAsync(new InvalidOperationException("database unavailable"));
         var failing = new PaymentEventProcessor(
             new ProcessedPaymentEventRepository(_db), failingCards.Object, new UserRepository(_db),
-            new SubscriptionRepository(_db), _provider.Object, new AuditLogRepository(_db), new InlineTransactionRunner(),
+            new SubscriptionRepository(_db), new PurchaseRepository(_db), _provider.Object, new AuditLogRepository(_db),
+        new InlineTransactionRunner(),
             NullLogger<PaymentEventProcessor>.Instance);
 
         await FluentActions.Awaiting(() => failing.ProcessAsync(CardSaved("evt_1")))
@@ -167,7 +199,7 @@ public class PaymentEventProcessorTests : IDisposable
     private PaymentEventProcessor CreateSutWith(
         IProcessedPaymentEventRepository? processed = null, ISavedCardRepository? cards = null) => new(
         processed ?? new ProcessedPaymentEventRepository(_db), cards ?? new SavedCardRepository(_db),
-        new UserRepository(_db), new SubscriptionRepository(_db), _provider.Object,
+        new UserRepository(_db), new SubscriptionRepository(_db), new PurchaseRepository(_db), _provider.Object,
         new AuditLogRepository(_db), new InlineTransactionRunner(), NullLogger<PaymentEventProcessor>.Instance);
 
     [Fact]
