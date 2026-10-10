@@ -12,7 +12,7 @@ using Stallions.Server.Data;
 namespace Stallions.Server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261010044443_V2Phase3ChargeSnapshot")]
+    [Migration("20261010045211_V2Phase3ChargeSnapshot")]
     partial class V2Phase3ChargeSnapshot
     {
         /// <inheritdoc />
@@ -446,6 +446,9 @@ namespace Stallions.Server.Data.Migrations
 
                     b.Property<Guid>("BuyerUserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ChargeAttemptLastSentAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("ChargeAttemptStartedAt")
                         .HasColumnType("datetime2");

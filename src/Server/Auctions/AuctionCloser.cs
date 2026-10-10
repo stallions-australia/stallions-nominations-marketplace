@@ -219,7 +219,8 @@ public class AuctionCloser : IAuctionCloser
             // An interrupted attempt repeats exactly: same number (so the provider's idempotency key
             // returns the original result instead of charging twice) and the same snapshotted card.
             // The start time is left alone so the attempt's age keeps counting towards "stuck".
-            purchase.RetryRequested = false;
+            // A retry request made meanwhile is kept for the next attempt.
+            purchase.ChargeAttemptLastSentAt = now;
             await _purchases.UpdateAsync(purchase);
             return new ChargeAttempt(purchase.Id, purchase.ListingId, purchase.ChargeAttempts, purchase.BuyerFeeIncGst,
                 purchase.ChargeCustomerId, purchase.ChargePaymentMethodId, purchase.ChargeDescription);
@@ -230,18 +231,20 @@ public class AuctionCloser : IAuctionCloser
         var usable = card != null && card.Provider == _provider.Name && card.IsValidOn(DateOnly.FromDateTime(now));
         purchase.ChargeAttempts += 1;
         purchase.ChargeAttemptStartedAt = now;
+        purchase.ChargeAttemptLastSentAt = now;
         purchase.RetryRequested = false;
         purchase.ChargeCustomerId = usable ? card!.ProviderCustomerId : null;
         purchase.ChargePaymentMethodId = usable ? card!.ProviderPaymentMethodId : null;
-        purchase.ChargeDescription = $"Buyer fee — {purchase.Listing.Stallion?.Name ?? "nomination"}, {purchase.Listing.Season?.Name ?? "season"}";
+        var description = $"Buyer fee — {purchase.Listing.Stallion?.Name ?? "nomination"}, {purchase.Listing.Season?.Name ?? "season"}";
+        purchase.ChargeDescription = description.Length > 300 ? description[..300] : description;
         await _purchases.UpdateAsync(purchase);
 
         return new ChargeAttempt(purchase.Id, purchase.ListingId, purchase.ChargeAttempts, purchase.BuyerFeeIncGst,
             purchase.ChargeCustomerId, purchase.ChargePaymentMethodId, purchase.ChargeDescription);
     }
 
-    private static bool IsDue(Purchase p, DateTime now) => p.ChargeAttemptStartedAt is { } started
-        ? started <= now - AuctionCloseOptions.InterruptedAttemptAge
+    private static bool IsDue(Purchase p, DateTime now) => p.ChargeAttemptStartedAt != null
+        ? p.ChargeAttemptLastSentAt <= now - AuctionCloseOptions.InterruptedAttemptAge
         : p.ChargeAttempts == 0 || p.RetryRequested || p.ChargeDueBy <= now;
 
     private async Task<ChargeResult> ChargeCardAsync(ChargeAttempt attempt)
@@ -270,7 +273,12 @@ public class AuctionCloser : IAuctionCloser
         if (purchase is not { Status: PurchaseStatus.Pending } || purchase.ChargeAttempts != attempt.AttemptNo
             || purchase.ChargeAttemptStartedAt == null)
         {
-            if (result.Succeeded)
+            if (result.Succeeded && purchase is { Status: PurchaseStatus.Completed } && purchase.PaymentReference == result.PaymentReference)
+            {
+                _log.LogInformation("Duplicate confirmation of the recorded buyer-fee charge {PaymentReference} for sale record {PurchaseId}",
+                    result.PaymentReference, attempt.PurchaseId);
+            }
+            else if (result.Succeeded)
             {
                 // Money was taken but the sale record can no longer take it: Staff must refund or reconcile.
                 _log.LogError("Buyer-fee charge succeeded for sale record {PurchaseId} attempt {AttemptNo} (reference {PaymentReference}) " +
@@ -291,6 +299,8 @@ public class AuctionCloser : IAuctionCloser
 
         var listing = (AuctionListing)purchase.Listing;
         purchase.ChargeAttemptStartedAt = null;
+        purchase.ChargeAttemptLastSentAt = null;
+        purchase.ChargeNeedsAttention = false; // a real result arrived, so the attempt is no longer stuck
 
         if (result.Succeeded)
         {

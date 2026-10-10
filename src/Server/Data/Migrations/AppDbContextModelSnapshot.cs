@@ -444,6 +444,9 @@ namespace Stallions.Server.Data.Migrations
                     b.Property<Guid>("BuyerUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ChargeAttemptLastSentAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("ChargeAttemptStartedAt")
                         .HasColumnType("datetime2");
 

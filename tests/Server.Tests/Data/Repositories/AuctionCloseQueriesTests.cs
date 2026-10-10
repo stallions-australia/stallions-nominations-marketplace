@@ -78,11 +78,12 @@ public class AuctionCloseQueriesTests
         var first = AddPurchase(_ => { });
         var retry = AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeDueBy = Now.AddHours(1); p.RetryRequested = true; });
         var deadline = AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeDueBy = Now.AddMinutes(-1); });
-        var interrupted = AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddMinutes(-3); });
+        var interrupted = AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddMinutes(-3); p.ChargeAttemptLastSentAt = Now.AddMinutes(-3); });
         AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeDueBy = Now.AddHours(1); });             // waiting
-        AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddSeconds(-30); }); // in flight
+        AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddSeconds(-30); p.ChargeAttemptLastSentAt = Now.AddSeconds(-30); }); // in flight
+        AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddMinutes(-10); p.ChargeAttemptLastSentAt = Now.AddSeconds(-30); }); // repeated just now
         AddPurchase(p => p.Status = PurchaseStatus.Completed);
-        AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddMinutes(-90); p.ChargeNeedsAttention = true; }); // flagged for Staff
+        AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddMinutes(-90); p.ChargeAttemptLastSentAt = Now.AddMinutes(-90); p.ChargeNeedsAttention = true; }); // flagged for Staff
 
         var ids = await new PurchaseRepository(Db()).GetIdsDueForChargeAsync(Now, Now.AddMinutes(-2), 50);
 

@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -10,6 +11,12 @@ namespace Stallions.Server.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<DateTime>(
+                name: "ChargeAttemptLastSentAt",
+                table: "Purchases",
+                type: "datetime2",
+                nullable: true);
+
             migrationBuilder.AddColumn<string>(
                 name: "ChargeCustomerId",
                 table: "Purchases",
@@ -42,6 +49,10 @@ namespace Stallions.Server.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropColumn(
+                name: "ChargeAttemptLastSentAt",
+                table: "Purchases");
+
             migrationBuilder.DropColumn(
                 name: "ChargeCustomerId",
                 table: "Purchases");

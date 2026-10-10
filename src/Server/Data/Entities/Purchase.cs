@@ -28,6 +28,8 @@ public class Purchase : IHasConcurrencyStamp
     public int ChargeAttempts { get; set; }
     /// <summary>Set while an attempt is in flight. Older than 2 minutes = interrupted, repeated with the same key.</summary>
     public DateTime? ChargeAttemptStartedAt { get; set; }
+    /// <summary>When the request was last sent to the provider (a repeat sends again); decides when an attempt counts as interrupted.</summary>
+    public DateTime? ChargeAttemptLastSentAt { get; set; }
     /// <summary>End of the grace period, set at the first failed charge.</summary>
     public DateTime? ChargeDueBy { get; set; }
     public string? LastChargeFailure { get; set; }

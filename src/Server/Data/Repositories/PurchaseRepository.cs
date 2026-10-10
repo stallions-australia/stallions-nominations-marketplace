@@ -39,7 +39,7 @@ public class PurchaseRepository : IPurchaseRepository
             .Where(p => p.Status == PurchaseStatus.Pending && !p.ChargeNeedsAttention && (
                 (p.ChargeAttemptStartedAt == null &&
                     (p.ChargeAttempts == 0 || p.RetryRequested || p.ChargeDueBy <= now)) ||
-                (p.ChargeAttemptStartedAt != null && p.ChargeAttemptStartedAt <= interruptedBefore)))
+                (p.ChargeAttemptStartedAt != null && p.ChargeAttemptLastSentAt <= interruptedBefore)))
             .OrderBy(p => p.CreatedAt)
             .Take(max)
             .Select(p => p.Id)

@@ -80,7 +80,7 @@ public class AuctionCloserChargeTests
     [Fact]
     public async Task DuringTheGracePeriod_NothingHappensUntilANewCardIsSaved()
     {
-        EndedAuctionWithWinner();
+        var (_, winner) = EndedAuctionWithWinner();
         _f.ChargesDecline();
         await _f.CreateSut().RunAsync();
 
@@ -92,6 +92,7 @@ public class AuctionCloserChargeTests
         {
             var p = db.Purchases.Single();
             p.RetryRequested = true;
+            db.SavedCards.Single(c => c.UserId == winner.Id).ProviderPaymentMethodId = "pm_new";
             db.SaveChanges();
             return p;
         });
@@ -100,6 +101,7 @@ public class AuctionCloserChargeTests
 
         _f.Charges.Should().HaveCount(2);
         _f.Charges[1].IdempotencyKey.Should().EndWith("-2");
+        _f.Charges[1].PaymentMethodId.Should().Be("pm_new", "attempt 2 is a new attempt and uses the newly saved card");
         (await SaleRecord()).Status.Should().Be(PurchaseStatus.Completed);
     }
 
@@ -239,6 +241,7 @@ public class AuctionCloserChargeTests
         ProviderThrows();
         await _f.CreateSut().RunAsync();
 
+        var started = (await SaleRecord()).ChargeAttemptStartedAt;
         _f.Clock.Advance(TimeSpan.FromMinutes(3));
         await _f.CreateSut().RunAsync();
         _f.Charges.Should().HaveCount(2);
@@ -250,6 +253,7 @@ public class AuctionCloserChargeTests
         _f.Charges.Should().HaveCount(2, "a stuck attempt is never sent again automatically");
         var sale = await SaleRecord();
         sale.ChargeNeedsAttention.Should().BeTrue();
+        sale.ChargeAttemptStartedAt.Should().Be(started, "repeats never move the start of the attempt");
         sale.Status.Should().Be(PurchaseStatus.Pending);
         _f.Audit.Verify(a => a.LogAsync("Purchase", sale.Id, "BuyerFeeChargeStuck", null, It.IsAny<string?>()), Times.Once);
     }
@@ -286,5 +290,115 @@ public class AuctionCloserChargeTests
         _f.Charges.Single().Metadata.Should().Contain("purchaseId", sale.Id.ToString())
             .And.Contain("listingId", listing.Id.ToString())
             .And.Contain("kind", "buyer-fee");
+    }
+
+    [Fact]
+    public async Task ARepeatIsNotMade_WhileTheLastSendIsRecent_EvenIfTheAttemptIsOld()
+    {
+        EndedAuctionWithWinner();
+        ProviderThrows();
+        await _f.CreateSut().RunAsync();
+
+        _f.Clock.Advance(TimeSpan.FromMinutes(3));
+        await _f.CreateSut().RunAsync();
+        _f.Charges.Should().HaveCount(2);
+
+        _f.Clock.Advance(TimeSpan.FromMinutes(1));
+        await _f.CreateSut().RunAsync();
+
+        _f.Charges.Should().HaveCount(2, "the previous send was only a minute ago and may still be in flight");
+    }
+
+    [Fact]
+    public async Task ADuplicateConfirmationOfTheRecordedCharge_IsNotAnAlert()
+    {
+        EndedAuctionWithWinner();
+        _f.Provider.Setup(p => p.ChargeSavedCardAsync(It.IsAny<ChargeRequest>()))
+            .Callback<ChargeRequest>(r =>
+            {
+                _f.Charges.Add(r);
+                _f.Seed(db =>
+                {
+                    var p = db.Purchases.Single();
+                    p.Status = PurchaseStatus.Completed;
+                    p.PaymentReference = "pi_dup";
+                    db.SaveChanges();
+                    return 0;
+                });
+            })
+            .ReturnsAsync(ChargeResult.Success("pi_dup"));
+
+        await _f.CreateSut().RunAsync();
+
+        _f.Audit.Verify(a => a.LogAsync("Purchase", It.IsAny<Guid>(), "BuyerFeeChargeUnmatched", null, It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ARepeatThatDeclines_KeepsTheRetryRequest_SoTheNewCardIsUsedNext()
+    {
+        var (_, winner) = EndedAuctionWithWinner();
+        ProviderThrows();
+        await _f.CreateSut().RunAsync();
+
+        _f.Seed(db => { db.Purchases.Single().RetryRequested = true; db.SaveChanges(); return 0; });
+        _f.Clock.Advance(TimeSpan.FromMinutes(3));
+        _f.ChargesDecline();
+        await _f.CreateSut().RunAsync();
+        (await SaleRecord()).RetryRequested.Should().BeTrue();
+
+        _f.Seed(db =>
+        {
+            db.SavedCards.Single(c => c.UserId == winner.Id).ProviderPaymentMethodId = "pm_new";
+            db.SaveChanges();
+            return 0;
+        });
+        _f.ChargesSucceed();
+        await _f.CreateSut().RunAsync();
+
+        _f.Charges.Should().HaveCount(3);
+        _f.Charges[2].IdempotencyKey.Should().EndWith("-2");
+        _f.Charges[2].PaymentMethodId.Should().Be("pm_new");
+        (await SaleRecord()).Status.Should().Be(PurchaseStatus.Completed);
+    }
+
+    [Fact]
+    public async Task AResultForAFlaggedAttempt_ClearsTheFlag_AndAFinalDeclineVoidsTheSale()
+    {
+        EndedAuctionWithWinner();
+        _f.ChargesDecline();
+        await _f.CreateSut().RunAsync();
+
+        _f.Clock.Advance(TimeSpan.FromHours(2));
+        _f.Provider.Setup(p => p.ChargeSavedCardAsync(It.IsAny<ChargeRequest>()))
+            .Callback<ChargeRequest>(r =>
+            {
+                _f.Charges.Add(r);
+                _f.Seed(db => { db.Purchases.Single().ChargeNeedsAttention = true; db.SaveChanges(); return 0; });
+            })
+            .ReturnsAsync(ChargeResult.Declined("card_declined", "Your card was declined."));
+        await _f.CreateSut().RunAsync();
+
+        var sale = await SaleRecord();
+        sale.Status.Should().Be(PurchaseStatus.Voided);
+        sale.ChargeNeedsAttention.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AResultForAFlaggedAttempt_ClearsTheFlag_AndASuccessCompletesTheSale()
+    {
+        EndedAuctionWithWinner();
+        _f.Provider.Setup(p => p.ChargeSavedCardAsync(It.IsAny<ChargeRequest>()))
+            .Callback<ChargeRequest>(r =>
+            {
+                _f.Charges.Add(r);
+                _f.Seed(db => { db.Purchases.Single().ChargeNeedsAttention = true; db.SaveChanges(); return 0; });
+            })
+            .ReturnsAsync(ChargeResult.Success("pi_ok"));
+
+        await _f.CreateSut().RunAsync();
+
+        var sale = await SaleRecord();
+        sale.Status.Should().Be(PurchaseStatus.Completed);
+        sale.ChargeNeedsAttention.Should().BeFalse();
     }
 }
