@@ -94,7 +94,8 @@ public class AuctionCloser : IAuctionCloser
             return false;
 
         var bids = await _bids.GetByAuctionWithBuyersAsync(listingId);
-        var highest = bids.Where(b => b.Status == BidStatus.Active).MaxBy(b => b.AmountIncGst);
+        var highest = bids.Where(b => b.Status == BidStatus.Active)
+            .OrderByDescending(b => b.AmountIncGst).ThenBy(b => b.PlacedAt).FirstOrDefault();
         listing.ClosedAt = now;
 
         if (highest == null)
@@ -111,12 +112,17 @@ public class AuctionCloser : IAuctionCloser
         listing.Status = ListingStatus.AwaitingPayment;
         await _listings.UpdateAsync(listing);
 
+        // The winner's other open bids are just outbid; everyone else's open bids lose.
+        var changed = new List<Bid>();
         foreach (var bid in bids.Where(b => b.Status is BidStatus.Active or BidStatus.Outbid))
         {
+            var before = bid.Status;
             if (bid.Id == highest.Id) bid.Status = BidStatus.Won;
             else if (bid.BuyerUserId != highest.BuyerUserId) bid.Status = BidStatus.Lost;
+            else bid.Status = BidStatus.Outbid;
+            if (bid.Status != before) changed.Add(bid);
         }
-        await _bids.UpdateRangeAsync(bids);
+        await _bids.UpdateRangeAsync(changed);
 
         var split = GstBreakdown.FromIncGst(fee);
         var purchase = new Purchase

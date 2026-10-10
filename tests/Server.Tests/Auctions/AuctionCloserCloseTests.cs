@@ -133,21 +133,21 @@ public class AuctionCloserCloseTests
     [Fact]
     public async Task TwoInstancesClosingTheSameAuction_OnlyOneSaleRecordIsCreated()
     {
-        _f.Seed(db =>
+        var winningBid = _f.Seed(db =>
         {
             var listing = AuctionTestData.Auction(db, Ended);
             var w = AuctionTestData.Buyer(db, "Winner");
             AuctionTestData.Card(db, w);
-            AuctionTestData.Bid(db, listing, w, 6000m);
-            return listing;
+            return AuctionTestData.Bid(db, listing, w, 6000m);
         });
         _f.ChargesDecline();
-        // The second instance found the auction due and read it (still Active) before the first
-        // one closed it: replay that by giving it the earlier due list and its stale context.
+        // The second instance found the auction due and read it and its bids (still Active) before the
+        // first one closed it: replay that by giving it the earlier reads and its stale context.
         using var staleDb = _f.Read();
         var real = new ListingRepository(staleDb);
         var dueIds = await real.GetAuctionIdsDueToCloseAsync(_f.Clock.UtcNow, 50);
         await real.GetAuctionWithDetailsAsync(dueIds.Single());
+        await new BidRepository(staleDb).GetByAuctionWithBuyersAsync(dueIds.Single());
         var stale = new Mock<IListingRepository>();
         stale.Setup(r => r.GetAuctionIdsDueToCloseAsync(It.IsAny<DateTime>(), It.IsAny<int>())).ReturnsAsync(dueIds);
         stale.Setup(r => r.GetAuctionWithDetailsAsync(It.IsAny<Guid>())).Returns<Guid>(real.GetAuctionWithDetailsAsync);
@@ -157,6 +157,65 @@ public class AuctionCloserCloseTests
         var second = await _f.CreateSut(staleDb, stale.Object).RunAsync();
 
         second.AuctionsClosed.Should().Be(0);
-        (await _f.Read().Purchases.CountAsync()).Should().Be(1);
+        using var db = _f.Read();
+        (await db.Purchases.CountAsync()).Should().Be(1);
+        (await db.AuctionListings.SingleAsync()).Status.Should().Be(ListingStatus.AwaitingPayment);
+        (await db.Bids.SingleAsync(b => b.Id == winningBid.Id)).Status.Should().Be(BidStatus.Won);
+        _f.Audit.Verify(a => a.LogAsync("Listing", It.IsAny<Guid>(), "AuctionClosed", It.IsAny<Guid?>(), It.IsAny<string?>()), Times.Once);
+        _f.Emails.Verify(e => e.AuctionLostAsync(It.IsAny<AuctionListing>(), It.IsAny<User>()), Times.Never);
+        _f.Emails.Verify(e => e.AuctionEndedWithoutSaleAsync(It.IsAny<AuctionListing>(), It.IsAny<User>()), Times.Never);
+        _f.Emails.Verify(e => e.StudNoSaleAsync(It.IsAny<AuctionListing>(), It.IsAny<ListingCloseReason>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EqualHighestBids_TheEarlierBidWins()
+    {
+        var (early, late) = _f.Seed(db =>
+        {
+            var listing = AuctionTestData.Auction(db, Ended);
+            var a = AuctionTestData.Buyer(db, "Late");
+            var b = AuctionTestData.Buyer(db, "Early");
+            var lateBid = AuctionTestData.Bid(db, listing, a, 7000m);
+            var earlyBid = AuctionTestData.Bid(db, listing, b, 7000m);
+            lateBid.PlacedAt = _f.Clock.UtcNow.AddMinutes(-10);
+            earlyBid.PlacedAt = _f.Clock.UtcNow.AddMinutes(-20);
+            db.SaveChanges();
+            return (earlyBid, lateBid);
+        });
+        _f.ChargesDecline();
+
+        await _f.CreateSut().RunAsync();
+
+        using var db = _f.Read();
+        (await db.Bids.SingleAsync(b => b.Id == early.Id)).Status.Should().Be(BidStatus.Won);
+        (await db.Bids.SingleAsync(b => b.Id == late.Id)).Status.Should().Be(BidStatus.Lost);
+        (await db.Purchases.SingleAsync()).BidId.Should().Be(early.Id);
+    }
+
+    [Fact]
+    public async Task WinnersOtherActiveBids_BecomeOutbid_NotLeftActive()
+    {
+        _f.Seed(db =>
+        {
+            var listing = AuctionTestData.Auction(db, Ended);
+            var w = AuctionTestData.Buyer(db, "Winner");
+            var l = AuctionTestData.Buyer(db, "Loser");
+            AuctionTestData.Card(db, w);
+            AuctionTestData.Bid(db, listing, w, 4000m, BidStatus.Outbid);
+            AuctionTestData.Bid(db, listing, l, 5000m);
+            AuctionTestData.Bid(db, listing, w, 6000m);
+            AuctionTestData.Bid(db, listing, w, 5500m); // only possible via a race
+            return listing;
+        });
+        _f.ChargesDecline();
+
+        await _f.CreateSut().RunAsync();
+
+        using var db = _f.Read();
+        var bids = await db.Bids.ToListAsync();
+        bids.Single(x => x.AmountIncGst == 6000m).Status.Should().Be(BidStatus.Won);
+        bids.Single(x => x.AmountIncGst == 5500m).Status.Should().Be(BidStatus.Outbid);
+        bids.Single(x => x.AmountIncGst == 5000m).Status.Should().Be(BidStatus.Lost);
+        bids.Single(x => x.AmountIncGst == 4000m).Status.Should().Be(BidStatus.Outbid);
     }
 }
