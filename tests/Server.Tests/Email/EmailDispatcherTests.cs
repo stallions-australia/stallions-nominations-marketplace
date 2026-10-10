@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
@@ -15,10 +16,13 @@ public class EmailDispatcherTests
     {
         public List<OutgoingEmail> Sent { get; } = new();
 
+        public int Attempts { get; set; }
+
         public bool Fail { get; set; }
 
         public Task SendAsync(OutgoingEmail email, CancellationToken ct)
         {
+            Attempts++;
             if (Fail) throw new InvalidOperationException("ACS unavailable");
             Sent.Add(email);
             return Task.CompletedTask;
@@ -106,5 +110,56 @@ public class EmailDispatcherTests
 
         _sender.Fail = false;
         (await Sut(Db()).SendDueAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AFailedEmail_IsNotRetriedBeforeItsBackoff()
+    {
+        var id = await Queue();
+        _sender.Fail = true;
+        await Sut(Db()).SendDueAsync();
+
+        (await Sut(Db()).SendDueAsync()).Should().Be(0);
+
+        _sender.Attempts.Should().Be(1);
+        (await Row(id)).Attempts.Should().Be(1);
+    }
+
+    private static OutboundEmail DueRow(string to) => new()
+    {
+        ToAddress = to, Subject = "S", HtmlBody = "<p>B</p>", TextBody = "B", Template = "Outbid"
+    };
+
+    [Fact]
+    public async Task ARowAnotherInstanceClaimed_IsSkipped()
+    {
+        var repo = new Mock<IOutboundEmailRepository>();
+        repo.Setup(r => r.GetDueAsync(It.IsAny<DateTime>(), It.IsAny<int>()))
+            .ReturnsAsync(new List<OutboundEmail> { DueRow("a@example.com") });
+        repo.Setup(r => r.TryUpdateAsync(It.IsAny<OutboundEmail>())).ReturnsAsync(false);
+        var sut = new EmailDispatcher(repo.Object, _sender, _clock, NullLogger<EmailDispatcher>.Instance);
+
+        (await sut.SendDueAsync()).Should().Be(0);
+
+        _sender.Attempts.Should().Be(0);
+        repo.Verify(r => r.UpdateAsync(It.IsAny<OutboundEmail>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task WhenRecordingTheResultFails_TheRestOfTheBatchStillSends()
+    {
+        var first = DueRow("a@example.com");
+        var second = DueRow("b@example.com");
+        var repo = new Mock<IOutboundEmailRepository>();
+        repo.Setup(r => r.GetDueAsync(It.IsAny<DateTime>(), It.IsAny<int>()))
+            .ReturnsAsync(new List<OutboundEmail> { first, second });
+        repo.Setup(r => r.TryUpdateAsync(It.IsAny<OutboundEmail>())).ReturnsAsync(true);
+        repo.Setup(r => r.UpdateAsync(first)).ThrowsAsync(new DbUpdateConcurrencyException("conflict"));
+        var sut = new EmailDispatcher(repo.Object, _sender, _clock, NullLogger<EmailDispatcher>.Instance);
+
+        var act = () => sut.SendDueAsync();
+
+        await act.Should().NotThrowAsync();
+        _sender.Sent.Select(e => e.ToAddress).Should().Equal("a@example.com", "b@example.com");
     }
 }

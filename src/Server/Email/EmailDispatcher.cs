@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Stallions.Server.Data.Repositories;
 
 namespace Stallions.Server.Email;
@@ -33,13 +34,17 @@ public class EmailDispatcher : IEmailDispatcher
         _log = log;
     }
 
+    /// <summary>
+    /// Delivery is at-least-once: a send that succeeds but whose result can't be recorded is retried
+    /// after the lease expires.
+    /// </summary>
     public async Task<int> SendDueAsync(CancellationToken ct = default)
     {
-        var now = _clock.GetUtcNow().UtcDateTime;
         var sent = 0;
-        foreach (var email in await _repo.GetDueAsync(now, BatchSize))
+        foreach (var email in await _repo.GetDueAsync(_clock.GetUtcNow().UtcDateTime, BatchSize))
         {
             ct.ThrowIfCancellationRequested();
+            var now = _clock.GetUtcNow().UtcDateTime;
             email.Attempts++;
             email.NextAttemptAt = now + Lease;
             if (!await _repo.TryUpdateAsync(email)) continue; // another instance has it
@@ -71,7 +76,15 @@ public class EmailDispatcher : IEmailDispatcher
                 }
             }
 
-            await _repo.UpdateAsync(email);
+            try
+            {
+                await _repo.UpdateAsync(email);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _log.LogError(ex, "Email {EmailId} ({Template}) was processed but its result could not be recorded",
+                    email.Id, email.Template);
+            }
         }
 
         return sent;
