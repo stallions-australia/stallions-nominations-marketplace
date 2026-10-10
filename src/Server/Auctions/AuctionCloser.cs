@@ -172,7 +172,135 @@ public class AuctionCloser : IAuctionCloser
     private static IEnumerable<User> Bidders(IEnumerable<Bid> bids, Guid? except) =>
         bids.Where(b => b.BuyerUserId != except).GroupBy(b => b.BuyerUserId).Select(g => g.First().Buyer);
 
-    // ── Charging (Task 8) ──────────────────────────────────────────────────────
+    // ── Charging ───────────────────────────────────────────────────────────────
 
-    private Task<bool> ChargeAsync(Guid purchaseId) => Task.FromResult(false);
+    private sealed record ChargeAttempt(Guid PurchaseId, int AttemptNo, Guid BuyerUserId, decimal AmountIncGst, string Description);
+
+    private async Task<bool> ChargeAsync(Guid purchaseId)
+    {
+        var attempt = await _transactions.RunAsync(() => StartAttemptAsync(purchaseId));
+        if (attempt == null) return false;
+
+        // Outside any transaction. If this throws (provider unreachable) the attempt stays
+        // "started" and is repeated with the same key once it counts as interrupted.
+        var result = await ChargeCardAsync(attempt);
+
+        return await _transactions.RunAsync(() => RecordResultAsync(attempt, result));
+    }
+
+    private async Task<ChargeAttempt?> StartAttemptAsync(Guid purchaseId)
+    {
+        var now = Now;
+        var purchase = await _purchases.GetForChargeAsync(purchaseId);
+        if (purchase is not { Status: PurchaseStatus.Pending } || !IsDue(purchase, now)) return null;
+
+        // An interrupted attempt keeps its number, so the provider's idempotency key returns the
+        // original result instead of charging twice.
+        var attemptNo = purchase.ChargeAttemptStartedAt != null ? purchase.ChargeAttempts : purchase.ChargeAttempts + 1;
+        purchase.ChargeAttempts = attemptNo;
+        purchase.ChargeAttemptStartedAt = now;
+        purchase.RetryRequested = false;
+        await _purchases.UpdateAsync(purchase);
+
+        return new ChargeAttempt(purchase.Id, attemptNo, purchase.BuyerUserId, purchase.BuyerFeeIncGst,
+            $"Buyer fee — {purchase.Listing.Stallion?.Name}, {purchase.Listing.Season?.Name}");
+    }
+
+    private static bool IsDue(Purchase p, DateTime now) => p.ChargeAttemptStartedAt is { } started
+        ? started <= now - AuctionCloseOptions.InterruptedAttemptAge
+        : p.ChargeAttempts == 0 || p.RetryRequested || p.ChargeDueBy <= now;
+
+    private async Task<ChargeResult> ChargeCardAsync(ChargeAttempt attempt)
+    {
+        var card = await _cards.GetByUserIdAsync(attempt.BuyerUserId);
+        if (card == null || card.Provider != _provider.Name || !card.IsValidOn(DateOnly.FromDateTime(Now)))
+            return ChargeResult.Declined("no_valid_card", "No valid card on file.");
+
+        return await _provider.ChargeSavedCardAsync(new ChargeRequest(
+            card.ProviderCustomerId,
+            card.ProviderPaymentMethodId,
+            attempt.AmountIncGst,
+            attempt.Description,
+            new Dictionary<string, string> { ["kind"] = "buyer-fee", ["purchaseId"] = attempt.PurchaseId.ToString() },
+            $"buyer-fee-{attempt.PurchaseId}-{attempt.AttemptNo}"));
+    }
+
+    private async Task<bool> RecordResultAsync(ChargeAttempt attempt, ChargeResult result)
+    {
+        var now = Now;
+        var purchase = await _purchases.GetForChargeAsync(attempt.PurchaseId);
+        if (purchase is not { Status: PurchaseStatus.Pending } || purchase.ChargeAttempts != attempt.AttemptNo
+            || purchase.ChargeAttemptStartedAt == null)
+        {
+            _log.LogWarning("Charge result for sale record {PurchaseId} attempt {AttemptNo} arrived after it changed; ignored",
+                attempt.PurchaseId, attempt.AttemptNo);
+            return false;
+        }
+
+        var listing = (AuctionListing)purchase.Listing;
+        purchase.ChargeAttemptStartedAt = null;
+
+        if (result.Succeeded)
+        {
+            purchase.Status = PurchaseStatus.Completed;
+            purchase.PaymentProvider = _provider.Name;
+            purchase.PaymentReference = result.PaymentReference;
+            purchase.PaidAt = now;
+            purchase.LastChargeFailure = null;
+            await _purchases.UpdateAsync(purchase);
+
+            listing.Status = ListingStatus.Sold;
+            listing.WinningBidId = purchase.BidId;
+            await _listings.UpdateAsync(listing);
+
+            await _audit.LogAsync("Purchase", purchase.Id, "BuyerFeeCharged", null, JsonSerializer.Serialize(new
+            {
+                purchase.BuyerFeeIncGst, purchase.BuyerFeeExGst, purchase.BuyerFeeGst, purchase.PaymentReference, attempt.AttemptNo
+            }));
+            await _emails.WonAndChargedAsync(listing, purchase, purchase.Buyer);
+            await _emails.StudSaleConfirmationAsync(listing, purchase, purchase.Buyer);
+            return true;
+        }
+
+        var failure = result.FailureMessage ?? "The payment was declined.";
+        purchase.LastChargeFailure = failure.Length > 500 ? failure[..500] : failure;
+
+        if (purchase.ChargeDueBy == null)
+        {
+            // First failure: the grace period is read from Staff settings now.
+            var settings = await _settings.GetAsync();
+            purchase.ChargeDueBy = now.AddHours(settings.ChargeGracePeriodHours);
+            await _purchases.UpdateAsync(purchase);
+            await _audit.LogAsync("Purchase", purchase.Id, "BuyerFeeChargeFailed", null, JsonSerializer.Serialize(new
+            {
+                attempt.AttemptNo, result.FailureCode, purchase.ChargeDueBy
+            }));
+            await _emails.PaymentFailedAsync(listing, purchase, purchase.Buyer);
+        }
+        else if (now >= purchase.ChargeDueBy)
+        {
+            // Final attempt failed: no sale. Not offered to the next bidder.
+            purchase.Status = PurchaseStatus.Voided;
+            await _purchases.UpdateAsync(purchase);
+            listing.Status = ListingStatus.Unsold;
+            listing.CloseReason = ListingCloseReason.ChargeFailed;
+            await _listings.UpdateAsync(listing);
+            await _audit.LogAsync("Purchase", purchase.Id, "BuyerFeeChargeAbandoned", null, JsonSerializer.Serialize(new
+            {
+                attempt.AttemptNo, result.FailureCode
+            }));
+            await _emails.PaymentAbandonedAsync(listing, purchase, purchase.Buyer);
+            await _emails.StudNoSaleAsync(listing, ListingCloseReason.ChargeFailed);
+        }
+        else
+        {
+            // A retry during the grace period failed too: the deadline stands; no repeat email.
+            await _purchases.UpdateAsync(purchase);
+            await _audit.LogAsync("Purchase", purchase.Id, "BuyerFeeChargeFailed", null, JsonSerializer.Serialize(new
+            {
+                attempt.AttemptNo, result.FailureCode, purchase.ChargeDueBy
+            }));
+        }
+        return true;
+    }
 }
