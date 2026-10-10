@@ -183,3 +183,15 @@
 .text-muted {
     color: var(--text-muted);
 }
+
+.auction-closed {
+    border: 1px solid var(--border, #e5e2da);
+    border-radius: 8px;
+    padding: var(--space-4);
+    margin-block: var(--space-4);
+}
+
+.auction-closed-title {
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+}

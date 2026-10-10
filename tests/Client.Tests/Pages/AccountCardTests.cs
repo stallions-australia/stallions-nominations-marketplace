@@ -17,7 +17,7 @@ public class AccountCardTests : TestContext
     private static HttpClient Http() => new() { BaseAddress = new Uri("https://localhost/") };
     private readonly Mock<PaymentsApiService> _payments = new(MockBehavior.Loose, Http());
 
-    private IRenderedComponent<AccountCard> Render(string? query = null, TimeSpan? pollInterval = null)
+    private IRenderedComponent<AccountCard> Render(string? query = null, TimeSpan? pollInterval = null, List<PurchaseDto>? purchases = null)
     {
         this.AddTestAuthorization().SetAuthorized("buyer@example.com");
         Services.AddSingleton(_payments.Object);
@@ -26,6 +26,10 @@ public class AccountCardTests : TestContext
         listingApi.Setup(s => s.GetBuyerFeeDisclosureAsync()).ReturnsAsync(new BuyerFeeDisclosureDto
             { SavedCardExplanation = "CONFIGURED: charged the buyer fee automatically." });
         Services.AddSingleton(listingApi.Object);
+
+        var purchaseApi = new Mock<PurchaseApiService>(MockBehavior.Loose, Http());
+        purchaseApi.Setup(s => s.GetMyPurchasesAsync()).ReturnsAsync(purchases ?? new List<PurchaseDto>());
+        Services.AddSingleton(purchaseApi.Object);
 
         var userApi = new Mock<UserApiService>(MockBehavior.Loose, Http());
         userApi.Setup(s => s.GetMeAsync()).ReturnsAsync(new UserDto
@@ -170,5 +174,19 @@ public class AccountCardTests : TestContext
 
         Renderer.UnhandledException.IsCompleted.Should().BeFalse();
         calls.Should().Be(2, "polling stops once the page is gone");
+    }
+
+    [Fact]
+    public void AfterAFailedCharge_SavingACardIsSaidToRetryThePayment()
+    {
+        _payments.Setup(s => s.GetMyCardAsync()).ReturnsAsync(new SavedCardDto
+            { Brand = "visa", Last4 = "0002", ExpMonth = 8, ExpYear = 2028, IsValid = true });
+
+        var cut = Render(purchases: new List<PurchaseDto>
+        {
+            new() { StallionName = "Snitzel", Status = "Pending", ChargeDueBy = DateTime.UtcNow.AddHours(1) }
+        });
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Saving a new card will retry the payment for Snitzel"));
     }
 }

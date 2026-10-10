@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Stallions.Client.Pages;
 using Stallions.Client.Services;
+using Stallions.Shared;
 using Stallions.Shared.DTOs.Bids;
 using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.DTOs.Listings;
@@ -16,7 +17,7 @@ namespace Stallions.Client.Tests.Pages;
 public class ListingDetailTests : TestContext
 {
     private void RegisterServices(ListingDto listing, string? role = null, List<PublicBidDto>? history = null,
-        SavedCardDto? card = null, Exception? cardError = null)
+        SavedCardDto? card = null, Exception? cardError = null, MyAuctionResultDto? myResult = null)
     {
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
@@ -64,6 +65,72 @@ public class ListingDetailTests : TestContext
         if (cardError is not null) paymentsMock.Setup(s => s.GetMyCardAsync()).ThrowsAsync(cardError);
         else paymentsMock.Setup(s => s.GetMyCardAsync()).ReturnsAsync(card);
         Services.AddSingleton(paymentsMock.Object);
+
+        var purchaseMock = new Mock<PurchaseApiService>(MockBehavior.Loose,
+            new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        purchaseMock.Setup(s => s.GetMyResultAsync(listing.Id)).ReturnsAsync(myResult);
+        Services.AddSingleton(purchaseMock.Object);
+    }
+
+    private static AuctionListingDto ClosedAuction(string status = "AwaitingPayment") => new()
+    {
+        Id = Guid.NewGuid(), StallionName = "Snitzel", StudFarmName = "Arrowfield", Status = status,
+        EndDateTime = DateTime.UtcNow.AddMinutes(-5), BuyerFeeIncGst = 150m, MinimumBidIncrement = 25m
+    };
+
+    [Fact]
+    public void AClosedAuction_HidesTheBidForm()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ClosedAuction("Sold");
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true },
+            myResult: new MyAuctionResultDto { Outcome = AuctionOutcomes.Lost });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Auction closed"));
+        cut.Markup.Should().NotContain("Place bid");
+    }
+
+    [Fact]
+    public void AnActiveAuctionPastItsEndTime_IsShownAsClosed()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ClosedAuction("Active");
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Auction closed"));
+        cut.Markup.Should().NotContain("Place bid");
+    }
+
+    [Fact]
+    public void TheWinnerWithAFailedPayment_IsAskedToUpdateTheirCard()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ClosedAuction();
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true },
+            myResult: new MyAuctionResultDto { Outcome = AuctionOutcomes.PaymentFailed, ChargeDueBy = DateTime.UtcNow.AddHours(2) });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("payment failed"));
+        cut.Find("a[href='/account/card']").TextContent.Should().Contain("Update your card");
+    }
+
+    [Fact]
+    public void TheWinner_IsPointedToTheirSaleRecord()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ClosedAuction("Sold");
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true },
+            myResult: new MyAuctionResultDto { Outcome = AuctionOutcomes.Won });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("You won this auction"));
+        cut.Find("a[href='/my-purchases']").Should().NotBeNull();
     }
 
     [Fact]

@@ -24,7 +24,7 @@
                         <NavLink href="/admin/stallions" class="nav-link">My Stud Farm</NavLink>
                     }
                     <NavLink href="/my-bids"      class="nav-link">My Bids</NavLink>
-                    <NavLink href="/my-purchases" class="nav-link">My Purchases</NavLink>
+                    <NavLink href="/my-purchases" class="nav-link">My sale records</NavLink>
                     @if (UserState.IsBuyer)
                     {
                         <NavLink href="/account/card" class="nav-link">Payment card</NavLink>
@@ -63,7 +63,7 @@
                         <NavLink href="/admin/stallions" class="drawer-link" @onclick="CloseDrawer">My Stud Farm</NavLink>
                     }
                     <NavLink href="/my-bids"      class="drawer-link" @onclick="CloseDrawer">My Bids</NavLink>
-                    <NavLink href="/my-purchases" class="drawer-link" @onclick="CloseDrawer">My Purchases</NavLink>
+                    <NavLink href="/my-purchases" class="drawer-link" @onclick="CloseDrawer">My sale records</NavLink>
                     @if (UserState.IsBuyer)
                     {
                         <NavLink href="/account/card" class="drawer-link" @onclick="CloseDrawer">Payment card</NavLink>

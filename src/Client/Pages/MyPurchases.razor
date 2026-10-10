@@ -2,10 +2,10 @@
 @attribute [Authorize]
 @inject PurchaseApiService PurchaseApi
 
-<PageTitle>My Purchases — Stallions Australia</PageTitle>
+<PageTitle>My sale records — Stallions Australia</PageTitle>
 
 <div class="container" style="padding-block: var(--space-10)">
-    <h1 class="page-title">My Purchases</h1>
+    <h1 class="page-title">My sale records</h1>
 
     @if (_error is not null)
     {
@@ -17,7 +17,7 @@
     }
     else if (!_purchases.Any())
     {
-        <EmptyState Message="No purchases yet" Icon="🐎">
+        <EmptyState Message="No sale records yet" Icon="🐎">
             <a href="/" class="btn btn-primary">Browse nominations</a>
         </EmptyState>
     }
@@ -29,6 +29,7 @@
                 <div class="purchase-row">
                     <div class="purchase-info">
                         <div class="purchase-stallion">@p.StallionName</div>
+                        <div class="text-muted text-sm">@p.SeasonName · @p.StudFarmName</div>
                     </div>
                     <div class="purchase-amounts">
                         <div class="purchase-price">@p.TotalPriceIncGst.ToString("C0", AuCulture)</div>
@@ -36,7 +37,11 @@
                         <div class="purchase-fee text-muted text-sm">Balance to stud: @p.BalancePayableToStudIncGst.ToString("C0", AuCulture)</div>
                     </div>
                     <div class="purchase-status">
-                        <span class="badge @GetStatusBadge(p.Status)">@p.Status</span>
+                        <span class="badge @GetStatusBadge(p)">@GetStatusLabel(p)</span>
+                        @if (p.Status == "Pending" && p.ChargeDueBy is not null)
+                        {
+                            <a href="/account/card" class="btn btn-sm btn-outline" style="margin-top: var(--space-2)">Update your card</a>
+                        }
                         <div class="purchase-date text-muted text-xs">@p.CreatedAt.ToString("d MMM yyyy")</div>
                     </div>
                 </div>
@@ -46,7 +51,7 @@
 </div>
 
 @code {
-    private List<Stallions.Shared.DTOs.Checkout.PurchaseDto>? _purchases;
+    private List<PurchaseDto>? _purchases;
     private string? _error;
     private static readonly System.Globalization.CultureInfo AuCulture =
         System.Globalization.CultureInfo.GetCultureInfo("en-AU");
@@ -58,15 +63,26 @@
         _error = null;
         _purchases = null;
         try { _purchases = await PurchaseApi.GetMyPurchasesAsync(); }
-        catch (ApiException) { _error = "Failed to load purchases. Please try again."; }
+        catch (ApiException) { _error = "Failed to load sale records. Please try again."; }
     }
 
-    private static string GetStatusBadge(string status) => status switch
+    private static string GetStatusLabel(PurchaseDto p) => p.Status switch
     {
-        "Completed" => "badge-leading",
-        "Pending"   => "badge-auction",
-        "Refunded"  => "badge-ending",
-        "Voided"    => "badge-ending",
-        _           => ""
+        "Completed" => "Paid",
+        "Pending" when p.ChargeDueBy is { } due => $"Payment failed — update your card by {Local(due)}",
+        "Pending" => "Charging buyer fee",
+        "Voided" => "No sale — payment not completed",
+        _ => p.Status
     };
+
+    private static string GetStatusBadge(PurchaseDto p) => p.Status switch
+    {
+        "Completed" => "badge-won",
+        "Pending" when p.ChargeDueBy is not null => "badge-ending",
+        "Pending" => "badge-auction",
+        _ => "badge-lost"
+    };
+
+    private static string Local(DateTime utc) =>
+        DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime().ToString("d MMM, h:mm tt");
 }

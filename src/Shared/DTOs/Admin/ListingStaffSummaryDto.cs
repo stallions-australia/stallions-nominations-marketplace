@@ -11,4 +11,6 @@ public class ListingStaffSummaryDto
     public decimal? ReservePrice { get; set; }      // Staff-only view; null when no reserve
     public decimal? BuyerFeeIncGst { get; set; }  // null until first published
     public DateTime? PublishedAt { get; set; }
+    /// <summary>Why the auction closed without a sale (NoBids, ReserveNotMet, ChargeFailed); null otherwise.</summary>
+    public string? CloseReason { get; set; }
 }

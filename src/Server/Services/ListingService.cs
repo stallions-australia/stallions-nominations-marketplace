@@ -441,6 +441,7 @@ public class ListingService : IListingService
             CreatedAt = al.CreatedAt,
             PublishedAt = al.PublishedAt,
             ClosedAt = al.ClosedAt,
+            CloseReason = al.CloseReason?.ToString(),
             Description = al.Description,
             TermsAndConditions = al.TermsAndConditions,
             ReservePrice = canSeeReserve ? al.ReservePrice : null,

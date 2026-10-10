@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @implements IDisposable
 @inject PaymentsApiService PaymentsApi
+@inject PurchaseApiService PurchaseApi
 @inject ListingApiService ListingApi
 @inject UserStateService UserState
 @inject NavigationManager Nav
@@ -14,6 +15,11 @@
     @if (!string.IsNullOrWhiteSpace(_disclosure?.SavedCardExplanation))
     {
         <p class="account-card-disclosure">@_disclosure.SavedCardExplanation</p>
+    }
+
+    @if (_retryFor is not null)
+    {
+        <p class="account-card-retry" role="status">Saving a new card will retry the payment for @_retryFor.</p>
     }
 
     <div role="status" aria-live="polite">
@@ -77,6 +83,7 @@
     private bool _busy;
     private string? _notice;
     private string? _error;
+    private string? _retryFor;
 
     protected override async Task OnInitializedAsync()
     {
@@ -97,6 +104,16 @@
 
         _card = await LoadCardAsync();
         if (token.IsCancellationRequested) return;
+
+        // A winner whose buyer-fee charge failed: saving a new card retries it.
+        try
+        {
+            var purchases = await PurchaseApi.GetMyPurchasesAsync() ?? new List<PurchaseDto>();
+            _retryFor = purchases.FirstOrDefault(p => p.Status == "Pending" && p.ChargeDueBy != null)?.StallionName;
+        }
+        catch (ApiException) { _retryFor = null; }
+        if (token.IsCancellationRequested) return;
+
         _loading = false;
 
         // The provider's webhook saves the card; wait for the one from this setup to land

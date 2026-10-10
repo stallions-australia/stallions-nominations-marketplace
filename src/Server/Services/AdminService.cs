@@ -284,7 +284,8 @@ public class AdminService : IAdminService
             HighestBidIncGst = bids.TryGetValue(l.Id, out var b) ? b.Highest : null,
             ReservePrice = l is AuctionListing { HasReserve: true } al ? al.ReservePrice : null,
             BuyerFeeIncGst = l.BuyerFeeIncGst,
-            PublishedAt = l.PublishedAt
+            PublishedAt = l.PublishedAt,
+            CloseReason = l.CloseReason?.ToString()
         }).ToList();
         return ServiceResult<IReadOnlyList<ListingStaffSummaryDto>>.Ok(dtos);
     }
