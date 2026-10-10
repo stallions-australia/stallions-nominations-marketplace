@@ -136,6 +136,7 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 builder.Services.AddScoped<ITermsService, TermsService>();
 builder.Services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
+builder.Services.AddScoped<IAuctionEmails, AuctionEmails>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 
 // Rate limiting
