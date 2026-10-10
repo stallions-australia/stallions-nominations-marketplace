@@ -2,7 +2,7 @@ using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Data.Entities;
 
-public class Purchase
+public class Purchase : IHasConcurrencyStamp
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ListingId { get; set; }
@@ -22,6 +22,18 @@ public class Purchase
     public decimal? RefundAmount { get; set; }
     public DateTime? RefundedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // ── Automatic buyer-fee charge (Phase 3). The purchase is the sale record. ──
+    /// <summary>Charge attempts made so far; also numbers the idempotency key of each attempt.</summary>
+    public int ChargeAttempts { get; set; }
+    /// <summary>Set while an attempt is in flight. Older than 2 minutes = interrupted, repeated with the same key.</summary>
+    public DateTime? ChargeAttemptStartedAt { get; set; }
+    /// <summary>End of the grace period, set at the first failed charge.</summary>
+    public DateTime? ChargeDueBy { get; set; }
+    public string? LastChargeFailure { get; set; }
+    /// <summary>The winner saved a new card after a failed charge; the next run retries.</summary>
+    public bool RetryRequested { get; set; }
+    public Guid ConcurrencyStamp { get; set; } = Guid.NewGuid();
 
     // Navigation properties
     public Listing Listing { get; set; } = null!;

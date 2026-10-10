@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<StallionSeasonSubscription> StallionSeasonSubscriptions => Set<StallionSeasonSubscription>();
     public DbSet<SavedCard> SavedCards => Set<SavedCard>();
     public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents => Set<ProcessedPaymentEvent>();
+    public DbSet<OutboundEmail> OutboundEmails => Set<OutboundEmail>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -129,6 +130,8 @@ public class AppDbContext : DbContext
             e.HasKey(l => l.Id);
             e.Property(l => l.ListingType).HasConversion<string>().HasMaxLength(20);
             e.Property(l => l.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(l => l.CloseReason).HasConversion<string>().HasMaxLength(20);
+            e.Property(l => l.ConcurrencyStamp).IsConcurrencyToken();
             e.Property(l => l.BuyerFeeIncGst).HasPrecision(12, 2);
 
             e.HasIndex(l => new { l.Status, l.SeasonId });
@@ -196,6 +199,12 @@ public class AppDbContext : DbContext
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(p => p.PaymentProvider).HasMaxLength(50);
             e.Property(p => p.PaymentReference).HasMaxLength(200);
+            e.Property(p => p.LastChargeFailure).HasMaxLength(500);
+            e.Property(p => p.ConcurrencyStamp).IsConcurrencyToken();
+            // One winning bid can never have two live sale records. Voided rows are excluded:
+            // the removed interim checkout could leave several per bid on dev data.
+            e.HasIndex(p => p.BidId).IsUnique().HasFilter("[BidId] IS NOT NULL AND [Status] <> 'Voided'");
+            e.HasIndex(p => new { p.Status, p.ChargeDueBy });
 
             e.HasOne(p => p.Listing)
                 .WithMany(l => l.Purchases)
@@ -421,5 +430,38 @@ public class AppDbContext : DbContext
             e.Property(p => p.Provider).HasMaxLength(20).IsRequired();
             e.Property(p => p.Type).HasMaxLength(100).IsRequired();
         });
+
+        // ── Outbound emails (outbox) ─────────────────────────────────────────
+        modelBuilder.Entity<OutboundEmail>(e =>
+        {
+            e.HasKey(m => m.Id);
+            e.Property(m => m.ToAddress).HasMaxLength(320).IsRequired();
+            e.Property(m => m.Subject).HasMaxLength(300).IsRequired();
+            e.Property(m => m.Template).HasMaxLength(50).IsRequired();
+            e.Property(m => m.RelatedEntityType).HasMaxLength(50);
+            e.Property(m => m.LastError).HasMaxLength(1000);
+            e.Property(m => m.ConcurrencyStamp).IsConcurrencyToken();
+            e.HasIndex(m => new { m.SentAt, m.FailedAt, m.NextAttemptAt });
+        });
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        RenewConcurrencyStamps();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        RenewConcurrencyStamps();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    // The original stamp is what EF checks against the database; the new one marks this update.
+    private void RenewConcurrencyStamps()
+    {
+        foreach (var entry in ChangeTracker.Entries<IHasConcurrencyStamp>())
+            if (entry.State == EntityState.Modified)
+                entry.Entity.ConcurrencyStamp = Guid.NewGuid();
     }
 }
