@@ -59,10 +59,21 @@ public class ListingRepository : IListingRepository
             .Include(l => l.StudFarm)
             .OrderByDescending(l => l.CreatedAt).ToListAsync();
 
-    public async Task<IReadOnlyList<AuctionListing>> GetExpiredAuctionsAsync() =>
+    public async Task<IReadOnlyList<Guid>> GetAuctionIdsDueToCloseAsync(DateTime endedAtOrBefore, int max) =>
         await _db.AuctionListings
-            .Where(a => a.EndDateTime <= DateTime.UtcNow && a.Status == ListingStatus.Active)
+            .Where(a => a.Status == ListingStatus.Active && a.EndDateTime <= endedAtOrBefore)
+            .OrderBy(a => a.EndDateTime)
+            .Take(max)
+            .Select(a => a.Id)
             .ToListAsync();
+
+    public async Task<AuctionListing?> GetAuctionWithDetailsAsync(Guid id) =>
+        await _db.AuctionListings
+            .Include(a => a.Stallion)
+            .Include(a => a.Season)
+            .Include(a => a.StudFarm).ThenInclude(f => f.User)
+            .FirstOrDefaultAsync(a => a.Id == id);
+
 
     public async Task<IReadOnlyList<Listing>> GetAllStaffAsync() =>
         await _db.Listings

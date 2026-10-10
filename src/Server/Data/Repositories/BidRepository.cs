@@ -38,6 +38,13 @@ public class BidRepository : IBidRepository
             .OrderByDescending(b => b.PlacedAt)
             .ToListAsync();
 
+    public async Task<IReadOnlyList<Bid>> GetByAuctionWithBuyersAsync(Guid auctionListingId) =>
+        await _db.Bids
+            .Include(b => b.Buyer)
+            .Where(b => b.AuctionListingId == auctionListingId)
+            .OrderByDescending(b => b.AmountIncGst)
+            .ToListAsync();
+
     public async Task<Bid> AddAsync(Bid bid)
     {
         _db.Bids.Add(bid);
