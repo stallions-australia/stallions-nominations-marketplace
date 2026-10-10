@@ -17,6 +17,12 @@ public class PurchaseRepository : IPurchaseRepository
         await WithListingDetails(_db.Purchases).Where(p => p.BuyerUserId == buyerUserId)
             .OrderByDescending(p => p.CreatedAt).ToListAsync();
 
+    public async Task<Purchase?> GetByListingAndBuyerAsync(Guid listingId, Guid buyerUserId) =>
+        await _db.Purchases
+            .Where(p => p.ListingId == listingId && p.BuyerUserId == buyerUserId)
+            .OrderByDescending(p => p.CreatedAt)
+            .FirstOrDefaultAsync();
+
     private static IQueryable<Purchase> WithListingDetails(IQueryable<Purchase> q) =>
         q.Include(p => p.Listing).ThenInclude(l => l.Stallion)
          .Include(p => p.Listing).ThenInclude(l => l.Season)

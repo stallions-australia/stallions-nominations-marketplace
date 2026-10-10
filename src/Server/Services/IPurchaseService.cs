@@ -8,4 +8,5 @@ public interface IPurchaseService
     Task<ServiceResult<IReadOnlyList<PurchaseDto>>> GetPurchasesAsync();
     Task<ServiceResult<PurchaseDto>> GetPurchaseByIdAsync(Guid id);
     Task<ServiceResult> RefundAsync(Guid id);
+    Task<ServiceResult<MyAuctionResultDto>> GetMyAuctionResultAsync(Guid listingId);
 }

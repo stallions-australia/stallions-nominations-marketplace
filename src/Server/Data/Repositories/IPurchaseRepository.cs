@@ -6,6 +6,8 @@ public interface IPurchaseRepository
 {
     Task<Purchase?> GetByIdAsync(Guid id);
     Task<IReadOnlyList<Purchase>> GetByBuyerIdAsync(Guid buyerUserId);
+    /// <summary>The buyer's most recent sale record on the listing, if any.</summary>
+    Task<Purchase?> GetByListingAndBuyerAsync(Guid listingId, Guid buyerUserId);
     Task<IReadOnlyList<Purchase>> GetAllAsync();
     /// <summary>
     /// Pending sale records due a charge attempt: never attempted, a retry requested after a new

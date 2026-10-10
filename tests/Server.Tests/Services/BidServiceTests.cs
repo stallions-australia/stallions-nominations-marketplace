@@ -4,6 +4,7 @@ using Moq;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Email;
 using Stallions.Server.Services;
 using Stallions.Shared.DTOs.Bids;
 using Stallions.Shared.Enums;
@@ -33,9 +34,82 @@ public class BidServiceTests
         _cardsMock.Setup(c => c.HasValidCardAsync(It.IsAny<Guid>())).ReturnsAsync(true);
     }
 
+    private readonly Mock<IAuctionEmails> _emailsMock = new();
+
     private BidService CreateSut(AppDbContext? db = null) =>
         new(_bidRepoMock.Object, _listingRepoMock.Object, _usersMock.Object, db ?? CreateInMemoryDb(),
-            _termsRepoMock.Object, _cardsMock.Object);
+            _termsRepoMock.Object, _cardsMock.Object, _emailsMock.Object);
+
+    [Fact]
+    public async Task PlaceBid_WhenTheAuctionClosesWhileBidding_IsRejected()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var open = OpenAuction();
+        var closed = OpenAuction();
+        closed.Id = open.Id;
+        closed.Status = ListingStatus.AwaitingPayment;
+        _listingRepoMock.SetupSequence(r => r.GetAuctionByIdAsync(open.Id)).ReturnsAsync(open).ReturnsAsync(closed);
+
+        var result = await CreateSut().PlaceBidAsync(open.Id, new PlaceBidRequest { AmountIncGst = 5000m });
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("This auction has ended.");
+        _bidRepoMock.Verify(r => r.AddAsync(It.IsAny<Bid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PlaceBid_OutbiddingSomeone_QueuesTheirOutbidEmail()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction();
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+        var previous = new Bid { AuctionListingId = auction.Id, BuyerUserId = Guid.NewGuid(), AmountIncGst = 5000m };
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync(previous);
+        _bidRepoMock.Setup(r => r.AddAsync(It.IsAny<Bid>())).ReturnsAsync((Bid b) => b);
+
+        await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 5500m });
+
+        _emailsMock.Verify(e => e.OutbidAsync(auction, previous.BuyerUserId, 5500m), Times.Once);
+    }
+
+    [Fact]
+    public async Task PlaceBid_TheFirstBid_SendsNoOutbidEmail()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var auction = OpenAuction();
+        _listingRepoMock.Setup(r => r.GetAuctionByIdAsync(auction.Id)).ReturnsAsync(auction);
+        _bidRepoMock.Setup(r => r.GetHighestBidAsync(auction.Id)).ReturnsAsync((Bid?)null);
+        _bidRepoMock.Setup(r => r.AddAsync(It.IsAny<Bid>())).ReturnsAsync((Bid b) => b);
+
+        await CreateSut().PlaceBidAsync(auction.Id, new PlaceBidRequest { AmountIncGst = 5000m });
+
+        _emailsMock.Verify(e => e.OutbidAsync(It.IsAny<AuctionListing>(), It.IsAny<Guid>(), It.IsAny<decimal>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetMine_SaysWhetherTheAuctionIsStillOpen()
+    {
+        var buyer = ActiveBuyer();
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var open = OpenAuction();
+        open.Stallion = new Stallion { Name = "Snitzel" };
+        var ended = OpenAuction();
+        ended.Status = ListingStatus.Unsold;
+        _bidRepoMock.Setup(r => r.GetByBuyerIdAsync(buyer.Id)).ReturnsAsync(new List<Bid>
+        {
+            new() { AuctionListing = open, Status = BidStatus.Active },
+            new() { AuctionListing = ended, Status = BidStatus.Lost }
+        });
+
+        var result = await CreateSut().GetMineAsync();
+
+        result.Value![0].AuctionOpen.Should().BeTrue();
+        result.Value[0].StallionName.Should().Be("Snitzel");
+        result.Value[1].AuctionOpen.Should().BeFalse();
+    }
 
     [Fact]
     public async Task PlaceBid_WithoutAValidSavedCard_ReturnsBadRequest()

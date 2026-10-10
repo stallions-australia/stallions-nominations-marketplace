@@ -16,4 +16,12 @@ public class PurchaseApiService
             throw new ApiException((int)response.StatusCode, "Failed to load sale records.");
         return await response.Content.ReadFromJsonAsync<List<PurchaseDto>>() ?? new List<PurchaseDto>();
     }
+
+    public virtual async Task<MyAuctionResultDto?> GetMyResultAsync(Guid listingId)
+    {
+        var response = await _http.GetAsync($"api/listings/{listingId}/my-result");
+        if (!response.IsSuccessStatusCode)
+            throw new ApiException((int)response.StatusCode, "Failed to load your auction result.");
+        return await response.Content.ReadFromJsonAsync<MyAuctionResultDto>();
+    }
 }

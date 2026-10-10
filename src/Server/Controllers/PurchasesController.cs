@@ -29,6 +29,14 @@ public class PurchasesController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpGet("listings/{id:guid}/my-result")]
+    [Authorize(Policy = "BuyerOnly")]
+    public async Task<IActionResult> GetMyAuctionResult(Guid id)
+    {
+        var r = await _purchases.GetMyAuctionResultAsync(id);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpPost("purchases/{id:guid}/refund")]
     [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Refund(Guid id)

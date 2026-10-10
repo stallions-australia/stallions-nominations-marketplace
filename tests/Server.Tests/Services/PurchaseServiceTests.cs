@@ -3,6 +3,7 @@ using Moq;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Services;
+using Stallions.Shared;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Tests.Services;
@@ -13,7 +14,61 @@ public class PurchaseServiceTests
     private readonly Mock<IAuditLogRepository> _audit = new();
     private readonly Mock<IUserService> _users = new();
 
-    private PurchaseService CreateSut() => new(_purchases.Object, _audit.Object, _users.Object);
+    private readonly Mock<IListingRepository> _listings = new();
+    private readonly Mock<IBidRepository> _bids = new();
+
+    private PurchaseService CreateSut() =>
+        new(_purchases.Object, _audit.Object, _users.Object, _listings.Object, _bids.Object);
+
+    private (User Buyer, AuctionListing Listing) BuyerAndAuction(ListingStatus status, ListingCloseReason? reason = null)
+    {
+        var buyer = Buyer();
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        var listing = new AuctionListing { Id = Guid.NewGuid(), Status = status, CloseReason = reason };
+        _listings.Setup(r => r.GetAuctionByIdAsync(listing.Id)).ReturnsAsync(listing);
+        return (buyer, listing);
+    }
+
+    [Theory]
+    [InlineData(PurchaseStatus.Completed, false, AuctionOutcomes.Won)]
+    [InlineData(PurchaseStatus.Pending, false, AuctionOutcomes.PaymentPending)]
+    [InlineData(PurchaseStatus.Pending, true, AuctionOutcomes.PaymentFailed)]
+    [InlineData(PurchaseStatus.Voided, true, AuctionOutcomes.NoSale)]
+    public async Task MyAuctionResult_ForTheWinner_FollowsTheSaleRecord(PurchaseStatus status, bool failed, string expected)
+    {
+        var (buyer, listing) = BuyerAndAuction(ListingStatus.AwaitingPayment);
+        var dueBy = failed ? DateTime.UtcNow.AddHours(1) : (DateTime?)null;
+        var sale = new Purchase { Id = Guid.NewGuid(), Status = status, ChargeDueBy = dueBy };
+        _purchases.Setup(r => r.GetByListingAndBuyerAsync(listing.Id, buyer.Id)).ReturnsAsync(sale);
+
+        var result = (await CreateSut().GetMyAuctionResultAsync(listing.Id)).Value!;
+
+        result.Outcome.Should().Be(expected);
+        result.PurchaseId.Should().Be(sale.Id);
+        result.ChargeDueBy.Should().Be(dueBy);
+    }
+
+    [Theory]
+    [InlineData(ListingStatus.Sold, null, AuctionOutcomes.Lost)]
+    [InlineData(ListingStatus.Unsold, ListingCloseReason.ReserveNotMet, AuctionOutcomes.EndedWithoutSale)]
+    [InlineData(ListingStatus.Unsold, ListingCloseReason.ChargeFailed, AuctionOutcomes.Lost)]
+    public async Task MyAuctionResult_ForAnotherBidder(ListingStatus status, ListingCloseReason? reason, string expected)
+    {
+        var (buyer, listing) = BuyerAndAuction(status, reason);
+        _bids.Setup(r => r.GetByAuctionListingIdAsync(listing.Id))
+            .ReturnsAsync(new List<Bid> { new() { BuyerUserId = buyer.Id, AmountIncGst = 5000m } });
+
+        (await CreateSut().GetMyAuctionResultAsync(listing.Id)).Value!.Outcome.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task MyAuctionResult_WhileOpen_OrWithoutBids_IsNone()
+    {
+        var (_, open) = BuyerAndAuction(ListingStatus.Active);
+        _bids.Setup(r => r.GetByAuctionListingIdAsync(It.IsAny<Guid>())).ReturnsAsync(new List<Bid>());
+
+        (await CreateSut().GetMyAuctionResultAsync(open.Id)).Value!.Outcome.Should().Be(AuctionOutcomes.None);
+    }
 
     private static User Buyer() => new() { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
 

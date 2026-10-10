@@ -8,4 +8,7 @@ public class BidDto
     public decimal AmountIncGst { get; set; }
     public DateTime PlacedAt { get; set; }
     public string Status { get; set; } = string.Empty;
+    public string StallionName { get; set; } = string.Empty;
+    /// <summary>The auction is still taking bids.</summary>
+    public bool AuctionOpen { get; set; }
 }

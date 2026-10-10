@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Email;
 using Stallions.Shared.DTOs.Bids;
 using Stallions.Shared.Enums;
 
@@ -15,10 +16,11 @@ public class BidService : IBidService
     private readonly AppDbContext _db;
     private readonly ITermsRepository _termsRepo;
     private readonly ICardService _cards;
+    private readonly IAuctionEmails _emails;
 
     public BidService(IBidRepository bidRepo, IListingRepository listingRepo,
         IUserService users, AppDbContext db, ITermsRepository termsRepo,
-        ICardService cards)
+        ICardService cards, IAuctionEmails emails)
     {
         _bidRepo = bidRepo;
         _listingRepo = listingRepo;
@@ -26,6 +28,7 @@ public class BidService : IBidService
         _db = db;
         _termsRepo = termsRepo;
         _cards = cards;
+        _emails = emails;
     }
 
     public async Task<ServiceResult<CurrentBidDto>> GetCurrentBidAsync(Guid auctionListingId)
@@ -77,9 +80,9 @@ public class BidService : IBidService
         // The DbContext is configured with EnableRetryOnFailure, so a user-initiated
         // transaction must be executed through the retrying execution strategy as a
         // single retriable unit (EF Core throws otherwise). A rollback does not reset the
-        // change tracker, so each attempt clears it and re-reads the highest bid rather than
-        // reusing stale tracked entities from a failed attempt. `caller` and `listing` were
-        // loaded before the transaction and are only read here, never saved.
+        // change tracker, so each attempt clears it and re-reads the listing and highest bid rather than
+        // reusing stale tracked entities from a failed attempt. `caller` and `listing` are
+        // read-only here, never saved; the listing is re-read inside for the end-time check.
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
@@ -87,6 +90,12 @@ public class BidService : IBidService
             using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
+                // Re-checked inside the transaction: once the auction has ended, no bid may land —
+                // the auction closer reads the bids 30 seconds after the end.
+                var current = await _listingRepo.GetAuctionByIdAsync(auctionListingId);
+                if (current is not { Status: ListingStatus.Active } || current.EndDateTime <= DateTime.UtcNow)
+                    return ServiceResult<BidDto>.BadRequest("This auction has ended.");
+
                 var highest = await _bidRepo.GetHighestBidAsync(auctionListingId);
 
                 if (highest == null && request.AmountIncGst < buyerFee)
@@ -119,6 +128,9 @@ public class BidService : IBidService
                 };
 
                 var created = await _bidRepo.AddAsync(bid);
+                if (highest != null)
+                    await _emails.OutbidAsync(current, highest.BuyerUserId, request.AmountIncGst);
+
                 await tx.CommitAsync();
                 return ServiceResult<BidDto>.Created(MapToDto(created));
             }
@@ -178,6 +190,8 @@ public class BidService : IBidService
         BuyerUserId = b.BuyerUserId,
         AmountIncGst = b.AmountIncGst,
         PlacedAt = b.PlacedAt,
-        Status = b.Status.ToString()
+        Status = b.Status.ToString(),
+        StallionName = b.AuctionListing?.Stallion?.Name ?? string.Empty,
+        AuctionOpen = b.AuctionListing is { Status: ListingStatus.Active } a && a.EndDateTime > DateTime.UtcNow
     };
 }
