@@ -14,7 +14,8 @@ The business model was redesigned in October 2026 — see `docs/superpowers/spec
 - **Storage:** Azure Blob Storage (stallion images, documents)
 - **Auth:** Microsoft Entra External ID (customer sign-in: email/password + Google); roles stored in the app database
 - **Hosting:** Azure App Service
-- **Serverless:** Azure Functions (background tasks, notifications)
+- **Serverless:** Azure Functions — provisioned but not used yet; background jobs run inside the API (see Architecture Notes)
+- **Email:** Azure Communication Services (managed identity) via an outbox table
 - **Payments:** Stripe (v1) — behind a provider interface
 - **Version Control:** GitHub — https://github.com/stallions-australia/stallions-nominations-marketplace
 
@@ -23,7 +24,7 @@ The business model was redesigned in October 2026 — see `docs/superpowers/spec
 - Blazor WASM client communicates with ASP.NET Core API backend
 - Entra External ID handles authentication for all user roles; authorisation is database-backed (`StaffOnly`, `StudFarmAdminOnly`, `StudFarmOrStaff` policies)
 - Blob Storage used for stallion profile images and nomination documents
-- Azure Functions handle async tasks (auction closing, automatic buyer-fee charging, email notifications)
+- Background jobs run as hosted services inside the API: AuctionCloseService (closes auctions, charges the buyer fee, grace period) and EmailDispatchService (sends the OutboundEmails outbox). Both are safe on several instances (concurrency stamps).
 - The Stud / Stallion Directory is seeded from ArionWeb data via one-off SQL scripts — there is no live integration with ArionWeb
 
 ## User Roles & Authentication
