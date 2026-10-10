@@ -175,6 +175,20 @@ public class AdminServiceTests
     }
 
     [Fact]
+    public async Task ForceListingStatus_CannotMoveAListingOutOfAwaitingPayment()
+    {
+        var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.AwaitingPayment };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().ForceListingStatusAsync(listing.Id,
+            new ForceListingStatusRequest { Status = "Cancelled" });
+
+        result.HttpStatusCode.Should().Be(400);
+        listing.Status.Should().Be(ListingStatus.AwaitingPayment);
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ForceListingStatusAsync_WhenValid_SetsStatusAndAuditLogs()
     {
         var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.Draft };

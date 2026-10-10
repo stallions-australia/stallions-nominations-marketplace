@@ -300,6 +300,8 @@ public class AdminService : IAdminService
             return ServiceResult.BadRequest($"'{request.Status}' is not a valid listing status.");
         if (newStatus is ListingStatus.AwaitingPayment or ListingStatus.Unsold)
             return ServiceResult.BadRequest("Awaiting payment and Unsold are set only when an auction closes.");
+        if (listing.Status == ListingStatus.AwaitingPayment)
+            return ServiceResult.BadRequest("This auction's buyer fee is being charged; its status is managed by the auction closer.");
 
         var previousStatus = listing.Status;
         listing.Status = newStatus;
