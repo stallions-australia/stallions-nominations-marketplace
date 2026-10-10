@@ -1,7 +1,7 @@
 # v2 Phase 3 — Auction Close and Automatic Buyer Fee — Design
 
 **Date:** 2026-10-10
-**Status:** Design agreed with David (2026-10-10); awaiting written-spec review
+**Status:** Approved (2026-10-10). Built on `feature/v2-phase3-auction-close` (2026-10-10); not merged. See the plan's "Changes made during the build" for refinements.
 **Branch:** `feature/v2-phase3-auction-close` (from master after Phase 2 merged as PR #2)
 **Builds on:** `2026-10-09-business-model-v2-design.md` (D2, D4, D6) and
 `2026-10-09-v2-phase2-payments-design.md` (saved cards, payment provider, transaction runner).

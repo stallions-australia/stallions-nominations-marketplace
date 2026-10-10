@@ -27,6 +27,30 @@
 > - The first line of each code block (`// src/...`, `@* src/... *@`) only names the file —
 >   **don't copy it into the file**.
 
+> **Changes made during the build (after task reviews, 2026-10-10):**
+> - Migration also voids duplicate live purchases per bid before the unique `BidId` index.
+> - Staff force-status can't set AwaitingPayment/Unsold/Sold, can't move a listing out of
+>   AwaitingPayment/Sold/Unsold, and can't reactivate an ended auction. Studs (and Staff) can't
+>   close, unpublish or cancel an Active auction after its end time (the post-end leak window).
+> - Stripe: a non-succeeded PaymentIntent is re-fetched (still "processing" throws so it is
+>   repeated); a detached/deleted card maps to a decline.
+> - Email dispatcher keeps going when a send result can't be recorded (at-least-once delivery).
+> - Closer: deterministic winner (highest, then earliest); the winner's other Active bids become
+>   Outbid; after a no-sale the winning bid becomes Lost.
+> - Charging (second migration `V2Phase3ChargeSnapshot`): each new attempt snapshots the charge
+>   request (customer, payment method, description) and an interrupted attempt is repeated with
+>   exactly that request and key; `ChargeAttemptLastSentAt` drives the 2-minute repeat window;
+>   after 1 hour stuck the purchase is flagged `ChargeNeedsAttention` (audit `BuyerFeeChargeStuck`)
+>   and the provider isn't called again; a late success for a changed purchase is audited
+>   `BuyerFeeChargeUnmatched`. A real result clears the flag.
+> - Staff refund records a refund made in the provider's dashboard; no money moves (audited with
+>   the payment reference).
+>
+> **Deferred (follow-ups):** Staff UI to see/resolve `ChargeNeedsAttention`; provider-side refunds;
+> back-off for auctions/charges that fail permanently (retried every run); remove the unused
+> NominationBinding code (Phase 5); Make an Offer / converting Unsold lots (Phase 4); OutboundEmails
+> retention; stale `infra/main.json`.
+
 ---
 
 ## Ground rules
