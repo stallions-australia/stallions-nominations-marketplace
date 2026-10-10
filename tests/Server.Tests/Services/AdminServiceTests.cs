@@ -188,6 +188,72 @@ public class AdminServiceTests
         _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
     }
 
+
+    [Theory]
+    [InlineData(ListingStatus.Sold)]
+    [InlineData(ListingStatus.Unsold)]
+    public async Task ForceListingStatus_CannotMoveAListingOutOfAClosedState(ListingStatus current)
+    {
+        var listing = new AuctionListing { Id = Guid.NewGuid(), Status = current };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().ForceListingStatusAsync(listing.Id,
+            new ForceListingStatusRequest { Status = "Cancelled" });
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("This auction has closed; its status is managed by the auction closer.");
+        listing.Status.Should().Be(current);
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ForceListingStatus_CannotSetSold()
+    {
+        var listing = new AuctionListing { Id = Guid.NewGuid(), Status = ListingStatus.Active };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().ForceListingStatusAsync(listing.Id,
+            new ForceListingStatusRequest { Status = "Sold" });
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("Sold is set only when the buyer fee is paid.");
+        listing.Status.Should().Be(ListingStatus.Active);
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ForceListingStatus_CannotReactivateAnEndedAuction()
+    {
+        var listing = new AuctionListing
+        {
+            Id = Guid.NewGuid(), Status = ListingStatus.Cancelled, EndDateTime = DateTime.UtcNow.AddMinutes(-5)
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().ForceListingStatusAsync(listing.Id,
+            new ForceListingStatusRequest { Status = "Active" });
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("This auction has ended; it can't be made Active again.");
+        listing.Status.Should().Be(ListingStatus.Cancelled);
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ForceListingStatus_CanReactivateAnAuctionThatHasNotEnded()
+    {
+        var listing = new AuctionListing
+        {
+            Id = Guid.NewGuid(), Status = ListingStatus.Cancelled, EndDateTime = DateTime.UtcNow.AddDays(1)
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().ForceListingStatusAsync(listing.Id,
+            new ForceListingStatusRequest { Status = "Active" });
+
+        result.Succeeded.Should().BeTrue();
+        listing.Status.Should().Be(ListingStatus.Active);
+    }
     [Fact]
     public async Task ForceListingStatusAsync_WhenValid_SetsStatusAndAuditLogs()
     {

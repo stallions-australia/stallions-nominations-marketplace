@@ -347,6 +347,12 @@ public class AuctionCloser : IAuctionCloser
             listing.Status = ListingStatus.Unsold;
             listing.CloseReason = ListingCloseReason.ChargeFailed;
             await _listings.UpdateAsync(listing);
+            var winningBid = purchase.BidId is { } bidId ? await _bids.GetByIdAsync(bidId) : null;
+            if (winningBid != null)
+            {
+                winningBid.Status = BidStatus.Lost; // no sale, so the bid no longer shows as Won
+                await _bids.UpdateAsync(winningBid);
+            }
             await _audit.LogAsync("Purchase", purchase.Id, "BuyerFeeChargeAbandoned", null, JsonSerializer.Serialize(new
             {
                 attempt.AttemptNo, result.FailureCode

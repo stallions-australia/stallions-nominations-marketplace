@@ -43,7 +43,7 @@ else
                     </span>
                 }
             }
-            @if (_listing.Status == "Active")
+            @if (_listing.Status == "Active" && !AuctionHasEnded)
             {
                 <button class="btn btn-secondary" @onclick="HandleUnpublish" disabled="@_busy">
                     @(_busy ? "Unpublishing…" : "Unpublish")
@@ -171,6 +171,17 @@ else
     private string? _editDescription;
 
     private bool _neverPublished => _listing?.PublishedAt == null;
+
+    // Past the end time the auction closer owns the listing; the server rejects close/unpublish too.
+    private bool AuctionHasEnded =>
+        _listing is AuctionListingDto al && AsUtc(al.EndDateTime) <= DateTime.UtcNow;
+
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value
+    };
 
     // Null = unknown (lookup failed); the server enforces the listing-fee rule regardless.
     private bool? _hasActiveSubscription;

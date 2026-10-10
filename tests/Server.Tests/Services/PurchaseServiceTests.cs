@@ -92,6 +92,24 @@ public class PurchaseServiceTests
     }
 
     [Fact]
+    public async Task Refund_AuditsTheRefundAmountAndPaymentReference()
+    {
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync())
+            .ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active });
+        var purchase = new Purchase
+        {
+            Id = Guid.NewGuid(), Status = PurchaseStatus.Completed, BuyerFeeIncGst = 150m,
+            PaymentProvider = "Stripe", PaymentReference = "pi_refund_me"
+        };
+        _purchases.Setup(r => r.GetByIdAsync(purchase.Id)).ReturnsAsync(purchase);
+
+        await CreateSut().RefundAsync(purchase.Id);
+
+        _audit.Verify(a => a.LogAsync("Purchase", purchase.Id, "PurchaseRefunded", It.IsAny<Guid?>(),
+            It.Is<string?>(d => d != null && d.Contains("pi_refund_me") && d.Contains("Stripe"))), Times.Once);
+    }
+
+    [Fact]
     public async Task Refund_ByABuyer_IsForbidden()
     {
         _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(Buyer());

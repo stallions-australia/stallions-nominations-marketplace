@@ -141,6 +141,20 @@ public class AuctionCloserChargeTests
     }
 
     [Fact]
+    public async Task AtTheDeadline_AFinalFailure_MarksTheWinningBidLost()
+    {
+        EndedAuctionWithWinner();
+        _f.ChargesDecline();
+        await _f.CreateSut().RunAsync();
+        (await _f.Read().Bids.SingleAsync()).Status.Should().Be(BidStatus.Won);
+
+        _f.Clock.Advance(TimeSpan.FromHours(2));
+        await _f.CreateSut().RunAsync();
+
+        (await _f.Read().Bids.SingleAsync()).Status.Should().Be(BidStatus.Lost);
+    }
+
+    [Fact]
     public async Task AtTheDeadline_AFinalSuccess_CompletesTheSale()
     {
         EndedAuctionWithWinner();

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Shared;
@@ -106,14 +107,17 @@ public class PurchaseService : IPurchaseService
         if (purchase.Status != PurchaseStatus.Completed)
             return ServiceResult.BadRequest("Only paid sale records can be refunded.");
 
-        // Manual Staff action for genuine errors: the full buyer fee is refunded.
+        // Records a refund Staff have made in the payment provider's dashboard — no money moves here.
         purchase.RefundAmount = purchase.BuyerFeeIncGst;
         purchase.RefundedAt = DateTime.UtcNow;
         purchase.Status = PurchaseStatus.Refunded;
         await _purchaseRepo.UpdateAsync(purchase);
 
         await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseRefunded",
-            caller.Id, $"{{\"RefundAmount\":{purchase.RefundAmount}}}");
+            caller.Id, JsonSerializer.Serialize(new
+            {
+                purchase.RefundAmount, purchase.PaymentProvider, purchase.PaymentReference
+            }));
 
         return ServiceResult.Ok();
     }

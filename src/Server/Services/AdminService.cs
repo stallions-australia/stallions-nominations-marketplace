@@ -303,6 +303,12 @@ public class AdminService : IAdminService
             return ServiceResult.BadRequest("Awaiting payment and Unsold are set only when an auction closes.");
         if (listing.Status == ListingStatus.AwaitingPayment)
             return ServiceResult.BadRequest("This auction's buyer fee is being charged; its status is managed by the auction closer.");
+        if (listing.Status is ListingStatus.Sold or ListingStatus.Unsold)
+            return ServiceResult.BadRequest("This auction has closed; its status is managed by the auction closer.");
+        if (newStatus == ListingStatus.Sold)
+            return ServiceResult.BadRequest("Sold is set only when the buyer fee is paid.");
+        if (newStatus == ListingStatus.Active && listing is AuctionListing ended && ended.EndDateTime <= DateTime.UtcNow)
+            return ServiceResult.BadRequest("This auction has ended; it can't be made Active again.");
 
         var previousStatus = listing.Status;
         listing.Status = newStatus;

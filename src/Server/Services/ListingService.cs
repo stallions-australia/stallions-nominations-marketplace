@@ -259,6 +259,9 @@ public class ListingService : IListingService
         if (listing.Status != ListingStatus.Active)
             return ServiceResult.BadRequest("Only Active listings can be unpublished.");
 
+        if (HasEnded(listing))
+            return ServiceResult.BadRequest(AuctionEndedMessage);
+
         listing.Status = ListingStatus.Draft;
         // PublishedAt is intentionally NOT cleared — it permanently locks price/T&C
         // even after the listing returns to Draft state.
@@ -286,11 +289,21 @@ public class ListingService : IListingService
         if (IsFinished(listing.Status))
             return ServiceResult.BadRequest($"Listing is already closed (status: {listing.Status}).");
 
+        if (HasEnded(listing))
+            return ServiceResult.BadRequest(AuctionEndedMessage);
+
         listing.Status = ListingStatus.Cancelled;
         listing.ClosedAt = DateTime.UtcNow;
         await _listingRepo.UpdateAsync(listing);
         return ServiceResult.Ok();
     }
+
+    private const string AuctionEndedMessage = "This auction has ended and is being closed.";
+
+    // Past its end time the auction closer owns the listing (it charges the winner's buyer fee), so
+    // nobody may cancel or unpublish it in the window before the closer runs.
+    private static bool HasEnded(Listing listing) =>
+        listing.Status == ListingStatus.Active && listing is AuctionListing a && a.EndDateTime <= DateTime.UtcNow;
 
     // Closed or being charged: the stud and Staff edit flows cannot change it any more.
     private static bool IsFinished(ListingStatus status) =>
@@ -307,6 +320,9 @@ public class ListingService : IListingService
 
         if (IsFinished(listing.Status))
             return ServiceResult.BadRequest($"Listing cannot be cancelled: status is {listing.Status}.");
+
+        if (HasEnded(listing))
+            return ServiceResult.BadRequest(AuctionEndedMessage);
 
         listing.Status = ListingStatus.Cancelled;
         listing.ClosedAt = DateTime.UtcNow;
