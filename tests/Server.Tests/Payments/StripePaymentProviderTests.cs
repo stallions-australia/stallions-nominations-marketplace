@@ -353,4 +353,64 @@ public class StripePaymentProviderTests
 
         await CreateSut().Invoking(s => s.ChargeSavedCardAsync(Charge())).Should().ThrowAsync<StripeException>();
     }
+
+    [Fact]
+    public async Task ChargeSavedCard_WhenTheIntentIsProcessingThenSucceeds_IsSuccess()
+    {
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_1", Status = "processing" });
+        _api.Setup(a => a.GetPaymentIntentAsync("pi_1")).ReturnsAsync(new PaymentIntent { Id = "pi_1", Status = "succeeded" });
+
+        var result = await CreateSut().ChargeSavedCardAsync(Charge());
+
+        result.Should().Be(ChargeResult.Success("pi_1"));
+    }
+
+    [Fact]
+    public async Task ChargeSavedCard_WhenTheIntentIsStillProcessing_Throws()
+    {
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_1", Status = "processing" });
+        _api.Setup(a => a.GetPaymentIntentAsync("pi_1")).ReturnsAsync(new PaymentIntent { Id = "pi_1", Status = "processing" });
+
+        await CreateSut().Invoking(s => s.ChargeSavedCardAsync(Charge()))
+            .Should().ThrowAsync<InvalidOperationException>().WithMessage("*still processing*");
+    }
+
+    [Fact]
+    public async Task ChargeSavedCard_WhenTheIntentNeedsAnotherPaymentMethod_IsPaymentIncomplete()
+    {
+        var intent = new PaymentIntent { Id = "pi_1", Status = "requires_payment_method" };
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>())).ReturnsAsync(intent);
+        _api.Setup(a => a.GetPaymentIntentAsync("pi_1")).ReturnsAsync(intent);
+
+        var result = await CreateSut().ChargeSavedCardAsync(Charge());
+
+        result.Should().Be(ChargeResult.Declined("payment_incomplete", "The payment could not be completed."));
+    }
+
+    [Theory]
+    [InlineData("resource_missing", null)]
+    [InlineData(null, "payment_method")]
+    public async Task ChargeSavedCard_WhenTheSavedCardIsGone_ReturnsPaymentMethodUnavailable(string? code, string? param)
+    {
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .ThrowsAsync(new StripeException(System.Net.HttpStatusCode.BadRequest,
+                new StripeError { Type = "invalid_request_error", Code = code, Param = param, Message = "No such PaymentMethod" }, "gone"));
+
+        var result = await CreateSut().ChargeSavedCardAsync(Charge());
+
+        result.Should().Be(ChargeResult.Declined("payment_method_unavailable",
+            "Your saved card can no longer be used. Please save a new card."));
+    }
+
+    [Fact]
+    public async Task ChargeSavedCard_WhenTheIdempotencyKeyIsReused_Throws()
+    {
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .ThrowsAsync(new StripeException(System.Net.HttpStatusCode.BadRequest,
+                new StripeError { Type = "invalid_request_error", Code = "idempotency_error", Message = "Key reused" }, "idem"));
+
+        await CreateSut().Invoking(s => s.ChargeSavedCardAsync(Charge())).Should().ThrowAsync<StripeException>();
+    }
 }

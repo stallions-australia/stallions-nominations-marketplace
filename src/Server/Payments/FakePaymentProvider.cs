@@ -19,6 +19,7 @@ public class FakePaymentProvider : IPaymentProvider
 
     private readonly ConcurrentDictionary<string, FakeSession> _sessions = new();
     private readonly ConcurrentDictionary<string, ChargeResult> _charges = new();
+
     public string Name => PaymentOptions.ProviderFake;
 
     public Task<string> CreateCustomerAsync(Guid userId, string email, string name) =>
@@ -44,6 +45,7 @@ public class FakePaymentProvider : IPaymentProvider
             request.PaymentMethodId.StartsWith(DecliningPrefix, StringComparison.Ordinal)
                 ? ChargeResult.Declined("card_declined", "Your card was declined.")
                 : ChargeResult.Success($"pi_fake_{Guid.NewGuid():N}")));
+
     public FakeSession? GetSession(string id) => _sessions.GetValueOrDefault(id);
 
     /// <summary>Completes the session successfully. Null if the session doesn't exist (or was already used).</summary>

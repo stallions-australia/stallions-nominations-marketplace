@@ -183,8 +183,17 @@ public class StripePaymentProvider : IPaymentProvider
         {
             var intent = await _api.CreatePaymentIntentAsync(options, request.IdempotencyKey);
             if (intent.Status == "succeeded") return ChargeResult.Success(intent.Id);
-            _logger.LogWarning("Buyer-fee PaymentIntent {PaymentIntentId} ended in status {Status}", intent.Id, intent.Status);
-            return ChargeResult.Declined(intent.Status, "The payment could not be completed.");
+
+            // A "processing" intent may still succeed, and a retry with the same idempotency key only
+            // replays this snapshot, so look at the intent's current state. Still processing: throw, so
+            // the caller treats the attempt as interrupted and repeats it later with the same key.
+            var current = await _api.GetPaymentIntentAsync(intent.Id);
+            if (current.Status == "succeeded") return ChargeResult.Success(intent.Id);
+            if (current.Status == "processing")
+                throw new InvalidOperationException($"Buyer-fee PaymentIntent {intent.Id} is still processing");
+
+            _logger.LogWarning("Buyer-fee PaymentIntent {PaymentIntentId} ended in status {Status}", intent.Id, current.Status);
+            return ChargeResult.Declined("payment_incomplete", "The payment could not be completed.");
         }
         catch (StripeException ex) when (ex.StripeError?.Type == "card_error")
         {
@@ -192,6 +201,13 @@ public class StripePaymentProvider : IPaymentProvider
             return ChargeResult.Declined(
                 ex.StripeError.DeclineCode ?? ex.StripeError.Code ?? "card_error",
                 ex.StripeError.Message ?? "Your card was declined.");
+        }
+        catch (StripeException ex) when (ex.StripeError?.Type == "invalid_request_error"
+            && (ex.StripeError.Code == "resource_missing" || ex.StripeError.Param == "payment_method"))
+        {
+            // The saved card was detached or deleted. Other invalid requests (e.g. idempotency_error) propagate.
+            return ChargeResult.Declined("payment_method_unavailable",
+                "Your saved card can no longer be used. Please save a new card.");
         }
     }
 }
