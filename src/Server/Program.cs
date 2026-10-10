@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
+using Stallions.Server.Auctions;
 using Stallions.Server.Auth;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
@@ -85,6 +86,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 // Email — outbox + Azure Communication Services (or the log sender locally)
 builder.Services.AddEmail(builder.Configuration, builder.Environment);
+builder.Services.AddAuctionClosing(builder.Configuration);
 
 // Infrastructure
 builder.Services.AddHttpContextAccessor();
