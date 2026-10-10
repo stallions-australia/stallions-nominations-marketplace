@@ -17,7 +17,7 @@ public class AccountCardTests : TestContext
     private static HttpClient Http() => new() { BaseAddress = new Uri("https://localhost/") };
     private readonly Mock<PaymentsApiService> _payments = new(MockBehavior.Loose, Http());
 
-    private IRenderedComponent<AccountCard> Render(string? query = null, TimeSpan? pollInterval = null, List<PurchaseDto>? purchases = null)
+    private IRenderedComponent<AccountCard> Render(string? query = null, TimeSpan? pollInterval = null, List<PurchaseDto>? purchases = null, Exception? purchasesError = null)
     {
         this.AddTestAuthorization().SetAuthorized("buyer@example.com");
         Services.AddSingleton(_payments.Object);
@@ -28,7 +28,8 @@ public class AccountCardTests : TestContext
         Services.AddSingleton(listingApi.Object);
 
         var purchaseApi = new Mock<PurchaseApiService>(MockBehavior.Loose, Http());
-        purchaseApi.Setup(s => s.GetMyPurchasesAsync()).ReturnsAsync(purchases ?? new List<PurchaseDto>());
+        if (purchasesError is not null) purchaseApi.Setup(s => s.GetMyPurchasesAsync()).ThrowsAsync(purchasesError);
+        else purchaseApi.Setup(s => s.GetMyPurchasesAsync()).ReturnsAsync(purchases ?? new List<PurchaseDto>());
         Services.AddSingleton(purchaseApi.Object);
 
         var userApi = new Mock<UserApiService>(MockBehavior.Loose, Http());
@@ -188,5 +189,17 @@ public class AccountCardTests : TestContext
         });
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("Saving a new card will retry the payment for Snitzel"));
+    }
+
+    [Fact]
+    public void AFailedSaleRecordLookup_StillShowsTheCard_WithoutARetryNotice()
+    {
+        _payments.Setup(s => s.GetMyCardAsync()).ReturnsAsync(new SavedCardDto
+            { Brand = "visa", Last4 = "0002", ExpMonth = 8, ExpYear = 2028, IsValid = true });
+
+        var cut = Render(purchasesError: new HttpRequestException("offline"));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("•••• 0002"));
+        cut.Markup.Should().NotContain("will retry the payment");
     }
 }

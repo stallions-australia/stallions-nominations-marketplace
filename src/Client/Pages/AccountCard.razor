@@ -111,7 +111,7 @@
             var purchases = await PurchaseApi.GetMyPurchasesAsync() ?? new List<PurchaseDto>();
             _retryFor = purchases.FirstOrDefault(p => p.Status == "Pending" && p.ChargeDueBy != null)?.StallionName;
         }
-        catch (ApiException) { _retryFor = null; }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or AccessTokenNotAvailableException) { _retryFor = null; }
         if (token.IsCancellationRequested) return;
 
         _loading = false;
