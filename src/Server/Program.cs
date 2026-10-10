@@ -7,6 +7,7 @@ using Microsoft.Identity.Web;
 using Stallions.Server.Auth;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Email;
 using Stallions.Server.Options;
 using Stallions.Server.Payments;
 using Stallions.Server.Services;
@@ -78,6 +79,12 @@ builder.Services.Configure<DisclosureOptions>(builder.Configuration.GetSection(D
 
 // Payments — Stripe or the dev-only fake (refused in Production)
 builder.Services.AddPayments(builder.Configuration, builder.Environment);
+
+// Clock for background jobs and new services (tests substitute their own)
+builder.Services.AddSingleton(TimeProvider.System);
+
+// Email — outbox + Azure Communication Services (or the log sender locally)
+builder.Services.AddEmail(builder.Configuration, builder.Environment);
 
 // Infrastructure
 builder.Services.AddHttpContextAccessor();
