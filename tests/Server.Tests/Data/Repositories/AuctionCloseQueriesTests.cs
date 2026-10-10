@@ -82,6 +82,7 @@ public class AuctionCloseQueriesTests
         AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeDueBy = Now.AddHours(1); });             // waiting
         AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddSeconds(-30); }); // in flight
         AddPurchase(p => p.Status = PurchaseStatus.Completed);
+        AddPurchase(p => { p.ChargeAttempts = 1; p.ChargeAttemptStartedAt = Now.AddMinutes(-90); p.ChargeNeedsAttention = true; }); // flagged for Staff
 
         var ids = await new PurchaseRepository(Db()).GetIdsDueForChargeAsync(Now, Now.AddMinutes(-2), 50);
 

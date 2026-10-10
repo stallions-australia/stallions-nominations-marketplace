@@ -15,4 +15,6 @@ public class AuctionCloseOptions
     public static readonly TimeSpan CloseDelay = TimeSpan.FromSeconds(30);
     /// <summary>A charge attempt with no recorded result after this long was interrupted.</summary>
     public static readonly TimeSpan InterruptedAttemptAge = TimeSpan.FromMinutes(2);
+    /// <summary>An attempt still unresolved after this long is flagged for Staff and never repeated automatically.</summary>
+    public static readonly TimeSpan StuckAttemptAge = TimeSpan.FromHours(1);
 }

@@ -33,6 +33,12 @@ public class Purchase : IHasConcurrencyStamp
     public string? LastChargeFailure { get; set; }
     /// <summary>The winner saved a new card after a failed charge; the next run retries.</summary>
     public bool RetryRequested { get; set; }
+    /// <summary>Snapshot of the card used for the current/last attempt, so a repeat sends the identical request.</summary>
+    public string? ChargeCustomerId { get; set; }
+    public string? ChargePaymentMethodId { get; set; }
+    public string? ChargeDescription { get; set; }
+    /// <summary>An attempt has been stuck for too long; Staff must check the payment provider before any further charge.</summary>
+    public bool ChargeNeedsAttention { get; set; }
     public Guid ConcurrencyStamp { get; set; } = Guid.NewGuid();
 
     // Navigation properties

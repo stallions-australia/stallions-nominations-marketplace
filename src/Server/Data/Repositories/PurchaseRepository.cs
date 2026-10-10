@@ -36,7 +36,7 @@ public class PurchaseRepository : IPurchaseRepository
 
     public async Task<IReadOnlyList<Guid>> GetIdsDueForChargeAsync(DateTime now, DateTime interruptedBefore, int max) =>
         await _db.Purchases
-            .Where(p => p.Status == PurchaseStatus.Pending && (
+            .Where(p => p.Status == PurchaseStatus.Pending && !p.ChargeNeedsAttention && (
                 (p.ChargeAttemptStartedAt == null &&
                     (p.ChargeAttempts == 0 || p.RetryRequested || p.ChargeDueBy <= now)) ||
                 (p.ChargeAttemptStartedAt != null && p.ChargeAttemptStartedAt <= interruptedBefore)))

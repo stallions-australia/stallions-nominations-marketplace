@@ -200,6 +200,9 @@ public class AppDbContext : DbContext
             e.Property(p => p.PaymentProvider).HasMaxLength(50);
             e.Property(p => p.PaymentReference).HasMaxLength(200);
             e.Property(p => p.LastChargeFailure).HasMaxLength(500);
+            e.Property(p => p.ChargeCustomerId).HasMaxLength(255);
+            e.Property(p => p.ChargePaymentMethodId).HasMaxLength(255);
+            e.Property(p => p.ChargeDescription).HasMaxLength(300);
             e.Property(p => p.ConcurrencyStamp).IsConcurrencyToken();
             // One winning bid can never have two live sale records. Voided rows are excluded:
             // the removed interim checkout could leave several per bid on dev data.

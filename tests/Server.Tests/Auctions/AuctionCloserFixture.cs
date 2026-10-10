@@ -57,7 +57,17 @@ public class AuctionCloserFixture
         settings.Setup(s => s.GetAsync()).ReturnsAsync(Settings);
         return new AuctionCloser(
             listings ?? new ListingRepository(db), new BidRepository(db), new PurchaseRepository(db), new SavedCardRepository(db),
-            settings.Object, Audit.Object, Emails.Object, Provider.Object, new InlineTransactionRunner(), Clock,
+            settings.Object, Audit.Object, Emails.Object, Provider.Object, new ClearingTransactionRunner(db), Clock,
             Microsoft.Extensions.Options.Options.Create(new AuctionCloseOptions()), NullLogger<AuctionCloser>.Instance);
+    }
+
+    /// <summary>Like the real runner, starts every unit of work with a clean change tracker (no stale rows).</summary>
+    private sealed class ClearingTransactionRunner(AppDbContext db) : ITransactionRunner
+    {
+        public Task<T> RunAsync<T>(Func<Task<T>> work)
+        {
+            db.ChangeTracker.Clear();
+            return work();
+        }
     }
 }

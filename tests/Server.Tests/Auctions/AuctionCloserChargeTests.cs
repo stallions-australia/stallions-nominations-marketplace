@@ -175,5 +175,116 @@ public class AuctionCloserChargeTests
         _f.Charges.Should().HaveCount(2);
         _f.Charges[1].IdempotencyKey.Should().Be(_f.Charges[0].IdempotencyKey);
         (await SaleRecord()).Status.Should().Be(PurchaseStatus.Completed);
+        _f.Emails.Verify(e => e.WonAndChargedAsync(It.IsAny<AuctionListing>(), It.IsAny<Purchase>(), It.IsAny<User>()), Times.Once);
+        _f.Emails.Verify(e => e.StudSaleConfirmationAsync(It.IsAny<AuctionListing>(), It.IsAny<Purchase>(), It.IsAny<User>()), Times.Once);
+        _f.Emails.Verify(e => e.PaymentFailedAsync(It.IsAny<AuctionListing>(), It.IsAny<Purchase>(), It.IsAny<User>()), Times.Never);
+    }
+
+    private void ProviderThrows() =>
+        _f.Provider.Setup(p => p.ChargeSavedCardAsync(It.IsAny<ChargeRequest>()))
+            .Callback<ChargeRequest>(_f.Charges.Add)
+            .ThrowsAsync(new HttpRequestException("provider unreachable"));
+
+    [Fact]
+    public async Task AnInterruptedAttempt_IsRepeatedWithTheOriginalCard_EvenIfTheCardWasReplaced()
+    {
+        var (_, winner) = EndedAuctionWithWinner();
+        ProviderThrows();
+        await _f.CreateSut().RunAsync();
+
+        _f.Seed(db =>
+        {
+            db.SavedCards.Single(c => c.UserId == winner.Id).ProviderPaymentMethodId = "pm_replaced";
+            db.SaveChanges();
+            return 0;
+        });
+        _f.Clock.Advance(TimeSpan.FromMinutes(3));
+        _f.ChargesSucceed();
+        await _f.CreateSut().RunAsync();
+
+        _f.Charges.Should().HaveCount(2);
+        _f.Charges[1].IdempotencyKey.Should().Be(_f.Charges[0].IdempotencyKey);
+        _f.Charges[1].PaymentMethodId.Should().Be("pm_good");
+        (await SaleRecord()).Status.Should().Be(PurchaseStatus.Completed);
+    }
+
+    [Fact]
+    public async Task AnInterruptedAttempt_IsRepeatedWithTheOriginalCard_EvenIfTheCardExpired()
+    {
+        var (_, winner) = EndedAuctionWithWinner();
+        ProviderThrows();
+        await _f.CreateSut().RunAsync();
+
+        _f.Seed(db =>
+        {
+            db.SavedCards.Single(c => c.UserId == winner.Id).ExpYear = 2000;
+            db.SaveChanges();
+            return 0;
+        });
+        _f.Clock.Advance(TimeSpan.FromMinutes(3));
+        _f.ChargesSucceed();
+        await _f.CreateSut().RunAsync();
+
+        _f.Charges.Should().HaveCount(2);
+        _f.Charges[1].PaymentMethodId.Should().Be("pm_good");
+        var sale = await SaleRecord();
+        sale.Status.Should().Be(PurchaseStatus.Completed);
+        sale.LastChargeFailure.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AStuckAttempt_IsFlaggedForStaff_AndTheProviderIsNotCalledAgain()
+    {
+        EndedAuctionWithWinner();
+        ProviderThrows();
+        await _f.CreateSut().RunAsync();
+
+        _f.Clock.Advance(TimeSpan.FromMinutes(3));
+        await _f.CreateSut().RunAsync();
+        _f.Charges.Should().HaveCount(2);
+
+        _f.Clock.Advance(TimeSpan.FromMinutes(61));
+        await _f.CreateSut().RunAsync();
+        await _f.CreateSut().RunAsync();
+
+        _f.Charges.Should().HaveCount(2, "a stuck attempt is never sent again automatically");
+        var sale = await SaleRecord();
+        sale.ChargeNeedsAttention.Should().BeTrue();
+        sale.Status.Should().Be(PurchaseStatus.Pending);
+        _f.Audit.Verify(a => a.LogAsync("Purchase", sale.Id, "BuyerFeeChargeStuck", null, It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ASuccessThatArrivesAfterTheSaleRecordChanged_IsAuditedForStaff()
+    {
+        EndedAuctionWithWinner();
+        _f.Provider.Setup(p => p.ChargeSavedCardAsync(It.IsAny<ChargeRequest>()))
+            .Callback<ChargeRequest>(r =>
+            {
+                _f.Charges.Add(r);
+                _f.Seed(db => { db.Purchases.Single().Status = PurchaseStatus.Voided; db.SaveChanges(); return 0; });
+            })
+            .ReturnsAsync(ChargeResult.Success("pi_late"));
+
+        var run = await _f.CreateSut().RunAsync();
+
+        run.ChargesAttempted.Should().Be(0);
+        var sale = await SaleRecord();
+        sale.Status.Should().Be(PurchaseStatus.Voided);
+        _f.Audit.Verify(a => a.LogAsync("Purchase", sale.Id, "BuyerFeeChargeUnmatched", null,
+            It.Is<string?>(d => d != null && d.Contains("pi_late"))), Times.Once);
+    }
+
+    [Fact]
+    public async Task TheChargeMetadata_NamesThePurchaseAndTheListing()
+    {
+        var (listing, _) = EndedAuctionWithWinner();
+
+        await _f.CreateSut().RunAsync();
+
+        var sale = await SaleRecord();
+        _f.Charges.Single().Metadata.Should().Contain("purchaseId", sale.Id.ToString())
+            .And.Contain("listingId", listing.Id.ToString())
+            .And.Contain("kind", "buyer-fee");
     }
 }
