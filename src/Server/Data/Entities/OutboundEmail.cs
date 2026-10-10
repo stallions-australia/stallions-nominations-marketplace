@@ -15,7 +15,7 @@ public class OutboundEmail : IHasConcurrencyStamp
     public string Template { get; set; } = string.Empty;
     public string? RelatedEntityType { get; set; }
     public Guid? RelatedEntityId { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? SentAt { get; set; }
     public int Attempts { get; set; }
     /// <summary>Not before this time. Also used as a short lease while one instance is sending.</summary>

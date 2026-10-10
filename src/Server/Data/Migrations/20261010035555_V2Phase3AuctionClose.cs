@@ -11,8 +11,13 @@ namespace Stallions.Server.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Pending purchases left by the removed interim checkout must never be charged.
+            // Clean up dev data left by the removed interim checkout before the unique BidId index:
+            // pending purchases must never be charged, and only the newest live purchase per bid is kept.
             migrationBuilder.Sql("UPDATE Purchases SET Status = 'Voided' WHERE Status = 'Pending';");
+            migrationBuilder.Sql(@"WITH ranked AS (
+    SELECT Status, ROW_NUMBER() OVER (PARTITION BY BidId ORDER BY CreatedAt DESC) AS rn
+    FROM Purchases WHERE BidId IS NOT NULL AND Status <> 'Voided')
+UPDATE ranked SET Status = 'Voided' WHERE rn > 1;");
 
             migrationBuilder.DropIndex(
                 name: "IX_Purchases_BidId",
@@ -118,6 +123,7 @@ namespace Stallions.Server.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Structural only: voided purchases are not restored.
             migrationBuilder.DropTable(
                 name: "OutboundEmails");
 

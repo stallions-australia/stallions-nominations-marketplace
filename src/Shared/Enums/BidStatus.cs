@@ -8,6 +8,6 @@ public enum BidStatus
     SecondChance,
     Declined,
     Expired,
-    // Another bid won the auction (set when the auction closes).
+    /// <summary>Another bid won the auction (set when the auction closes).</summary>
     Lost
 }
