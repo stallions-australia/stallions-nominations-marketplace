@@ -23,4 +23,9 @@ public interface IPaymentProvider
     Task<PaymentEvent> ParseWebhookAsync(string rawBody, string? signatureHeader);
 
     Task DetachCardAsync(string paymentMethodId);
-}
+
+    /// <summary>
+    /// Charges a saved card without the cardholder present. The idempotency key makes a repeated
+    /// attempt return the original result instead of charging again.
+    /// </summary>
+    Task<ChargeResult> ChargeSavedCardAsync(ChargeRequest request);}

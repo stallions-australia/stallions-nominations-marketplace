@@ -34,6 +34,9 @@ public class FakePaymentController : ControllerBase
         var what = s.IsCardSetup
             ? "Save a card (simulated Visa •••• 4242)"
             : $"{WebUtility.HtmlEncode(s.Description)} — {(s.AmountCents / 100m).ToString("C", AuCulture)} AUD";
+        var declining = s.IsCardSetup
+            ? $"""<form method="post" action="/payments/fake/{id}/approve?declining=true" style="display:inline"><button type="submit">Approve with a declining card</button></form>"""
+            : string.Empty;
         var html = $$"""
             <!doctype html><html lang="en"><head><meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -45,6 +48,7 @@ public class FakePaymentController : ControllerBase
             <p class="note">Dev only — no real card is charged. Stripe replaces this page once its keys are configured.</p>
             <p><strong>{{what}}</strong></p>
             <form method="post" action="/payments/fake/{{id}}/approve" style="display:inline"><button type="submit">Approve</button></form>
+            {{declining}}
             <form method="post" action="/payments/fake/{{id}}/decline" style="display:inline"><button type="submit">Decline</button></form>
             </body></html>
             """;
@@ -53,9 +57,9 @@ public class FakePaymentController : ControllerBase
     }
 
     [HttpPost("{id}/approve")]
-    public async Task<IActionResult> Approve(string id)
+    public async Task<IActionResult> Approve(string id, [FromQuery] bool declining = false)
     {
-        if (_provider is not FakePaymentProvider fake || fake.Approve(id) is not { } result) return NotFound();
+        if (_provider is not FakePaymentProvider fake || fake.Approve(id, declining) is not { } result) return NotFound();
         PaymentEventOutcome outcome;
         try
         {

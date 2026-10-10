@@ -67,4 +67,46 @@ public class FakePaymentProviderTests
     public async Task ParseWebhook_IsNotSupported() =>
         await FluentActions.Awaiting(() => _fake.ParseWebhookAsync("{}", null))
             .Should().ThrowAsync<NotSupportedException>();
+
+    private static ChargeRequest Charge(string paymentMethodId, string key = "buyer-fee-x-1") =>
+        new("cus_fake_1", paymentMethodId, 150m, "Buyer fee", new Dictionary<string, string>(), key);
+
+    [Fact]
+    public async Task ApprovingWithADecliningCard_SavesACardEndingIn0002()
+    {
+        var sut = new FakePaymentProvider();
+        var url = await sut.CreateCardSetupSessionAsync(Guid.NewGuid(), "cus_fake_1", "/ok", "/cancel");
+
+        var approved = sut.Approve(url.Split('/').Last(), decliningCard: true);
+
+        var card = approved!.Value.Event.Should().BeOfType<CardSavedEvent>().Subject;
+        card.Last4.Should().Be(FakePaymentProvider.DecliningLast4);
+    }
+
+    [Fact]
+    public async Task ChargingADecliningCard_Fails_AndAnyOtherCard_Succeeds()
+    {
+        var sut = new FakePaymentProvider();
+        var url = await sut.CreateCardSetupSessionAsync(Guid.NewGuid(), "cus_fake_1", "/ok", "/cancel");
+        var declining = (CardSavedEvent)sut.Approve(url.Split('/').Last(), decliningCard: true)!.Value.Event;
+
+        var failed = await sut.ChargeSavedCardAsync(Charge(declining.PaymentMethodId, "k1"));
+        var paid = await sut.ChargeSavedCardAsync(Charge("pm_fake_good", "k2"));
+
+        failed.Succeeded.Should().BeFalse();
+        failed.FailureMessage.Should().Be("Your card was declined.");
+        paid.Succeeded.Should().BeTrue();
+        paid.PaymentReference.Should().StartWith("pi_fake_");
+    }
+
+    [Fact]
+    public async Task RepeatingAChargeWithTheSameKey_ReturnsTheSameResult()
+    {
+        var sut = new FakePaymentProvider();
+
+        var first = await sut.ChargeSavedCardAsync(Charge("pm_fake_good", "same-key"));
+        var again = await sut.ChargeSavedCardAsync(Charge("pm_fake_good", "same-key"));
+
+        again.Should().Be(first);
+    }
 }

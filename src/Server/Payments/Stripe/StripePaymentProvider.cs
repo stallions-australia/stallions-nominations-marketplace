@@ -164,4 +164,34 @@ public class StripePaymentProvider : IPaymentProvider
     }
 
     public Task DetachCardAsync(string paymentMethodId) => _api.DetachPaymentMethodAsync(paymentMethodId);
+
+    public async Task<ChargeResult> ChargeSavedCardAsync(ChargeRequest request)
+    {
+        var options = new PaymentIntentCreateOptions
+        {
+            Amount = PaymentAmounts.ToCents(request.AmountIncGst),
+            Currency = "aud",
+            Customer = request.CustomerId,
+            PaymentMethod = request.PaymentMethodId,
+            // The buyer isn't present: charge now, and fail rather than ask for 3-D Secure.
+            OffSession = true,
+            Confirm = true,
+            Description = request.Description,
+            Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value)
+        };
+        try
+        {
+            var intent = await _api.CreatePaymentIntentAsync(options, request.IdempotencyKey);
+            if (intent.Status == "succeeded") return ChargeResult.Success(intent.Id);
+            _logger.LogWarning("Buyer-fee PaymentIntent {PaymentIntentId} ended in status {Status}", intent.Id, intent.Status);
+            return ChargeResult.Declined(intent.Status, "The payment could not be completed.");
+        }
+        catch (StripeException ex) when (ex.StripeError?.Type == "card_error")
+        {
+            // Includes authentication_required: the bank wants the cardholder to approve it.
+            return ChargeResult.Declined(
+                ex.StripeError.DeclineCode ?? ex.StripeError.Code ?? "card_error",
+                ex.StripeError.Message ?? "Your card was declined.");
+        }
+    }
 }

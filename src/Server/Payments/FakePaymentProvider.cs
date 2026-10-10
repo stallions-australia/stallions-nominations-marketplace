@@ -13,8 +13,12 @@ public class FakePaymentProvider : IPaymentProvider
         string Id, bool IsCardSetup, Guid? UserId, string? CustomerId, Guid? SubscriptionId,
         long AmountCents, string Description, string SuccessUrl, string CancelUrl);
 
-    private readonly ConcurrentDictionary<string, FakeSession> _sessions = new();
+    /// <summary>The last four digits of the fake declining card (like Stripe's 4000 0000 0000 0002).</summary>
+    public const string DecliningLast4 = "0002";
+    private const string DecliningPrefix = "pm_fake_decline_";
 
+    private readonly ConcurrentDictionary<string, FakeSession> _sessions = new();
+    private readonly ConcurrentDictionary<string, ChargeResult> _charges = new();
     public string Name => PaymentOptions.ProviderFake;
 
     public Task<string> CreateCustomerAsync(Guid userId, string email, string name) =>
@@ -35,16 +39,22 @@ public class FakePaymentProvider : IPaymentProvider
 
     public Task DetachCardAsync(string paymentMethodId) => Task.CompletedTask;
 
+    public Task<ChargeResult> ChargeSavedCardAsync(ChargeRequest request) =>
+        Task.FromResult(_charges.GetOrAdd(request.IdempotencyKey, _ =>
+            request.PaymentMethodId.StartsWith(DecliningPrefix, StringComparison.Ordinal)
+                ? ChargeResult.Declined("card_declined", "Your card was declined.")
+                : ChargeResult.Success($"pi_fake_{Guid.NewGuid():N}")));
     public FakeSession? GetSession(string id) => _sessions.GetValueOrDefault(id);
 
     /// <summary>Completes the session successfully. Null if the session doesn't exist (or was already used).</summary>
-    public (FakeSession Session, PaymentEvent Event, string SuccessUrl, string CancelUrl)? Approve(string id)
+    public (FakeSession Session, PaymentEvent Event, string SuccessUrl, string CancelUrl)? Approve(string id, bool decliningCard = false)
     {
         if (!_sessions.TryRemove(id, out var s)) return null;
         var eventId = $"evt_fake_{Guid.NewGuid():N}";
         PaymentEvent evt = s.IsCardSetup
-            ? new CardSavedEvent(eventId, s.UserId!.Value, s.CustomerId!, $"pm_fake_{Guid.NewGuid():N}",
-                "visa", "4242", 12, DateTime.UtcNow.Year + 3)
+            ? new CardSavedEvent(eventId, s.UserId!.Value, s.CustomerId!,
+                $"{(decliningCard ? DecliningPrefix : "pm_fake_")}{Guid.NewGuid():N}",
+                "visa", decliningCard ? DecliningLast4 : "4242", 12, DateTime.UtcNow.Year + 3)
             : new ListingFeePaidEvent(eventId, s.SubscriptionId!.Value, s.AmountCents, "aud", $"pi_fake_{Guid.NewGuid():N}");
         return (s, evt, s.SuccessUrl, s.CancelUrl);
     }

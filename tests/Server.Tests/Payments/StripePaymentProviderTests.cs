@@ -288,4 +288,69 @@ public class StripePaymentProviderTests
 
         _api.Verify(a => a.DetachPaymentMethodAsync("pm_9"), Times.Once);
     }
+
+    private static ChargeRequest Charge() => new(
+        "cus_123", "pm_123", 150m, "Buyer fee — Snitzel, 2026 Season",
+        new Dictionary<string, string> { ["purchaseId"] = "p1" }, "buyer-fee-p1-1");
+
+    [Fact]
+    public async Task ChargeSavedCard_CreatesAnOffSessionConfirmedPaymentIntentInAud()
+    {
+        PaymentIntentCreateOptions? sent = null;
+        string? key = null;
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .Callback<PaymentIntentCreateOptions, string>((o, k) => { sent = o; key = k; })
+            .ReturnsAsync(new PaymentIntent { Id = "pi_1", Status = "succeeded" });
+
+        var result = await CreateSut().ChargeSavedCardAsync(Charge());
+
+        result.Should().Be(ChargeResult.Success("pi_1"));
+        sent!.Amount.Should().Be(15000);
+        sent.Currency.Should().Be("aud");
+        sent.Customer.Should().Be("cus_123");
+        sent.PaymentMethod.Should().Be("pm_123");
+        sent.OffSession.Should().Be(true);
+        sent.Confirm.Should().Be(true);
+        sent.Metadata.Should().ContainKey("purchaseId");
+        key.Should().Be("buyer-fee-p1-1");
+    }
+
+    [Fact]
+    public async Task ChargeSavedCard_WhenTheCardIsDeclined_ReturnsTheDeclineMessage()
+    {
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .ThrowsAsync(new StripeException(System.Net.HttpStatusCode.PaymentRequired,
+                new StripeError { Type = "card_error", Code = "card_declined", DeclineCode = "insufficient_funds",
+                    Message = "Your card has insufficient funds." }, "declined"));
+
+        var result = await CreateSut().ChargeSavedCardAsync(Charge());
+
+        result.Succeeded.Should().BeFalse();
+        result.FailureCode.Should().Be("insufficient_funds");
+        result.FailureMessage.Should().Be("Your card has insufficient funds.");
+    }
+
+    [Fact]
+    public async Task ChargeSavedCard_WhenTheBankWantsTheCardholderToApprove_IsAFailure()
+    {
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .ThrowsAsync(new StripeException(System.Net.HttpStatusCode.PaymentRequired,
+                new StripeError { Type = "card_error", Code = "authentication_required",
+                    Message = "Your card requires authentication." }, "auth"));
+
+        var result = await CreateSut().ChargeSavedCardAsync(Charge());
+
+        result.Succeeded.Should().BeFalse();
+        result.FailureCode.Should().Be("authentication_required");
+    }
+
+    [Fact]
+    public async Task ChargeSavedCard_WhenStripeIsUnreachable_Throws()
+    {
+        _api.Setup(a => a.CreatePaymentIntentAsync(It.IsAny<PaymentIntentCreateOptions>(), It.IsAny<string>()))
+            .ThrowsAsync(new StripeException(System.Net.HttpStatusCode.InternalServerError,
+                new StripeError { Type = "api_error", Message = "Server error" }, "boom"));
+
+        await CreateSut().Invoking(s => s.ChargeSavedCardAsync(Charge())).Should().ThrowAsync<StripeException>();
+    }
 }
