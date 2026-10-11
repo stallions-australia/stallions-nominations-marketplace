@@ -120,6 +120,7 @@ builder.Services.AddScoped<IPlatformSettingsRepository, PlatformSettingsReposito
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<ISavedCardRepository, SavedCardRepository>();
 builder.Services.AddScoped<IProcessedPaymentEventRepository, ProcessedPaymentEventRepository>();
+builder.Services.AddScoped<IIntroOfferRepository, IntroOfferRepository>();
 
 // Blob Storage (uses DefaultAzureCredential; requires AZURE_STORAGE_ACCOUNT_NAME in appsettings.Development.json)
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
@@ -140,6 +141,7 @@ builder.Services.AddScoped<ITermsService, TermsService>();
 builder.Services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
 builder.Services.AddScoped<IAuctionEmails, AuctionEmails>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IIntroOfferService, IntroOfferService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>
