@@ -163,4 +163,26 @@ public class AuctionEmailsTests
 
         _queued.Single().TextBody.Should().Contain("Offer it as Make an Offer");
     }
+
+    [Fact]
+    public async Task OfferReceived_GoesToTheStud_WithTheBuyerAndAmount()
+    {
+        var offer = new Offer { AmountIncGst = 9000m, ExpiresAt = new DateTime(2026, 10, 18, 1, 0, 0, DateTimeKind.Utc) };
+
+        await CreateSut().OfferReceivedAsync(OfferListing(), offer, new User { DisplayName = "Jane Buyer", Email = "jane@example.com" });
+
+        var email = _queued.Single();
+        email.ToAddress.Should().Be("sales@arrowfield.example");
+        email.TextBody.Should().Contain("Jane Buyer").And.Contain("$9,000.00").And.Contain("18 Oct 2026");
+    }
+
+    [Fact]
+    public async Task OfferDeclined_GoesToTheBuyer()
+    {
+        await CreateSut().OfferDeclinedAsync(OfferListing(), new Offer { AmountIncGst = 9000m }, new User { Email = "jane@example.com" });
+
+        var email = _queued.Single();
+        email.ToAddress.Should().Be("jane@example.com");
+        email.TextBody.Should().Contain("declined").And.Contain("$9,000.00");
+    }
 }

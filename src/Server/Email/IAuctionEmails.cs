@@ -19,4 +19,8 @@ public interface IAuctionEmails
     Task PaymentAbandonedAsync(Listing listing, Purchase purchase, User winner);
     Task StudSaleConfirmationAsync(Listing listing, Purchase purchase, User winner);
     Task StudNoSaleAsync(Listing listing, ListingCloseReason reason);
+    /// <summary>To the stud: a buyer made an offer.</summary>
+    Task OfferReceivedAsync(MakeAnOfferListing listing, Offer offer, User buyer);
+    /// <summary>To the buyer: the stud declined their offer.</summary>
+    Task OfferDeclinedAsync(MakeAnOfferListing listing, Offer offer, User buyer);
 }

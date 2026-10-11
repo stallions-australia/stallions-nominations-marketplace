@@ -19,6 +19,8 @@ public class PurchaseDto
     public DateTime? PaidAt { get; set; }
     /// <summary>Pending (charging), Completed (paid), Voided (no sale), Refunded.</summary>
     public string Status { get; set; } = string.Empty;
+    /// <summary>"Auction" or "Offer".</summary>
+    public string Source { get; set; } = "Auction";
     /// <summary>Set after a failed charge: the winner must update their card by this time (UTC).</summary>
     public DateTime? ChargeDueBy { get; set; }
     public string? LastChargeFailure { get; set; }

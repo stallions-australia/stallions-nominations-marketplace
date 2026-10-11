@@ -108,6 +108,17 @@ public class AuctionEmails : IAuctionEmails
             Para("The lot is marked Unsold in My Listings."),
             Link($"/admin/listings/{listing.Id}", "Offer it as Make an Offer")));
 
+    public async Task OfferReceivedAsync(MakeAnOfferListing listing, Offer offer, User buyer) =>
+        await QueueAsync(await StudAddressAsync(listing), "OfferReceived", $"New offer: {Name(listing)} nomination", listing,
+            Para($"{buyer.DisplayName} ({buyer.Email}) has offered {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)})."),
+            Para($"The offer is open until {When(offer.ExpiresAt)}. Accepting it charges the buyer the buyer fee straight away."),
+            Link($"/admin/listings/{listing.Id}", "Review the offer"));
+
+    public Task OfferDeclinedAsync(MakeAnOfferListing listing, Offer offer, User buyer) =>
+        QueueAsync(buyer.Email, "OfferDeclined", $"Offer declined: {Name(listing)}", listing,
+            Para($"The stud has declined your offer of {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)})."),
+            Link($"/listings/{listing.Id}", "View the listing"));
+
     // ── Building blocks ────────────────────────────────────────────────────────
 
     private sealed record Block(string Html, string Text);
