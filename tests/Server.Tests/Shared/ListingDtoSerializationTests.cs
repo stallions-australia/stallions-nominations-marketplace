@@ -67,6 +67,7 @@ public class ListingDtoSerializationTests
     }
 
     [Fact]
+    // Server-side type mapping only; the real client read path (STJ 9 + StallionsJsonContext) is covered in Client.Tests ListingApiServiceTests.
     public void MakeAnOfferListingDto_RoundTrips_AsAListingDto()
     {
         var expires = new DateTime(2027, 1, 31, 12, 59, 59, DateTimeKind.Utc);
