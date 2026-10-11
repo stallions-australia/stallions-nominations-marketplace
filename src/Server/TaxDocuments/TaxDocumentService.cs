@@ -179,9 +179,13 @@ public class TaxDocumentService : ITaxDocumentService
         DateTime paidAt, Guid? userId)
     {
         var marked = await MarkListingFeeInvoicePaidAsync(subscription, paidAt, userId);
-        return marked.Status == TaxDocumentIssueStatus.NotNeeded
-            ? await IssueListingFeeInvoiceAsync(subscription, paid: true, userId, paidAt)
-            : marked;
+        if (marked.Status != TaxDocumentIssueStatus.NotNeeded) return marked;
+
+        var issued = await IssueListingFeeInvoiceAsync(subscription, paid: true, userId, paidAt);
+        // Staff's "Issue tax invoice" won the insert race with an Unpaid invoice: mark that one Paid instead.
+        return issued is { Status: TaxDocumentIssueStatus.Existing, Document.Status: TaxDocumentStatus.Unpaid }
+            ? await MarkListingFeeInvoicePaidAsync(subscription, paidAt, userId)
+            : issued;
     }
 
     public async Task<TaxDocumentIssueResult> IssueBuyerFeeInvoiceAsync(Purchase purchase)

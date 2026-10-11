@@ -14,6 +14,7 @@ namespace Stallions.Server.Tests.Services;
 /// <summary>Real repositories on the in-memory provider (seeded settings: standard listing fee $990).</summary>
 public class IntroOfferServiceTests : IDisposable
 {
+    private readonly string _name = Guid.NewGuid().ToString();
     private readonly AppDbContext _db;
     private readonly TestClock _clock = new() { Now = new DateTimeOffset(2026, 10, 11, 0, 0, 0, TimeSpan.Zero) };
     private readonly Mock<IUserService> _users = new();
@@ -23,7 +24,7 @@ public class IntroOfferServiceTests : IDisposable
 
     public IntroOfferServiceTests()
     {
-        _db = DbContextFactory.Create(Guid.NewGuid().ToString());
+        _db = DbContextFactory.Create(_name);
         _db.Database.EnsureCreated();
         _db.Users.Add(_staff);
         _db.StudFarms.Add(_farm);
@@ -36,8 +37,12 @@ public class IntroOfferServiceTests : IDisposable
 
     private void SignIn(User user) => _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
 
-    private IntroOfferService CreateSut() => new(new IntroOfferRepository(_db), new StudFarmRepository(_db),
-        new SeasonRepository(_db), new PlatformSettingsRepository(_db), new AuditLogRepository(_db), _users.Object, _clock);
+    private IntroOfferService CreateSut(AppDbContext? db = null)
+    {
+        db ??= _db;
+        return new(new IntroOfferRepository(db), new StudFarmRepository(db),
+            new SeasonRepository(db), new PlatformSettingsRepository(db), new AuditLogRepository(db), _users.Object, _clock);
+    }
 
     private static SaveIntroOfferRequest Request(string type = "AmountOff", decimal? off = 495m, Guid? farm = null,
         Guid? season = null, DateOnly? endsOn = null, string name = "Launch 2026") => new()
@@ -145,6 +150,23 @@ public class IntroOfferServiceTests : IDisposable
         r.Value!.Type.Should().Be("Waiver");
         r.Value.StudFarmId.Should().Be(_farm.Id);
         (await _db.AuditLogs.CountAsync(a => a.EntityId == offer.Id && a.Action == "UpdateIntroOffer")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Update_BeforeItIsApplied_CanWidenTheScopeToAllStudsAndAnySeason()
+    {
+        var offer = await CreateAsync(Request(farm: _farm.Id, season: _season.Id));
+
+        using var request = DbContextFactory.Create(_name); // a new request, as in the API
+        var r = await CreateSut(request).UpdateAsync(offer.Id, Request(farm: null, season: null));
+
+        r.Succeeded.Should().BeTrue(r.Error);
+        using var fresh = DbContextFactory.Create(_name);
+        var saved = await fresh.IntroOffers.SingleAsync(o => o.Id == offer.Id);
+        saved.StudFarmId.Should().BeNull();
+        saved.SeasonId.Should().BeNull();
+        r.Value!.StudFarmId.Should().BeNull();
+        r.Value.SeasonId.Should().BeNull();
     }
 
     [Fact]

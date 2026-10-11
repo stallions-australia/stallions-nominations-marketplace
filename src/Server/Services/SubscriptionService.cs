@@ -189,6 +189,9 @@ public class SubscriptionService : ISubscriptionService
             var invoice = await _taxDocuments.SettleListingFeeAsync(subscription, paidAt, staff.Id);
             if (invoice.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
                 return ServiceResult<SubscriptionDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage);
+            // A Pending subscription never legitimately has a Paid invoice: the card webhook just paid it.
+            if (invoice.Status == TaxDocumentIssueStatus.Existing)
+                return ServiceResult<SubscriptionDto>.Conflict(JustPaidMessage);
 
             subscription.Status = SubscriptionStatus.Paid;
             subscription.PaymentMethod = method;
@@ -238,6 +241,9 @@ public class SubscriptionService : ISubscriptionService
             var documents = new List<TaxDocument>();
             if (await _taxDocumentRepo.GetListingFeeInvoiceAsync(subscription.Id) is { } invoice)
             {
+                // The card webhook just paid it: the fee can't be waived now.
+                if (invoice.Status == TaxDocumentStatus.Paid)
+                    return ServiceResult<SubscriptionDto>.Conflict(JustPaidMessage);
                 var note = await _taxDocuments.IssueAdjustmentNoteAsync(invoice, $"Listing fee waived — {reason}", staff.Id);
                 if (note.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
                     return ServiceResult<SubscriptionDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage);
@@ -429,6 +435,7 @@ public class SubscriptionService : ISubscriptionService
     }
 
     private const string StaffOnlyMessage = "Only Stallions Australia staff can manage listing fee subscriptions.";
+    private const string JustPaidMessage = "This listing fee was just paid — refresh the page.";
 
     // Controllers enforce the StaffOnly policy; checked again here because these are fee records.
     private async Task<User?> GetStaffCallerAsync()

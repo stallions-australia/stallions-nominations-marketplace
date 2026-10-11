@@ -113,6 +113,35 @@ public class PurchaseServiceTests
     }
 
     [Fact]
+    public async Task Refund_WhenTheNoteWasAlreadyIssued_DoesNotSayItWasJustEmailed()
+    {
+        var (_, sale) = StaffAndCompletedSale();
+        var invoice = new TaxDocument { Id = Guid.NewGuid(), Number = "SA-000124", Kind = TaxDocumentKind.BuyerFeeInvoice };
+        _taxDocumentRepo.Setup(r => r.GetBuyerFeeInvoiceAsync(sale.Id)).ReturnsAsync(invoice);
+        var note = new TaxDocument { Id = Guid.NewGuid(), Number = "SA-000130", Kind = TaxDocumentKind.AdjustmentNote };
+        _taxDocuments.Setup(t => t.IssueAdjustmentNoteAsync(invoice, It.IsAny<string>(), It.IsAny<Guid?>()))
+            .ReturnsAsync(new TaxDocumentIssueResult(TaxDocumentIssueStatus.Existing, note));
+
+        var r = await CreateSut().RefundAsync(sale.Id, new RefundBuyerFeeRequest());
+
+        r.Value!.Message.Should().Be("Refund recorded. Adjustment note SA-000130 was already issued.");
+    }
+
+    [Fact]
+    public async Task Refund_LosingAConcurrentRefund_IsAConflict()
+    {
+        var (_, sale) = StaffAndCompletedSale();
+        _purchases.Setup(p => p.UpdateAsync(sale))
+            .ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("stamp changed"));
+
+        var r = await CreateSut().RefundAsync(sale.Id, new RefundBuyerFeeRequest());
+
+        r.HttpStatusCode.Should().Be(409);
+        r.Error.Should().Be("This sale was just refunded — refresh the page.");
+        _audit.Verify(a => a.LogAsync("Purchase", sale.Id, "PurchaseRefunded", It.IsAny<Guid?>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Refund_WithoutBusinessDetails_IsRejected_AndNothingChanges()
     {
         var (_, sale) = StaffAndCompletedSale();

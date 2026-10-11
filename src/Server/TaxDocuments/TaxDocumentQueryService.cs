@@ -123,24 +123,22 @@ public class TaxDocumentQueryService : ITaxDocumentQueryService
         var issued = 0;
         foreach (var id in subscriptionIds)
         {
-            var done = await _transactions.RunAsync(async () =>
+            if (await TryIssueAsync("StallionSeasonSubscription", id, async () =>
             {
                 var subscription = await _subscriptions.GetByIdAsync(id);
                 if (subscription is not { Status: SubscriptionStatus.Paid }) return false;
                 var result = await _taxDocuments.IssueListingFeeInvoiceAsync(subscription, paid: true, caller.Id, subscription.PaidAt);
                 return result.Status == TaxDocumentIssueStatus.Issued;
-            });
-            if (done) issued++;
+            })) issued++;
         }
         foreach (var id in purchaseIds)
         {
-            var done = await _transactions.RunAsync(async () =>
+            if (await TryIssueAsync("Purchase", id, async () =>
             {
                 var purchase = await _purchases.GetForChargeAsync(id);
                 if (purchase is not { Status: PurchaseStatus.Completed }) return false;
                 return (await _taxDocuments.IssueBuyerFeeInvoiceAsync(purchase)).Status == TaxDocumentIssueStatus.Issued;
-            });
-            if (done) issued++;
+            })) issued++;
         }
 
         var (stillSubscriptions, stillPurchases) = await FindPendingAsync();
@@ -152,6 +150,21 @@ public class TaxDocumentQueryService : ITaxDocumentQueryService
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>One item in its own transaction; a failure is logged and left pending so the rest still run.</summary>
+    private async Task<bool> TryIssueAsync(string entityType, Guid id, Func<Task<bool>> issue)
+    {
+        try
+        {
+            return await _transactions.RunAsync(issue);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Issuing the missing tax document for {EntityType} {EntityId} failed; it stays pending",
+                entityType, id);
+            return false;
+        }
+    }
 
     private async Task<bool> IsStaffAsync() => (await _users.GetOrCreateCurrentUserAsync())?.Role == UserRole.Staff;
 

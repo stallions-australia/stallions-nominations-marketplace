@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
@@ -112,7 +113,19 @@ public class PurchaseService : IPurchaseService
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
         if (note?.Length > 500) return ServiceResult<RefundResultDto>.BadRequest("The note can be at most 500 characters.");
 
-        return await _transactions.RunAsync(async () =>
+        try
+        {
+            return await RefundInTransactionAsync(id, note, caller);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another Staff member refunded it at the same time; their refund (and adjustment note) stands.
+            return ServiceResult<RefundResultDto>.Conflict("This sale was just refunded — refresh the page.");
+        }
+    }
+
+    private Task<ServiceResult<RefundResultDto>> RefundInTransactionAsync(Guid id, string? note, User caller) =>
+        _transactions.RunAsync(async () =>
         {
             var purchase = await _purchaseRepo.GetByIdAsync(id);
             if (purchase == null)
@@ -123,6 +136,7 @@ public class PurchaseService : IPurchaseService
             // The adjustment note first, before any tracked entity is modified (the document insert saves
             // everything pending): if it can't be issued, nothing has been written.
             TaxDocument? adjustment = null;
+            var alreadyIssued = false;
             if (await _taxDocumentRepo.GetBuyerFeeInvoiceAsync(purchase.Id) is { } invoice)
             {
                 var result = await _taxDocuments.IssueAdjustmentNoteAsync(invoice,
@@ -130,6 +144,7 @@ public class PurchaseService : IPurchaseService
                 if (result.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
                     return ServiceResult<RefundResultDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage);
                 adjustment = result.Document;
+                alreadyIssued = result.Status == TaxDocumentIssueStatus.Existing;
             }
 
             // Records a refund Staff have made in the payment provider's dashboard — no money moves here.
@@ -148,12 +163,13 @@ public class PurchaseService : IPurchaseService
             {
                 AdjustmentNoteId = adjustment?.Id,
                 AdjustmentNoteNumber = adjustment?.Number,
-                Message = adjustment != null
-                    ? $"Refund recorded. Adjustment note {adjustment.Number} has been emailed to the buyer."
-                    : "Refund recorded. This sale has no tax invoice, so no adjustment note was issued."
+                Message = adjustment == null
+                    ? "Refund recorded. This sale has no tax invoice, so no adjustment note was issued."
+                    : alreadyIssued
+                        ? $"Refund recorded. Adjustment note {adjustment.Number} was already issued."
+                        : $"Refund recorded. Adjustment note {adjustment.Number} has been emailed to the buyer."
             });
         });
-    }
 
     internal static PurchaseDto MapToDto(Purchase p) => new()
     {

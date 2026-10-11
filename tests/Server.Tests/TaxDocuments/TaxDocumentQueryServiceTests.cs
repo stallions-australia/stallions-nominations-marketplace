@@ -50,7 +50,7 @@ public class TaxDocumentQueryServiceTests : IDisposable
 
     private TaxDocumentService TaxDocuments() => TaxDocumentServiceFactory.Create(_db, _clock, new FakeTaxDocumentNumberSource(), new Mock<ITaxDocumentEmails>());
 
-    private TaxDocumentQueryService CreateSut() => new(new TaxDocumentRepository(_db), TaxDocuments(),
+    private TaxDocumentQueryService CreateSut(ITaxDocumentService? taxDocuments = null) => new(new TaxDocumentRepository(_db), taxDocuments ?? TaxDocuments(),
         new SubscriptionRepository(_db), new PurchaseRepository(_db), new StudFarmRepository(_db), new AuditLogRepository(_db),
         _users.Object, new InlineTransactionRunner(),
         Microsoft.Extensions.Options.Options.Create(new DisclosureOptions { BuyerFeeExplanation = "CONFIGURED fee wording." }),
@@ -299,6 +299,29 @@ public class TaxDocumentQueryServiceTests : IDisposable
         (await _db.TaxDocuments.SingleAsync(d => d.SubscriptionId == subscriptionId)).Status.Should().Be(TaxDocumentStatus.Paid);
         (await _db.TaxDocuments.SingleAsync(d => d.PurchaseId == purchaseId)).Kind.Should().Be(TaxDocumentKind.BuyerFeeInvoice);
         (await CreateSut().GetRegisterAsync(new TaxDocumentFilter())).Value!.PendingCount.Should().Be(0);
+        (await _db.AuditLogs.CountAsync(a => a.Action == "IssueMissingTaxDocuments" && a.UserId == _staff.Id)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task IssueMissing_WhenOneItemThrows_IssuesTheRest_AndStillAudits()
+    {
+        var (subscriptionId, purchaseId) = await FeesRecordedWithoutDocumentsAsync();
+        TaxTestData.CompleteBusinessDetails(_db);
+        SignIn(_staff);
+        var real = TaxDocuments();
+        var failing = new Mock<ITaxDocumentService>();
+        failing.Setup(t => t.CanIssueAsync(It.IsAny<bool>())).ReturnsAsync(true);
+        failing.Setup(t => t.IssueListingFeeInvoiceAsync(It.IsAny<StallionSeasonSubscription>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<DateTime?>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+        failing.Setup(t => t.IssueBuyerFeeInvoiceAsync(It.IsAny<Purchase>()))
+            .Returns((Purchase p) => real.IssueBuyerFeeInvoiceAsync(p));
+
+        var result = (await CreateSut(failing.Object).IssueMissingAsync()).Value!;
+
+        (result.Issued, result.Remaining).Should().Be((1, 1));
+        (await _db.TaxDocuments.AnyAsync(d => d.SubscriptionId == subscriptionId)).Should().BeFalse();
+        (await _db.TaxDocuments.SingleAsync(d => d.PurchaseId == purchaseId)).Kind.Should().Be(TaxDocumentKind.BuyerFeeInvoice);
         (await _db.AuditLogs.CountAsync(a => a.Action == "IssueMissingTaxDocuments" && a.UserId == _staff.Id)).Should().Be(1);
     }
 

@@ -826,6 +826,52 @@ public class SubscriptionServiceTests : IDisposable
         (await _db.StallionSeasonSubscriptions.SingleAsync()).Status.Should().Be(SubscriptionStatus.Pending);
     }
 
+    /// <summary>The card webhook paid the invoice after Staff's page loaded the subscription as Pending.</summary>
+    private async Task<SubscriptionDto> PendingWithAJustPaidInvoiceAsync()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await IssueInvoiceAsync(created);
+        var invoice = await _db.TaxDocuments.SingleAsync();
+        invoice.Status = TaxDocumentStatus.Paid;
+        invoice.PaidAt = _clock.UtcNow;
+        await _db.SaveChangesAsync();
+        _taxEmails.Invocations.Clear();
+        return created;
+    }
+
+    [Fact]
+    public async Task MarkPaid_WhenTheCardJustPaidTheInvoice_IsAConflict_AndChangesNothing()
+    {
+        var created = await PendingWithAJustPaidInvoiceAsync();
+
+        var r = await CreateSut().MarkPaidAsync(created.Id, new MarkSubscriptionPaidRequest { PaymentMethod = "BankTransfer" });
+
+        r.HttpStatusCode.Should().Be(409);
+        r.Error.Should().Be("This listing fee was just paid — refresh the page.");
+        var sub = await _db.StallionSeasonSubscriptions.AsNoTracking().SingleAsync();
+        sub.Status.Should().Be(SubscriptionStatus.Pending);
+        sub.PaymentMethod.Should().BeNull();
+        (await _db.AuditLogs.AnyAsync(a => a.Action == "MarkSubscriptionPaid")).Should().BeFalse();
+        _taxEmails.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Waive_WhenTheCardJustPaidTheInvoice_IsAConflict_AndWritesNothing()
+    {
+        var created = await PendingWithAJustPaidInvoiceAsync();
+
+        var r = await CreateSut().WaiveAsync(created.Id, new WaiveSubscriptionRequest { Reason = "Founding stud" });
+
+        r.HttpStatusCode.Should().Be(409);
+        r.Error.Should().Be("This listing fee was just paid — refresh the page.");
+        var sub = await _db.StallionSeasonSubscriptions.AsNoTracking().SingleAsync();
+        sub.Status.Should().Be(SubscriptionStatus.Pending);
+        sub.FeeIncGst.Should().Be(990m);
+        (await _db.TaxDocuments.AnyAsync(d => d.Kind == TaxDocumentKind.AdjustmentNote)).Should().BeFalse();
+        (await _db.AuditLogs.AnyAsync(a => a.Action == "WaiveSubscription")).Should().BeFalse();
+        _taxEmails.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task GetAll_ShowsEachSubscriptionsTaxInvoice()
     {

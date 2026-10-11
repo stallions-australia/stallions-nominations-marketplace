@@ -292,6 +292,36 @@ public class TaxDocumentServiceTests : IDisposable
         (await _db.TaxDocuments.CountAsync()).Should().Be(2);
     }
 
+    /// <summary>Just before its insert, another instance (Staff's "Issue tax invoice") inserts its document first.</summary>
+    private sealed class BeatenToTheInsertRepository(AppDbContext db, Func<Task> otherInstanceInserts) : TaxDocumentRepository(db)
+    {
+        public override async Task<bool> TryAddAsync(TaxDocument document)
+        {
+            await otherInstanceInserts();
+            return false; // the unique index rejects ours
+        }
+    }
+
+    [Fact]
+    public async Task Settle_WhenStaffIssuesAnUnpaidInvoiceDuringTheInsert_MarksThatInvoicePaid_AndSendsAReceipt()
+    {
+        var sub = await SubscriptionAsync();
+        using var staff = DbContextFactory.Create(_name);
+        var staffSub = (await new SubscriptionRepository(staff).GetByIdAsync(sub.Id))!;
+        var repo = new BeatenToTheInsertRepository(_db, async () =>
+            await CreateSut(staff).IssueListingFeeInvoiceAsync(staffSub, paid: false, userId: _owner.Id));
+        _emails.Invocations.Clear();
+
+        var r = await CreateSut(repo: repo).SettleListingFeeAsync(sub, _clock.UtcNow, null);
+
+        r.Status.Should().Be(TaxDocumentIssueStatus.MarkedPaid);
+        using var fresh = DbContextFactory.Create(_name);
+        var doc = await fresh.TaxDocuments.SingleAsync();
+        doc.Status.Should().Be(TaxDocumentStatus.Paid);
+        doc.PaidAt.Should().Be(_clock.UtcNow);
+        _emails.Verify(e => e.ListingFeeReceiptAsync(It.Is<TaxDocument>(d => d.Id == doc.Id)), Times.Once);
+    }
+
     [Theory]
     [InlineData(false, "Buyer fee — nomination to Snitzel, 2026 Season (auction)")]
     [InlineData(true, "Buyer fee — nomination to Snitzel, 2026 Season (accepted offer)")]
