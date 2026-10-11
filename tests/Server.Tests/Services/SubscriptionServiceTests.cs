@@ -7,6 +7,8 @@ using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Payments;
 using Stallions.Server.Services;
+using Stallions.Server.TaxDocuments;
+using Stallions.Server.Tests.TaxDocuments;
 using Stallions.Server.Tests.Helpers;
 using Stallions.Shared.DTOs.Payments;
 using Stallions.Shared.DTOs.Subscriptions;
@@ -24,6 +26,8 @@ public class SubscriptionServiceTests : IDisposable
     private readonly Mock<IUserService> _users = new();
     private readonly Mock<IPaymentProvider> _provider = new();
     private readonly TestClock _clock = new() { Now = DateTimeOffset.UtcNow };
+    private readonly Mock<ITaxDocumentEmails> _taxEmails = new();
+    private readonly FakeTaxDocumentNumberSource _numbers = new();
 
     private readonly User _staff = new() { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active, ObjectId = "staff", Email = "staff@x", DisplayName = "Staff" };
     private readonly User _studUserA = new() { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active, ObjectId = "a", Email = "a@x", DisplayName = "A" };
@@ -38,6 +42,7 @@ public class SubscriptionServiceTests : IDisposable
     {
         _db = DbContextFactory.Create(Guid.NewGuid().ToString());
         _db.Database.EnsureCreated(); // seeds PlatformSettings (standard listing fee $990)
+        TaxTestData.CompleteBusinessDetails(_db);
 
         _farmA = new StudFarm { UserId = _studUserA.Id, Name = "Farm A" };
         _farmB = new StudFarm { UserId = _studUserB.Id, Name = "Farm B" };
@@ -53,6 +58,8 @@ public class SubscriptionServiceTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
+    private TaxDocumentService TaxDocuments() => TaxDocumentServiceFactory.Create(_db, _clock, _numbers, _taxEmails);
+
     private SubscriptionService CreateSut() => new(
         new SubscriptionRepository(_db),
         new StallionRepository(_db),
@@ -63,6 +70,9 @@ public class SubscriptionServiceTests : IDisposable
         _users.Object,
         _provider.Object,
         new IntroOfferRepository(_db),
+        TaxDocuments(),
+        new TaxDocumentRepository(_db),
+        new InlineTransactionRunner(),
         _clock,
         NullLogger<SubscriptionService>.Instance);
 
@@ -658,5 +668,174 @@ public class SubscriptionServiceTests : IDisposable
         await ActivateAs(_studUserA, _stallionA);
 
         (await _db.StallionSeasonSubscriptions.SingleAsync()).FeeIncGst.Should().Be(990m);
+    }
+
+    // ── Tax invoices ────────────────────────────────────────────────────────
+
+    private async Task<SubscriptionDto> IssueInvoiceAsync(SubscriptionDto created)
+    {
+        SignInAs(_staff);
+        var r = await CreateSut().IssueInvoiceAsync(created.Id);
+        r.Succeeded.Should().BeTrue(r.Error);
+        return r.Value!;
+    }
+
+    [Fact]
+    public async Task IssueInvoice_IssuesAnUnpaidInvoice_AndEmailsTheStud()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+
+        var dto = await IssueInvoiceAsync(created);
+
+        dto.Status.Should().Be("Pending");
+        dto.TaxInvoiceNumber.Should().Be("SA-000001");
+        dto.TaxInvoiceStatus.Should().Be("Unpaid");
+        var doc = await _db.TaxDocuments.SingleAsync();
+        doc.RecipientEmail.Should().Be("a@x"); // Farm A has no contact email: its admin's email
+        doc.DueAt.Should().NotBeNull();
+        _taxEmails.Verify(e => e.ListingFeeInvoiceDueAsync(It.IsAny<TaxDocument>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task IssueInvoice_Twice_IsAConflict()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await IssueInvoiceAsync(created);
+
+        var again = await CreateSut().IssueInvoiceAsync(created.Id);
+
+        again.HttpStatusCode.Should().Be(409);
+        again.Error.Should().Contain("SA-000001");
+    }
+
+    [Fact]
+    public async Task IssueInvoice_ForAWaivedSubscription_IsBadRequest()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await CreateSut().WaiveAsync(created.Id, new WaiveSubscriptionRequest { Reason = "Founding stud" });
+
+        (await CreateSut().IssueInvoiceAsync(created.Id)).HttpStatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task IssueInvoice_WithoutBankDetails_IsRejected()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        TaxTestData.CompleteBusinessDetails(_db, withBank: false);
+
+        var r = await CreateSut().IssueInvoiceAsync(created.Id);
+
+        r.HttpStatusCode.Should().Be(400);
+        r.Error.Should().Be("Complete the business details in Settings first.");
+        (await _db.TaxDocuments.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task IssueInvoice_AsStudAdmin_IsForbidden()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        SignInAs(_studUserA);
+
+        (await CreateSut().IssueInvoiceAsync(created.Id)).HttpStatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task MarkPaid_WithNoInvoice_IssuesAPaidInvoice()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+
+        var r = await CreateSut().MarkPaidAsync(created.Id, new MarkSubscriptionPaidRequest { PaymentMethod = "BankTransfer" });
+
+        r.Value!.TaxInvoiceStatus.Should().Be("Paid");
+        (await _db.TaxDocuments.SingleAsync()).Status.Should().Be(TaxDocumentStatus.Paid);
+        _taxEmails.Verify(e => e.ListingFeeTaxInvoiceAsync(It.IsAny<TaxDocument>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MarkPaid_WithAnUnpaidInvoice_MarksItPaid_AndSendsAReceipt()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await IssueInvoiceAsync(created);
+
+        await CreateSut().MarkPaidAsync(created.Id, new MarkSubscriptionPaidRequest { PaymentMethod = "Invoice", PaymentReference = "SA-000001" });
+
+        var doc = await _db.TaxDocuments.SingleAsync();
+        doc.Status.Should().Be(TaxDocumentStatus.Paid);
+        _taxEmails.Verify(e => e.ListingFeeReceiptAsync(It.IsAny<TaxDocument>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MarkPaid_WithoutBusinessDetails_IsRejected_AndLeavesItPending()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        TaxTestData.ClearBusinessDetails(_db);
+
+        var r = await CreateSut().MarkPaidAsync(created.Id, new MarkSubscriptionPaidRequest { PaymentMethod = "Invoice" });
+
+        r.Error.Should().Be("Complete the business details in Settings first.");
+        (await _db.StallionSeasonSubscriptions.SingleAsync()).Status.Should().Be(SubscriptionStatus.Pending);
+        (await _db.TaxDocuments.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task MarkPaid_UsesTheInjectedClockForPaidAt()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        _clock.Now = new DateTimeOffset(2031, 3, 4, 5, 6, 7, TimeSpan.Zero);
+
+        await CreateSut().MarkPaidAsync(created.Id, new MarkSubscriptionPaidRequest { PaymentMethod = "BankTransfer" });
+
+        (await _db.StallionSeasonSubscriptions.SingleAsync()).PaidAt.Should().Be(new DateTime(2031, 3, 4, 5, 6, 7, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public async Task Waive_WithAnUnpaidInvoice_IssuesAnAdjustmentNoteToTheStud()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await IssueInvoiceAsync(created);
+
+        var r = await CreateSut().WaiveAsync(created.Id, new WaiveSubscriptionRequest { Reason = "Founding stud" });
+
+        r.Value!.Status.Should().Be("Waived");
+        r.Value.AdjustmentNoteNumber.Should().Be("SA-000002");
+        var note = await _db.TaxDocuments.SingleAsync(d => d.Kind == TaxDocumentKind.AdjustmentNote);
+        note.Reason.Should().Be("Listing fee waived — Founding stud");
+        note.AmountIncGst.Should().Be(990m);
+        _taxEmails.Verify(e => e.AdjustmentNoteAsync(It.IsAny<TaxDocument>(), It.IsAny<TaxDocument>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Waive_WithoutAnInvoice_NeedsNoBusinessDetails()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        TaxTestData.ClearBusinessDetails(_db);
+
+        (await CreateSut().WaiveAsync(created.Id, new WaiveSubscriptionRequest { Reason = "Founding stud" })).Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Waive_WithAnInvoiceButNoBusinessDetails_IsRejected()
+    {
+        var created = await CreatePendingAsync(_stallionA);
+        await IssueInvoiceAsync(created);
+        TaxTestData.ClearBusinessDetails(_db);
+
+        var r = await CreateSut().WaiveAsync(created.Id, new WaiveSubscriptionRequest { Reason = "Founding stud" });
+
+        r.Error.Should().Be("Complete the business details in Settings first.");
+        (await _db.StallionSeasonSubscriptions.SingleAsync()).Status.Should().Be(SubscriptionStatus.Pending);
+    }
+
+    [Fact]
+    public async Task GetAll_ShowsEachSubscriptionsTaxInvoice()
+    {
+        var invoiced = await CreatePendingAsync(_stallionA);
+        await IssueInvoiceAsync(invoiced);
+        await CreatePendingAsync(_stallionB);
+
+        var all = (await CreateSut().GetAllAsync(null, null)).Value!;
+
+        all.Single(s => s.Id == invoiced.Id).TaxInvoiceNumber.Should().Be("SA-000001");
+        all.Single(s => s.StallionId == _stallionB.Id).TaxInvoiceNumber.Should().BeNull();
     }
 }

@@ -8,6 +8,9 @@ public interface ISubscriptionService
     Task<ServiceResult<SubscriptionDto>> CreateAsync(CreateSubscriptionRequest request);
     Task<ServiceResult<SubscriptionDto>> MarkPaidAsync(Guid id, MarkSubscriptionPaidRequest request);
     Task<ServiceResult<SubscriptionDto>> WaiveAsync(Guid id, WaiveSubscriptionRequest request);
+
+    /// <summary>Staff: issue an unpaid tax invoice for a Pending subscription (stud pays by bank transfer).</summary>
+    Task<ServiceResult<SubscriptionDto>> IssueInvoiceAsync(Guid id);
     Task<ServiceResult<IReadOnlyList<SubscriptionDto>>> GetForStudFarmAsync();
     Task<ServiceResult<IReadOnlyList<SubscriptionDto>>> GetAllAsync(Guid? seasonId, string? status);
 

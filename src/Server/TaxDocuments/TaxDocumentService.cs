@@ -32,6 +32,12 @@ public sealed record TaxDocumentIssueResult(TaxDocumentIssueStatus Status, TaxDo
 /// starts one), so the document, its audit row, its email and the money state commit together. Each issue
 /// is idempotent: an existing document is returned and nothing new is sent.
 /// </summary>
+/// <remarks>
+/// Precondition: callers must have no unsaved tracked changes when they call an Issue*, Settle* or
+/// MarkListingFeeInvoicePaid* method. Inserting a document calls SaveChanges, which flushes every pending
+/// tracked change, and on a unique-index violation detaches only the document. So either call the service
+/// before modifying tracked entities, or save your own changes first.
+/// </remarks>
 public interface ITaxDocumentService
 {
     /// <summary>Legal name, ABN and address are set (and, for an unpaid invoice, the bank details).</summary>

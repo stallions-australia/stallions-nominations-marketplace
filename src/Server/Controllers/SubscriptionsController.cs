@@ -56,6 +56,14 @@ public class SubscriptionsController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpPost("{id:guid}/issue-invoice")]
+    [Authorize(Policy = "StaffOnly")]
+    public async Task<IActionResult> IssueInvoice(Guid id)
+    {
+        var r = await _subscriptions.IssueInvoiceAsync(id);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpPost("{id:guid}/waive")]
     [Authorize(Policy = "StaffOnly")]
     public async Task<IActionResult> Waive(Guid id, [FromBody] WaiveSubscriptionRequest request)

@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Payments;
+using Stallions.Server.TaxDocuments;
 using Stallions.Shared;
 using Stallions.Shared.DTOs.Payments;
 using Stallions.Shared.DTOs.Subscriptions;
@@ -24,6 +26,9 @@ public class SubscriptionService : ISubscriptionService
     private readonly IUserService _users;
     private readonly IPaymentProvider _provider;
     private readonly IIntroOfferRepository _introOffers;
+    private readonly ITaxDocumentService _taxDocuments;
+    private readonly ITaxDocumentRepository _taxDocumentRepo;
+    private readonly ITransactionRunner _transactions;
     private readonly TimeProvider _clock;
     private readonly ILogger<SubscriptionService> _log;
 
@@ -37,6 +42,9 @@ public class SubscriptionService : ISubscriptionService
         IUserService users,
         IPaymentProvider provider,
         IIntroOfferRepository introOffers,
+        ITaxDocumentService taxDocuments,
+        ITaxDocumentRepository taxDocumentRepo,
+        ITransactionRunner transactions,
         TimeProvider clock,
         ILogger<SubscriptionService> log)
     {
@@ -49,6 +57,9 @@ public class SubscriptionService : ISubscriptionService
         _users = users;
         _provider = provider;
         _introOffers = introOffers;
+        _taxDocuments = taxDocuments;
+        _taxDocumentRepo = taxDocumentRepo;
+        _transactions = transactions;
         _clock = clock;
         _log = log;
     }
@@ -162,32 +173,44 @@ public class SubscriptionService : ISubscriptionService
             return ServiceResult<SubscriptionDto>.BadRequest(
                 "Payment method must be Card, Invoice or BankTransfer.");
 
-        var subscription = await _repo.GetByIdAsync(id);
-        if (subscription == null)
-            return ServiceResult<SubscriptionDto>.NotFound("Subscription not found.");
+        return await _transactions.RunAsync(async () =>
+        {
+            var subscription = await _repo.GetByIdAsync(id);
+            if (subscription == null)
+                return ServiceResult<SubscriptionDto>.NotFound("Subscription not found.");
 
-        if (subscription.Status != SubscriptionStatus.Pending)
-            return ServiceResult<SubscriptionDto>.BadRequest(
-                $"Only pending subscriptions can be marked paid (this one is {subscription.Status}).");
+            if (subscription.Status != SubscriptionStatus.Pending)
+                return ServiceResult<SubscriptionDto>.BadRequest(
+                    $"Only pending subscriptions can be marked paid (this one is {subscription.Status}).");
 
-        subscription.Status = SubscriptionStatus.Paid;
-        subscription.PaymentMethod = method;
-        subscription.PaymentReference = string.IsNullOrWhiteSpace(request.PaymentReference)
-            ? null : request.PaymentReference.Trim();
-        subscription.PaidAt = DateTime.UtcNow;
-        subscription.PendingCheckoutUrl = null;
-        subscription.PendingCheckoutExpiresAt = null;
-        await _repo.UpdateAsync(subscription);
+            // The tax document first, before any tracked entity is modified (it saves when it inserts):
+            // if it cannot be issued, nothing has been written.
+            var paidAt = Now;
+            var invoice = await _taxDocuments.SettleListingFeeAsync(subscription, paidAt, staff.Id);
+            if (invoice.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
+                return ServiceResult<SubscriptionDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage);
 
-        await _auditRepo.LogAsync(AuditEntity, subscription.Id, "MarkSubscriptionPaid", staff.Id,
-            JsonSerializer.Serialize(new
-            {
-                PaymentMethod = method.ToString(),
-                subscription.PaymentReference,
-                subscription.FeeIncGst
-            }));
+            subscription.Status = SubscriptionStatus.Paid;
+            subscription.PaymentMethod = method;
+            subscription.PaymentReference = string.IsNullOrWhiteSpace(request.PaymentReference)
+                ? null : request.PaymentReference.Trim();
+            subscription.PaidAt = paidAt;
+            subscription.PendingCheckoutUrl = null;
+            subscription.PendingCheckoutExpiresAt = null;
+            await _repo.UpdateAsync(subscription);
 
-        return ServiceResult<SubscriptionDto>.Ok(MapToDto(subscription, includeStaffFields: true));
+            await _auditRepo.LogAsync(AuditEntity, subscription.Id, "MarkSubscriptionPaid", staff.Id,
+                JsonSerializer.Serialize(new
+                {
+                    PaymentMethod = method.ToString(),
+                    subscription.PaymentReference,
+                    subscription.FeeIncGst,
+                    TaxInvoiceNumber = invoice.Document?.Number
+                }));
+
+            return ServiceResult<SubscriptionDto>.Ok(MapToDto(subscription, includeStaffFields: true,
+                invoice.Document is { } doc ? new List<TaxDocument> { doc } : null));
+        });
     }
 
     public async Task<ServiceResult<SubscriptionDto>> WaiveAsync(Guid id, WaiveSubscriptionRequest request)
@@ -199,29 +222,82 @@ public class SubscriptionService : ISubscriptionService
         if (string.IsNullOrWhiteSpace(request.Reason))
             return ServiceResult<SubscriptionDto>.BadRequest("A reason is required to waive the listing fee.");
 
-        var subscription = await _repo.GetByIdAsync(id);
-        if (subscription == null)
-            return ServiceResult<SubscriptionDto>.NotFound("Subscription not found.");
+        return await _transactions.RunAsync(async () =>
+        {
+            var subscription = await _repo.GetByIdAsync(id);
+            if (subscription == null)
+                return ServiceResult<SubscriptionDto>.NotFound("Subscription not found.");
 
-        if (subscription.Status != SubscriptionStatus.Pending)
-            return ServiceResult<SubscriptionDto>.BadRequest(
-                $"Only pending subscriptions can be waived (this one is {subscription.Status}).");
+            if (subscription.Status != SubscriptionStatus.Pending)
+                return ServiceResult<SubscriptionDto>.BadRequest(
+                    $"Only pending subscriptions can be waived (this one is {subscription.Status}).");
 
-        var previousFee = subscription.FeeIncGst;
-        subscription.FeeIncGst = 0m;
-        subscription.FeeExGst = 0m;
-        subscription.GstAmount = 0m;
-        subscription.Status = SubscriptionStatus.Waived;
-        subscription.PaymentMethod = SubscriptionPaymentMethod.Waived;
-        subscription.WaiverReason = request.Reason.Trim();
-        subscription.PendingCheckoutUrl = null;
-        subscription.PendingCheckoutExpiresAt = null;
-        await _repo.UpdateAsync(subscription);
+            var reason = request.Reason.Trim();
+            // An Unpaid tax invoice already sent for this fee is reversed by an adjustment note to the stud.
+            // Issued before the subscription is modified (the service saves when it inserts).
+            var documents = new List<TaxDocument>();
+            if (await _taxDocumentRepo.GetListingFeeInvoiceAsync(subscription.Id) is { } invoice)
+            {
+                var note = await _taxDocuments.IssueAdjustmentNoteAsync(invoice, $"Listing fee waived — {reason}", staff.Id);
+                if (note.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
+                    return ServiceResult<SubscriptionDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage);
+                documents.Add(invoice);
+                documents.Add(note.Document!);
+            }
 
-        await _auditRepo.LogAsync(AuditEntity, subscription.Id, "WaiveSubscription", staff.Id,
-            JsonSerializer.Serialize(new { PreviousFeeIncGst = previousFee, subscription.WaiverReason }));
+            var previousFee = subscription.FeeIncGst;
+            subscription.FeeIncGst = 0m;
+            subscription.FeeExGst = 0m;
+            subscription.GstAmount = 0m;
+            subscription.Status = SubscriptionStatus.Waived;
+            subscription.PaymentMethod = SubscriptionPaymentMethod.Waived;
+            subscription.WaiverReason = reason;
+            subscription.PendingCheckoutUrl = null;
+            subscription.PendingCheckoutExpiresAt = null;
+            await _repo.UpdateAsync(subscription);
 
-        return ServiceResult<SubscriptionDto>.Ok(MapToDto(subscription, includeStaffFields: true));
+            await _auditRepo.LogAsync(AuditEntity, subscription.Id, "WaiveSubscription", staff.Id,
+                JsonSerializer.Serialize(new
+                {
+                    PreviousFeeIncGst = previousFee,
+                    subscription.WaiverReason,
+                    AdjustmentNoteNumber = documents.FirstOrDefault(d => d.Kind == TaxDocumentKind.AdjustmentNote)?.Number
+                }));
+
+            return ServiceResult<SubscriptionDto>.Ok(MapToDto(subscription, includeStaffFields: true, documents));
+        });
+    }
+
+    public async Task<ServiceResult<SubscriptionDto>> IssueInvoiceAsync(Guid id)
+    {
+        var staff = await GetStaffCallerAsync();
+        if (staff == null)
+            return ServiceResult<SubscriptionDto>.Forbidden(StaffOnlyMessage);
+        if (!await _taxDocuments.CanIssueAsync(unpaidInvoice: true))
+            return ServiceResult<SubscriptionDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage);
+
+        return await _transactions.RunAsync(async () =>
+        {
+            var subscription = await _repo.GetByIdAsync(id);
+            if (subscription == null)
+                return ServiceResult<SubscriptionDto>.NotFound("Subscription not found.");
+            if (subscription.Status != SubscriptionStatus.Pending)
+                return ServiceResult<SubscriptionDto>.BadRequest(
+                    $"Only pending subscriptions can be invoiced (this one is {subscription.Status}).");
+            if (subscription.FeeIncGst <= 0)
+                return ServiceResult<SubscriptionDto>.BadRequest("This subscription has no fee to invoice.");
+
+            // Nothing on the subscription is modified, so no tracked change is pending when the document saves.
+            var result = await _taxDocuments.IssueListingFeeInvoiceAsync(subscription, paid: false, staff.Id);
+            return result.Status switch
+            {
+                TaxDocumentIssueStatus.Issued => ServiceResult<SubscriptionDto>.Ok(
+                    MapToDto(subscription, includeStaffFields: true, new List<TaxDocument> { result.Document! })),
+                TaxDocumentIssueStatus.Existing => ServiceResult<SubscriptionDto>.Conflict(
+                    $"Tax invoice {result.Document!.Number} has already been issued for this subscription."),
+                _ => ServiceResult<SubscriptionDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage)
+            };
+        });
     }
 
     public async Task<ServiceResult<PaymentRedirectDto>> ActivateAsync(
@@ -322,8 +398,9 @@ public class SubscriptionService : ISubscriptionService
             return ServiceResult<IReadOnlyList<SubscriptionDto>>.NotFound("No stud farm found for the current user.");
 
         var subscriptions = await _repo.GetByStudFarmIdAsync(farm.Id);
+        var documents = await _taxDocumentRepo.GetBySubscriptionIdsAsync(subscriptions.Select(s => s.Id));
         return ServiceResult<IReadOnlyList<SubscriptionDto>>.Ok(
-            subscriptions.Select(s => MapToDto(s, includeStaffFields: false)).ToList());
+            subscriptions.Select(s => MapToDto(s, includeStaffFields: false, documents)).ToList());
     }
 
     public async Task<ServiceResult<IReadOnlyList<SubscriptionDto>>> GetAllAsync(Guid? seasonId, string? status)
@@ -340,8 +417,9 @@ public class SubscriptionService : ISubscriptionService
         }
 
         var subscriptions = await _repo.GetAllAsync(seasonId, statusFilter);
+        var documents = await _taxDocumentRepo.GetBySubscriptionIdsAsync(subscriptions.Select(s => s.Id));
         return ServiceResult<IReadOnlyList<SubscriptionDto>>.Ok(
-            subscriptions.Select(s => MapToDto(s, includeStaffFields: true)).ToList());
+            subscriptions.Select(s => MapToDto(s, includeStaffFields: true, documents)).ToList());
     }
 
     public async Task<bool> HasActiveSubscriptionAsync(Guid stallionId, Guid seasonId)
@@ -368,26 +446,36 @@ public class SubscriptionService : ISubscriptionService
         return method == SubscriptionPaymentMethod.Waived ? null : method;
     }
 
-    private static SubscriptionDto MapToDto(StallionSeasonSubscription s, bool includeStaffFields) => new()
+    private static SubscriptionDto MapToDto(StallionSeasonSubscription s, bool includeStaffFields,
+        IReadOnlyCollection<TaxDocument>? documents = null)
     {
-        Id = s.Id,
-        StallionId = s.StallionId,
-        StallionName = s.Stallion?.Name ?? string.Empty,
-        SeasonId = s.SeasonId,
-        SeasonName = s.Season?.Name ?? string.Empty,
-        StudFarmId = s.StudFarmId,
-        StudFarmName = s.StudFarm?.Name ?? string.Empty,
-        FeeIncGst = s.FeeIncGst,
-        FeeExGst = s.FeeExGst,
-        GstAmount = s.GstAmount,
-        StandardFeeIncGst = s.StandardFeeIncGst,
-        IntroOfferName = s.IntroOffer?.Name,
-        Status = s.Status.ToString(),
-        PaymentMethod = s.PaymentMethod?.ToString(),
-        PaymentReference = s.PaymentReference,
-        PaidAt = s.PaidAt,
-        WaiverReason = s.WaiverReason,
-        Notes = includeStaffFields ? s.Notes : null,
-        CreatedAt = s.CreatedAt
-    };
+        var invoice = documents?.FirstOrDefault(d => d.SubscriptionId == s.Id && d.Kind == TaxDocumentKind.ListingFeeInvoice);
+        var note = documents?.FirstOrDefault(d => d.SubscriptionId == s.Id && d.Kind == TaxDocumentKind.AdjustmentNote);
+        return new SubscriptionDto
+        {
+            Id = s.Id,
+            StallionId = s.StallionId,
+            StallionName = s.Stallion?.Name ?? string.Empty,
+            SeasonId = s.SeasonId,
+            SeasonName = s.Season?.Name ?? string.Empty,
+            StudFarmId = s.StudFarmId,
+            StudFarmName = s.StudFarm?.Name ?? string.Empty,
+            FeeIncGst = s.FeeIncGst,
+            FeeExGst = s.FeeExGst,
+            GstAmount = s.GstAmount,
+            StandardFeeIncGst = s.StandardFeeIncGst,
+            IntroOfferName = s.IntroOffer?.Name,
+            Status = s.Status.ToString(),
+            PaymentMethod = s.PaymentMethod?.ToString(),
+            PaymentReference = s.PaymentReference,
+            PaidAt = s.PaidAt,
+            WaiverReason = s.WaiverReason,
+            Notes = includeStaffFields ? s.Notes : null,
+            CreatedAt = s.CreatedAt,
+            TaxInvoiceId = invoice?.Id,
+            TaxInvoiceNumber = invoice?.Number,
+            TaxInvoiceStatus = invoice?.Status.ToString(),
+            AdjustmentNoteNumber = note?.Number
+        };
+    }
 }
