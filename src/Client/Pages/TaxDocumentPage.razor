@@ -1,0 +1,172 @@
+@page "/tax-documents/{Id:guid}"
+@attribute [Authorize]
+@inject TaxDocumentApiService TaxDocumentApi
+@inject IJSRuntime JS
+
+<PageTitle>@(_doc is null ? "Tax document" : $"{Heading} {_doc.Number}") — Stallions Australia</PageTitle>
+
+<div class="container tax-doc-page">
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else if (_notFound)
+    {
+        <EmptyState Message="This tax document isn't available." Icon="🧾" />
+    }
+    else if (_doc is null)
+    {
+        <LoadingSpinner />
+    }
+    else
+    {
+        <div class="tax-doc-actions no-print">
+            <button class="btn btn-gold tax-doc-print" @onclick="PrintAsync">Print / Save as PDF</button>
+        </div>
+
+        <article class="tax-doc">
+            <header class="tax-doc-header">
+                <div>
+                    <h1 class="tax-doc-title">@Heading</h1>
+                    <div class="tax-doc-number">@_doc.Number</div>
+                </div>
+                @if (Reversed)
+                {
+                    <span class="badge badge-lost">Reversed by @_doc.ReversedByNumber</span>
+                }
+                else
+                {
+                    <span class="badge @(_doc.Status == "Paid" ? "badge-won" : "badge-ending")">@_doc.Status</span>
+                }
+            </header>
+
+            <dl class="tax-doc-meta">
+                <dt>Issued</dt><dd>@Date(_doc.IssuedOn)</dd>
+                @if (AwaitingPayment && _doc.DueOn is { } due)
+                {
+                    <dt>Due</dt><dd>@Date(due)</dd>
+                }
+                @if (_doc.Kind != "AdjustmentNote" && _doc.PaidOn is { } paid)
+                {
+                    <dt>Paid</dt><dd>@Date(paid)</dd>
+                }
+            </dl>
+
+            <section class="tax-doc-parties">
+                <div>
+                    <h2>From</h2>
+                    <p><strong>@_doc.SupplierName</strong><br />ABN @_doc.SupplierAbn</p>
+                    <p class="tax-doc-address">@_doc.SupplierAddress</p>
+                    @if (_doc.SupplierEmail is not null) { <p>@_doc.SupplierEmail</p> }
+                </div>
+                <div>
+                    <h2>To</h2>
+                    <p>
+                        <strong>@_doc.RecipientName</strong>
+                        @if (_doc.RecipientAbn is not null) { <br /><text>ABN @_doc.RecipientAbn</text> }
+                    </p>
+                    @if (_doc.RecipientAddress is not null) { <p class="tax-doc-address">@_doc.RecipientAddress</p> }
+                    <p>@_doc.RecipientEmail</p>
+                </div>
+            </section>
+
+            @if (_doc.Kind == "AdjustmentNote")
+            {
+                <p class="tax-doc-adjusts">
+                    Adjusts tax invoice <a href="/tax-documents/@_doc.OriginalDocumentId">@_doc.OriginalNumber</a>
+                    dated @Date(_doc.OriginalIssuedOn). Reason: @_doc.Reason
+                </p>
+            }
+
+            <table class="tax-doc-lines">
+                <thead>
+                    <tr><th>Description</th><th class="num">Amount (incl. GST)</th></tr>
+                </thead>
+                <tbody>
+                    @if (_doc.StandardAmountIncGst is { } standard && _doc.DiscountIncGst is { } discount)
+                    {
+                        <tr><td>@_doc.Description — standard fee</td><td class="num">@Money(standard)</td></tr>
+                        <tr><td>Intro offer: @_doc.IntroOfferName</td><td class="num">−@Money(discount)</td></tr>
+                        <tr><td><strong>Fee payable</strong></td><td class="num">@Money(_doc.AmountIncGst)</td></tr>
+                    }
+                    else
+                    {
+                        <tr><td>@_doc.Description</td><td class="num">@Money(_doc.AmountIncGst)</td></tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr><td>Amount (excl. GST)</td><td class="num">@Money(_doc.AmountExGst)</td></tr>
+                    <tr><td>GST</td><td class="num">@Money(_doc.GstAmount)</td></tr>
+                    <tr class="tax-doc-total"><td>Total (incl. GST)</td><td class="num">@Money(_doc.AmountIncGst)</td></tr>
+                </tfoot>
+            </table>
+
+            @if (!string.IsNullOrWhiteSpace(_doc.FeeNote))
+            {
+                <p class="tax-doc-note">@_doc.FeeNote</p>
+            }
+
+            @if (AwaitingPayment)
+            {
+                <section class="tax-doc-pay">
+                    <h2>How to pay</h2>
+                    <dl class="tax-doc-meta">
+                        <dt>Account name</dt><dd>@_doc.BankAccountName</dd>
+                        <dt>BSB</dt><dd>@_doc.BankBsb</dd>
+                        <dt>Account number</dt><dd>@_doc.BankAccountNumber</dd>
+                    </dl>
+                    <p>Please use @_doc.Number as your payment reference.</p>
+                </section>
+            }
+
+            @if (Reversed)
+            {
+                <p class="tax-doc-note">
+                    This tax invoice was reversed by adjustment note
+                    <a href="/tax-documents/@_doc.ReversedById">@_doc.ReversedByNumber</a>.
+                </p>
+            }
+        </article>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private TaxDocumentDto? _doc;
+    private bool _notFound;
+    private string? _error;
+
+    private static readonly System.Globalization.CultureInfo Au = System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    private string Heading => _doc?.Kind == "AdjustmentNote" ? "Adjustment note" : "Tax invoice";
+    private bool Reversed => _doc?.ReversedByNumber is not null;
+    // A reversed invoice no longer owes anything, so it never asks for payment.
+    private bool AwaitingPayment => _doc is { Status: "Unpaid" } && !Reversed;
+    private static string Money(decimal amount) => amount.ToString("C2", Au);
+    private static string Date(DateOnly? date) => date?.ToString("d MMM yyyy", Au) ?? string.Empty;
+
+    // The id changes when following the link between an invoice and its adjustment note.
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _notFound = false;
+        _doc = null;
+        try
+        {
+            _doc = await TaxDocumentApi.GetAsync(Id);
+            _notFound = _doc is null;
+        }
+        catch (ApiException) { _error = "Failed to load the tax document. Please try again."; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException)
+        {
+            _error = ex is AccessTokenNotAvailableException
+                ? "Your session has expired — please sign in again."
+                : "We couldn't reach the server. Check your connection and try again.";
+        }
+    }
+
+    private async Task PrintAsync() => await JS.InvokeVoidAsync("print");
+}

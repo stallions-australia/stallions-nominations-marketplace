@@ -48,13 +48,16 @@ public class SubscriptionApiService
         return await ReadSubscription(r);
     }
 
-    /// <summary>Starts the listing-fee payment for one of the stud's stallions; returns the URL to send the browser to.</summary>
-    public virtual async Task<string> ActivateAsync(Guid stallionId)
+    /// <summary>
+    /// Starts the listing-fee payment for one of the stud's stallions. Url is the page to send the browser to,
+    /// unless an intro offer made the fee $0 (ActivatedWithoutPayment).
+    /// </summary>
+    public virtual async Task<Stallions.Shared.DTOs.Payments.PaymentRedirectDto> ActivateAsync(Guid stallionId)
     {
         var r = await _http.PostAsJsonAsync("api/subscriptions/activate", new ActivateStallionRequest { StallionId = stallionId });
         if (!r.IsSuccessStatusCode)
             throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
-        return (await r.Content.ReadFromJsonAsync<Stallions.Shared.DTOs.Payments.PaymentRedirectDto>())?.Url
+        return await r.Content.ReadFromJsonAsync<Stallions.Shared.DTOs.Payments.PaymentRedirectDto>()
                ?? throw new ApiException(500, "Empty response.");
     }
 

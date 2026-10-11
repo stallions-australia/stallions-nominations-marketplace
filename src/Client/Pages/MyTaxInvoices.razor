@@ -1,0 +1,48 @@
+@page "/account/tax-invoices"
+@attribute [Authorize]
+@inject TaxDocumentApiService TaxDocumentApi
+
+<PageTitle>My tax invoices — Stallions Australia</PageTitle>
+
+<div class="container" style="padding-block: var(--space-10)">
+    <h1 class="page-title">My tax invoices</h1>
+    <p class="text-secondary text-sm">Tax invoices for the buyer fees you've paid, and any adjustment notes.</p>
+
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else if (_documents is null)
+    {
+        <LoadingSpinner />
+    }
+    else if (_documents.Count == 0)
+    {
+        <EmptyState Message="No tax invoices yet" Icon="🧾" />
+    }
+    else
+    {
+        <TaxDocumentList Documents="_documents" />
+    }
+</div>
+
+@code {
+    private List<TaxDocumentSummaryDto>? _documents;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _documents = null;
+        try { _documents = await TaxDocumentApi.GetMineAsync() ?? []; }
+        catch (ApiException) { _error = "Failed to load your tax invoices. Please try again."; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException)
+        {
+            _error = ex is AccessTokenNotAvailableException
+                ? "Your session has expired — please sign in again."
+                : "We couldn't reach the server. Check your connection and try again.";
+        }
+    }
+}

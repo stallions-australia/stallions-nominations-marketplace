@@ -7,10 +7,12 @@ using Moq;
 using Stallions.Client.Pages.Admin;
 using Stallions.Client.Services;
 using Stallions.Shared.DTOs.Directory;
+using Stallions.Shared.DTOs.Payments;
 using Stallions.Shared.DTOs.Seasons;
 using Stallions.Shared.DTOs.Settings;
 using Stallions.Shared.DTOs.Stallions;
 using Stallions.Shared.DTOs.Subscriptions;
+using Stallions.Shared.DTOs.TaxDocuments;
 using Stallions.Shared.DTOs.Users;
 
 namespace Stallions.Client.Tests.Pages;
@@ -19,6 +21,8 @@ public class AdminStallionsTests : TestContext
 {
     private static HttpClient Http() => new() { BaseAddress = new Uri("https://localhost/") };
     private readonly Mock<SubscriptionApiService> _subs = new(MockBehavior.Loose, Http());
+    private readonly Mock<TaxDocumentApiService> _taxDocs = new(MockBehavior.Loose, Http());
+    private readonly List<TaxDocumentSummaryDto> _studDocuments = [];
     private readonly StallionSummaryDto _snitzel = new() { Id = Guid.NewGuid(), Name = "Snitzel", IsActive = true };
     private readonly StallionSummaryDto _zoustar = new() { Id = Guid.NewGuid(), Name = "Zoustar", IsActive = true };
     private readonly SeasonDto _season = new() { Id = Guid.NewGuid(), Name = "2026 Season", IsOpen = true };
@@ -42,6 +46,8 @@ public class AdminStallionsTests : TestContext
         admin.Setup(a => a.GetSeasonsAsync()).ReturnsAsync([_season]);
         Services.AddSingleton(admin.Object);
         Services.AddSingleton(_subs.Object);
+        _taxDocs.Setup(t => t.GetForStudAsync()).ReturnsAsync(_studDocuments);
+        Services.AddSingleton(_taxDocs.Object);
 
         var settings = new Mock<PlatformSettingsApiService>(MockBehavior.Loose, Http());
         settings.Setup(s => s.GetAsync()).ReturnsAsync(new PlatformSettingsDto { StandardListingFeeIncGst = 990m });
@@ -95,13 +101,46 @@ public class AdminStallionsTests : TestContext
     [Fact]
     public void Activate_SendsTheBrowserToThePaymentPage()
     {
-        _subs.Setup(s => s.ActivateAsync(_snitzel.Id)).ReturnsAsync("https://checkout.example/pay");
+        _subs.Setup(s => s.ActivateAsync(_snitzel.Id)).ReturnsAsync(new PaymentRedirectDto { Url = "https://checkout.example/pay" });
         var cut = Render();
 
         cut.FindAll("button").Single(b => b.TextContent.Contains("Activate for")).Click();
 
         cut.WaitForAssertion(() =>
             Services.GetRequiredService<NavigationManager>().Uri.Should().Be("https://checkout.example/pay"));
+    }
+
+    [Fact]
+    public void Activate_WhenAnIntroOfferWaivesTheFee_ShowsItActive_WithoutLeavingThePage()
+    {
+        _subs.SetupSequence(s => s.GetMineAsync())
+            .ReturnsAsync([])
+            .ReturnsAsync([Subscription("Waived", 0m)]);
+        _subs.Setup(s => s.ActivateAsync(_snitzel.Id)).ReturnsAsync(new PaymentRedirectDto { ActivatedWithoutPayment = true });
+        var cut = RenderAt(null);
+
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Activate for")).Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Snitzel is active for 2026 Season — intro offer applied.")
+            .And.NotContain("Activate for"));
+        Services.GetRequiredService<NavigationManager>().Uri.Should().NotContain("checkout");
+    }
+
+    [Fact]
+    public void TheStudsTaxInvoices_AreListed_WithUnpaidOnesShowingTheirDueDate()
+    {
+        var id = Guid.NewGuid();
+        _studDocuments.Add(new TaxDocumentSummaryDto
+        {
+            Id = id, Number = "SA-000123", Kind = "ListingFeeInvoice", Status = "Unpaid", IssuedOn = new DateOnly(2026, 10, 11),
+            DueOn = new DateOnly(2026, 10, 25), Description = "Listing fee — Snitzel, 2026 Season", AmountIncGst = 990m
+        });
+
+        var cut = Render();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("SA-000123"));
+        cut.Find($"a[href='/tax-documents/{id}']").Should().NotBeNull();
+        cut.Markup.Should().Contain("Unpaid — due 25 Oct 2026").And.Contain("Listing fee invoice");
     }
 
     [Fact]

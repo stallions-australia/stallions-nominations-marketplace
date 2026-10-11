@@ -573,3 +573,10 @@ h1:focus { outline: none; }
   .offer-row { grid-template-columns: 1fr auto auto; }
   .offer-status { align-items: flex-end; }
 }
+
+/* ── Printing a tax document: only the document itself ─────────────────── */
+@media print {
+  .navbar, .footer, .no-print { display: none !important; }
+  body, .content-area { background: #fff !important; }
+  .tax-doc { border: none !important; padding: 0 !important; }
+}
