@@ -309,6 +309,8 @@ public class AdminService : IAdminService
             return ServiceResult.BadRequest("Sold is set only when the buyer fee is paid.");
         if (newStatus == ListingStatus.Active && listing is AuctionListing ended && ended.EndDateTime <= DateTime.UtcNow)
             return ServiceResult.BadRequest("This auction has ended; it can't be made Active again.");
+        if (newStatus == ListingStatus.Active && listing is MakeAnOfferListing expired && expired.ExpiresAt <= DateTime.UtcNow)
+            return ServiceResult.BadRequest("This listing's season has ended; it can't be made Active again.");
 
         var previousStatus = listing.Status;
         listing.Status = newStatus;

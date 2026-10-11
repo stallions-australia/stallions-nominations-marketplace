@@ -47,7 +47,7 @@ else
                 <tr>
                     <td>@l.StallionName</td>
                     <td>@l.StudFarmName</td>
-                    <td><span class="badge badge-type-@l.ListingType.ToLowerInvariant()">@l.ListingType</span></td>
+                    <td><span class="badge badge-type-@l.ListingType.ToLowerInvariant()">@ListingTypeText.Label(l.ListingType)</span></td>
                     <td>
                         <span class="badge @ListingStatusText.BadgeClass(l.Status)">@ListingStatusText.Label(l.Status, l.CloseReason)</span>
                     </td>

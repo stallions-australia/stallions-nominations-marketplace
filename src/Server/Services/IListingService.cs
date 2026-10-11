@@ -17,4 +17,5 @@ public interface IListingService
     Task<ServiceResult> CloseByStudFarmAsync(Guid id);
     Task<ServiceResult> CancelListingAsync(Guid id);
     Task<ServiceResult<ListingDto>> RelistAsync(Guid id);
+    Task<ServiceResult<ListingDto>> ConvertToMakeAnOfferAsync(Guid auctionId);
 }

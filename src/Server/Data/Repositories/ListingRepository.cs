@@ -75,6 +75,25 @@ public class ListingRepository : IListingRepository
             .FirstOrDefaultAsync(a => a.Id == id);
 
 
+    public async Task<MakeAnOfferListing?> GetActiveMakeAnOfferForAuctionAsync(Guid auctionId) =>
+        await _db.MakeAnOfferListings
+            .FirstOrDefaultAsync(m => m.SourceAuctionListingId == auctionId && m.Status == ListingStatus.Active);
+
+    public async Task<MakeAnOfferListing?> GetMakeAnOfferWithDetailsAsync(Guid id) =>
+        await _db.MakeAnOfferListings
+            .Include(m => m.Stallion)
+            .Include(m => m.Season)
+            .Include(m => m.StudFarm).ThenInclude(f => f.User)
+            .FirstOrDefaultAsync(m => m.Id == id);
+
+    public async Task<IReadOnlyList<Guid>> GetMakeAnOfferIdsExpiredAsync(DateTime now, int max) =>
+        await _db.MakeAnOfferListings
+            .Where(m => m.Status == ListingStatus.Active && m.ExpiresAt <= now)
+            .OrderBy(m => m.ExpiresAt)
+            .Take(max)
+            .Select(m => m.Id)
+            .ToListAsync();
+
     public async Task<IReadOnlyList<Listing>> GetAllStaffAsync() =>
         await _db.Listings
             .Include(l => l.Stallion)

@@ -45,4 +45,20 @@ public class ListingCardTests : TestContext
         // $6,500 is the current highest bid — should be the displayed price
         cut.Markup.Should().Contain("6,500");
     }
+
+    [Fact]
+    public void AMakeAnOfferCard_ShowsTheBadgeAndButton_AndNoBidInfo()
+    {
+        this.AddTestAuthorization();
+        Services.AddSingleton<NavigationManager>(new FakeNavigationManager(this));
+
+        var cut = RenderComponent<ListingCard>(p => p.Add(c => c.Listing, new ListingCardDto
+        {
+            Id = Guid.NewGuid(), ListingType = "MakeAnOffer", StallionName = "Dundeel (NZ)",
+            StudFarmName = "Arrowfield", OffersUntil = DateTime.UtcNow.AddDays(30)
+        }));
+
+        cut.Markup.Should().Contain("Make an Offer").And.Contain("Make an offer").And.Contain("Open to offers")
+            .And.NotContain("No bids yet").And.NotContain("Place a bid");
+    }
 }

@@ -27,6 +27,7 @@
                     <NavLink href="/my-purchases" class="nav-link">My sale records</NavLink>
                     @if (UserState.IsBuyer)
                     {
+                        <NavLink href="/my-offers" class="nav-link">My Offers</NavLink>
                         <NavLink href="/account/card" class="nav-link">Payment card</NavLink>
                     }
                     <NavLink href="/enquiries"    class="nav-link">Messages</NavLink>
@@ -66,6 +67,7 @@
                     <NavLink href="/my-purchases" class="drawer-link" @onclick="CloseDrawer">My sale records</NavLink>
                     @if (UserState.IsBuyer)
                     {
+                        <NavLink href="/my-offers" class="drawer-link" @onclick="CloseDrawer">My Offers</NavLink>
                         <NavLink href="/account/card" class="drawer-link" @onclick="CloseDrawer">Payment card</NavLink>
                     }
                     <NavLink href="/enquiries"    class="drawer-link" @onclick="CloseDrawer">Messages</NavLink>

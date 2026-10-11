@@ -130,6 +130,7 @@ public class PurchaseService : IPurchaseService
         SeasonName = p.Listing?.Season?.Name ?? string.Empty,
         StudFarmName = p.Listing?.StudFarm?.Name ?? string.Empty,
         BuyerUserId = p.BuyerUserId,
+        Source = p.OfferId != null ? "Offer" : "Auction",
         TotalPriceIncGst = p.TotalPriceIncGst,
         BuyerFeeIncGst = p.BuyerFeeIncGst,
         BuyerFeeExGst = p.BuyerFeeExGst,

@@ -162,4 +162,20 @@ public class PurchaseServiceTests
         dto.ChargeDueBy.Should().Be(dueBy);
         dto.LastChargeFailure.Should().Be("Your card was declined.");
     }
+
+    [Fact]
+    public async Task GetPurchases_SaysWhetherTheSaleCameFromAnOffer()
+    {
+        var buyer = Buyer();
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(buyer);
+        _purchases.Setup(r => r.GetByBuyerIdAsync(buyer.Id)).ReturnsAsync(new List<Purchase>
+        {
+            new() { BuyerUserId = buyer.Id, OfferId = Guid.NewGuid() },
+            new() { BuyerUserId = buyer.Id, BidId = Guid.NewGuid() }
+        });
+
+        var dtos = (await CreateSut().GetPurchasesAsync()).Value!;
+
+        dtos.Select(d => d.Source).Should().Equal("Offer", "Auction");
+    }
 }

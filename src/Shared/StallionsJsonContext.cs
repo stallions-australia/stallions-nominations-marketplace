@@ -17,6 +17,7 @@ namespace Stallions.Shared;
 /// </summary>
 [JsonSerializable(typeof(ListingDto))]
 [JsonSerializable(typeof(AuctionListingDto))]
+[JsonSerializable(typeof(MakeAnOfferListingDto))]
 [JsonSerializable(typeof(List<ListingCardDto>))]
 [JsonSerializable(typeof(ListingCardDto))]
 [JsonSourceGenerationOptions(

@@ -9,7 +9,7 @@ using Stallions.Shared.Enums;
 namespace Stallions.Server.Email;
 
 /// <summary>
-/// The auction emails. Plain, factual wording; amounts inc. GST; times in Sydney time. Buyer-fee
+/// The auction and Make an Offer emails. Plain, factual wording; amounts inc. GST; times in Sydney time. Buyer-fee
 /// policy wording comes from DisclosureOptions (configured), never from this file. Bidders are
 /// never told who else bid.
 /// </summary>
@@ -54,45 +54,83 @@ public class AuctionEmails : IAuctionEmails
             Para($"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed without a sale."),
             Para("Thank you for bidding."));
 
-    public Task WonAndChargedAsync(AuctionListing listing, Purchase purchase, User winner) =>
-        QueueAsync(winner.Email, "WonAndCharged", $"You won the {Name(listing)} nomination", listing,
+    private static bool FromOffer(Purchase p) => p.OfferId != null;
+
+    public Task WonAndChargedAsync(Listing listing, Purchase purchase, User winner) => FromOffer(purchase)
+        ? QueueAsync(winner.Email, "OfferAcceptedAndCharged", $"Your offer for the {Name(listing)} nomination was accepted", listing,
+            Para($"Your offer of {Money(purchase.TotalPriceIncGst)} for the {Name(listing)} nomination ({Season(listing)}) was accepted by {Farm(listing)}."),
+            Amounts(purchase, "Price (your accepted offer)", "Balance you pay the stud directly"),
+            Para($"The buyer fee of {Money(purchase.BuyerFeeIncGst)} has been charged to your saved card."),
+            Para(_disclosure.BuyerFeeExplanation),
+            Para(_disclosure.StudFarmBalanceArrangement),
+            Para(StudContact(listing)),
+            Link("/my-purchases", "View your sale record"))
+        : QueueAsync(winner.Email, "WonAndCharged", $"You won the {Name(listing)} nomination", listing,
             Para($"Your bid of {Money(purchase.TotalPriceIncGst)} won the auction for the {Name(listing)} nomination ({Season(listing)}), offered by {Farm(listing)}."),
-            Amounts(purchase, balanceLabel: "Balance you pay the stud directly"),
+            Amounts(purchase, "Price (your winning bid)", "Balance you pay the stud directly"),
             Para($"The buyer fee of {Money(purchase.BuyerFeeIncGst)} has been charged to your saved card."),
             Para(_disclosure.BuyerFeeExplanation),
             Para(_disclosure.StudFarmBalanceArrangement),
             Para(StudContact(listing)),
             Link("/my-purchases", "View your sale record"));
 
-    public Task PaymentFailedAsync(AuctionListing listing, Purchase purchase, User winner) =>
+    public Task PaymentFailedAsync(Listing listing, Purchase purchase, User winner) =>
         QueueAsync(winner.Email, "PaymentFailed", $"Action needed: payment for {Name(listing)} failed", listing,
-            Para($"Your bid of {Money(purchase.TotalPriceIncGst)} won the auction for the {Name(listing)} nomination, but we couldn't charge the buyer fee of {Money(purchase.BuyerFeeIncGst)} to your saved card: {purchase.LastChargeFailure}"),
+            Para(FromOffer(purchase)
+                ? $"Your offer of {Money(purchase.TotalPriceIncGst)} for the {Name(listing)} nomination was accepted, but we couldn't charge the buyer fee of {Money(purchase.BuyerFeeIncGst)} to your saved card: {purchase.LastChargeFailure}"
+                : $"Your bid of {Money(purchase.TotalPriceIncGst)} won the auction for the {Name(listing)} nomination, but we couldn't charge the buyer fee of {Money(purchase.BuyerFeeIncGst)} to your saved card: {purchase.LastChargeFailure}"),
             Para($"Please update your card by {When(purchase.ChargeDueBy ?? DateTime.UtcNow)}. Saving a new card retries the payment straight away. If the payment can't be completed by then, the sale won't go ahead."),
             Link("/account/card", "Update your card"));
 
-    public Task PaymentAbandonedAsync(AuctionListing listing, Purchase purchase, User winner) =>
+    public Task PaymentAbandonedAsync(Listing listing, Purchase purchase, User winner) =>
         QueueAsync(winner.Email, "PaymentAbandoned", $"No sale: {Name(listing)}", listing,
-            Para($"We couldn't charge the buyer fee for the {Name(listing)} nomination by the deadline, so the sale has not gone ahead and the nomination is no longer yours."));
+            Para(FromOffer(purchase)
+                ? $"We couldn't charge the buyer fee for your accepted offer on the {Name(listing)} nomination by the deadline, so the sale has not gone ahead."
+                : $"We couldn't charge the buyer fee for the {Name(listing)} nomination by the deadline, so the sale has not gone ahead and the nomination is no longer yours."));
 
-    public async Task StudSaleConfirmationAsync(AuctionListing listing, Purchase purchase, User winner) =>
+    public async Task StudSaleConfirmationAsync(Listing listing, Purchase purchase, User winner) =>
         await QueueAsync(await StudAddressAsync(listing), "StudSaleConfirmation", $"Sale confirmed: {Name(listing)} nomination", listing,
-            Para($"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed with a sale, and the buyer fee has been paid."),
+            Para(FromOffer(purchase)
+                ? $"You accepted an offer for the {Name(listing)} nomination ({Season(listing)}), and the buyer fee has been paid."
+                : $"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed with a sale, and the buyer fee has been paid."),
             Para($"Buyer: {winner.DisplayName}, {winner.Email}"),
-            Amounts(purchase, balanceLabel: "Balance the buyer pays you directly"),
+            Amounts(purchase, "Price", "Balance the buyer pays you directly"),
             Para("Please arrange the balance with the buyer under your own terms."),
             Link($"/admin/listings/{listing.Id}", "View the listing"));
 
-    public async Task StudNoSaleAsync(AuctionListing listing, ListingCloseReason reason) =>
-        await QueueAsync(await StudAddressAsync(listing), "StudNoSale", $"No sale: {Name(listing)} nomination", listing,
+    public async Task StudNoSaleAsync(Listing listing, ListingCloseReason reason) => await (listing is MakeAnOfferListing
+        ? QueueAsync(await StudAddressAsync(listing), "StudNoSale", $"No sale: {Name(listing)} nomination", listing,
+            Para($"The sale from the offer you accepted for the {Name(listing)} nomination ({Season(listing)}) has not gone ahead: the buyer's payment couldn't be completed."),
+            Para("Your Make an Offer listing stays open for other offers."),
+            Link($"/admin/listings/{listing.Id}", "View the listing"))
+        : QueueAsync(await StudAddressAsync(listing), "StudNoSale", $"No sale: {Name(listing)} nomination", listing,
             Para($"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed without a sale: {ReasonText(reason)}"),
             Para("The lot is marked Unsold in My Listings."),
-            Link($"/admin/listings/{listing.Id}", "View the listing"));
+            Link($"/admin/listings/{listing.Id}", "Offer it as Make an Offer")));
+
+    public async Task OfferReceivedAsync(MakeAnOfferListing listing, Offer offer, User buyer) =>
+        await QueueAsync(await StudAddressAsync(listing), "OfferReceived", $"New offer: {Name(listing)} nomination", listing,
+            Para($"{buyer.DisplayName} ({buyer.Email}) has offered {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)})."),
+            Para($"The offer is open until {When(offer.ExpiresAt)}. Accepting it charges the buyer the buyer fee straight away."),
+            Link($"/admin/listings/{listing.Id}", "Review the offer"));
+
+    public Task OfferDeclinedAsync(MakeAnOfferListing listing, Offer offer, User buyer) =>
+        QueueAsync(buyer.Email, "OfferDeclined", $"Offer declined: {Name(listing)}", listing,
+            Para($"The stud has declined your offer of {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)})."),
+            Link($"/listings/{listing.Id}", "View the listing"));
+
+    public Task OfferExpiredAsync(MakeAnOfferListing listing, Offer offer, User buyer, bool listingClosed) =>
+        QueueAsync(buyer.Email, "OfferExpired", $"Offer closed: {Name(listing)}", listing,
+            Para(listingClosed
+                ? $"The {Name(listing)} nomination ({Season(listing)}) is no longer taking offers, so your offer of {Money(offer.AmountIncGst)} has closed without a response."
+                : $"Your offer of {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)}) has expired without a response from the stud."),
+            Link($"/listings/{listing.Id}", "View the listing"));
 
     // ── Building blocks ────────────────────────────────────────────────────────
 
     private sealed record Block(string Html, string Text);
 
-    private async Task QueueAsync(string? to, string template, string subject, AuctionListing listing, params Block[] blocks)
+    private async Task QueueAsync(string? to, string template, string subject, Listing listing, params Block[] blocks)
     {
         var html = "<div style=\"font-family:Georgia,'Times New Roman',serif;max-width:560px;color:#1f2a24\">"
                    + string.Concat(blocks.Select(b => b.Html))
@@ -109,11 +147,11 @@ public class AuctionEmails : IAuctionEmails
         return new($"<p><a href=\"{Enc(url)}\">{Enc(label)}</a></p>", $"{label}: {url}");
     }
 
-    private static Block Amounts(Purchase p, string balanceLabel)
+    private static Block Amounts(Purchase p, string priceLabel, string balanceLabel)
     {
         var rows = new[]
         {
-            ("Price (your winning bid)", Money(p.TotalPriceIncGst)),
+            (priceLabel, Money(p.TotalPriceIncGst)),
             ("Buyer fee paid to Stallions Australia", Money(p.BuyerFeeIncGst)),
             (balanceLabel, Money(p.BalancePayableToStudIncGst))
         };
@@ -125,7 +163,7 @@ public class AuctionEmails : IAuctionEmails
         return new(html, text);
     }
 
-    private async Task<string?> StudAddressAsync(AuctionListing listing)
+    private async Task<string?> StudAddressAsync(Listing listing)
     {
         var farm = listing.StudFarm;
         if (!string.IsNullOrWhiteSpace(farm?.ContactEmail)) return farm.ContactEmail;
@@ -135,7 +173,7 @@ public class AuctionEmails : IAuctionEmails
         return owner?.Email;
     }
 
-    private static string StudContact(AuctionListing listing)
+    private static string StudContact(Listing listing)
     {
         var farm = listing.StudFarm;
         var parts = new[] { farm?.Name, farm?.ContactEmail, farm?.ContactPhone }.Where(p => !string.IsNullOrWhiteSpace(p));
@@ -150,9 +188,9 @@ public class AuctionEmails : IAuctionEmails
         _ => "no sale was made."
     };
 
-    private static string Name(AuctionListing l) => l.Stallion?.Name ?? "stallion";
-    private static string Season(AuctionListing l) => l.Season?.Name ?? "this season";
-    private static string Farm(AuctionListing l) => l.StudFarm?.Name ?? "the stud";
+    private static string Name(Listing l) => l.Stallion?.Name ?? "stallion";
+    private static string Season(Listing l) => l.Season?.Name ?? "this season";
+    private static string Farm(Listing l) => l.StudFarm?.Name ?? "the stud";
     private static string Money(decimal amount) => amount.ToString("C2", Au);
     private static string Enc(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 

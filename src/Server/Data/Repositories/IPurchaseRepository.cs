@@ -6,6 +6,8 @@ public interface IPurchaseRepository
 {
     Task<Purchase?> GetByIdAsync(Guid id);
     Task<IReadOnlyList<Purchase>> GetByBuyerIdAsync(Guid buyerUserId);
+    /// <summary>Sale records created from these offers (newest first per offer).</summary>
+    Task<IReadOnlyList<Purchase>> GetByOfferIdsAsync(IEnumerable<Guid> offerIds);
     /// <summary>The buyer's most recent sale record on the listing, if any.</summary>
     Task<Purchase?> GetByListingAndBuyerAsync(Guid listingId, Guid buyerUserId);
     Task<IReadOnlyList<Purchase>> GetAllAsync();

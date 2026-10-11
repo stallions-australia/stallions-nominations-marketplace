@@ -77,4 +77,12 @@ public class PurchaseRepository : IPurchaseRepository
         await _db.SaveChangesAsync();
     }
 
+    public async Task<IReadOnlyList<Purchase>> GetByOfferIdsAsync(IEnumerable<Guid> offerIds)
+    {
+        var ids = offerIds.ToList();
+        return await _db.Purchases
+            .Where(p => p.OfferId != null && ids.Contains(p.OfferId.Value))
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
+    }
 }

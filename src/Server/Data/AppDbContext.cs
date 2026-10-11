@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Season> Seasons => Set<Season>();
     public DbSet<Listing> Listings => Set<Listing>();
     public DbSet<AuctionListing> AuctionListings => Set<AuctionListing>();
+    public DbSet<MakeAnOfferListing> MakeAnOfferListings => Set<MakeAnOfferListing>();
     public DbSet<Bid> Bids => Set<Bid>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
     public DbSet<NominationBinding> NominationBindings => Set<NominationBinding>();
@@ -29,6 +30,7 @@ public class AppDbContext : DbContext
     public DbSet<SavedCard> SavedCards => Set<SavedCard>();
     public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents => Set<ProcessedPaymentEvent>();
     public DbSet<OutboundEmail> OutboundEmails => Set<OutboundEmail>();
+    public DbSet<Offer> Offers => Set<Offer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -166,6 +168,31 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
+        // ── Make an Offer listings (TPT) ─────────────────────────────────────
+        modelBuilder.Entity<MakeAnOfferListing>(e =>
+        {
+            e.ToTable("MakeAnOfferListings");
+            e.HasOne(m => m.SourceAuctionListing)
+                .WithMany()
+                .HasForeignKey(m => m.SourceAuctionListingId)
+                .OnDelete(DeleteBehavior.NoAction);
+            e.HasIndex(m => m.SourceAuctionListingId);
+        });
+
+        // ── Offers ───────────────────────────────────────────────────────────
+        modelBuilder.Entity<Offer>(e =>
+        {
+            e.HasKey(o => o.Id);
+            e.Property(o => o.AmountIncGst).HasPrecision(12, 2);
+            e.Property(o => o.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(o => o.ConcurrencyStamp).IsConcurrencyToken();
+            e.HasOne(o => o.Listing).WithMany(l => l.Offers).HasForeignKey(o => o.ListingId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(o => o.Buyer).WithMany().HasForeignKey(o => o.BuyerUserId).OnDelete(DeleteBehavior.Restrict);
+            // One live offer per buyer per listing.
+            e.HasIndex(o => new { o.ListingId, o.BuyerUserId }).IsUnique().HasFilter("[Status] = 'Pending'");
+            e.HasIndex(o => new { o.Status, o.ExpiresAt });
+        });
+
         // ── Bids ─────────────────────────────────────────────────────────────
         modelBuilder.Entity<Bid>(e =>
         {
@@ -223,6 +250,13 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(p => p.BidId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasOne(p => p.Offer)
+                .WithMany()
+                .HasForeignKey(p => p.OfferId)
+                .OnDelete(DeleteBehavior.NoAction);
+            // One accepted offer can never have two live sale records.
+            e.HasIndex(p => p.OfferId).IsUnique().HasFilter("[OfferId] IS NOT NULL AND [Status] <> 'Voided'");
         });
 
         // ── NominationBindings ───────────────────────────────────────────────

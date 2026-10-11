@@ -43,11 +43,31 @@ else
                     </span>
                 }
             }
+            @if (_listing is AuctionListingDto { Status: "Unsold" } unsold)
+            {
+                @if (unsold.MakeAnOfferListingId is Guid maoId)
+                {
+                    <a href="/admin/listings/@maoId" class="btn btn-secondary">View the Make an Offer listing</a>
+                }
+                else if (_confirmConvert)
+                {
+                    <span class="text-sm">This opens the lot to private offers straight away, until the end of @_listing.SeasonName.</span>
+                    <button class="btn btn-primary" @onclick="HandleConvert" disabled="@_busy">@(_busy ? "Opening…" : "Yes, open to offers")</button>
+                    <button class="btn btn-secondary" @onclick="() => _confirmConvert = false" disabled="@_busy">Cancel</button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="() => _confirmConvert = true">Offer as Make an Offer</button>
+                }
+            }
             @if (_listing.Status == "Active" && !AuctionHasEnded)
             {
-                <button class="btn btn-secondary" @onclick="HandleUnpublish" disabled="@_busy">
-                    @(_busy ? "Unpublishing…" : "Unpublish")
-                </button>
+                @if (_listing is not MakeAnOfferListingDto)
+                {
+                    <button class="btn btn-secondary" @onclick="HandleUnpublish" disabled="@_busy">
+                        @(_busy ? "Unpublishing…" : "Unpublish")
+                    </button>
+                }
                 <button class="btn btn-danger" @onclick="HandleClose" disabled="@_busy">
                     @(_busy ? "Closing…" : "Close Listing")
                 </button>
@@ -66,7 +86,7 @@ else
             <dl class="detail-list">
                 <dt>Stallion</dt><dd>@_listing.StallionName</dd>
                 <dt>Season</dt><dd>@_listing.SeasonName</dd>
-                <dt>Type</dt><dd>@_listing.ListingType</dd>
+                <dt>Type</dt><dd>@ListingTypeText.Label(_listing.ListingType)</dd>
                 <dt>Buyer fee</dt>
                 <dd>@(_listing.BuyerFeeIncGst.HasValue ? $"${_listing.BuyerFeeIncGst:N2} inc. GST (locked at first publish)" : "Set from Stallions Australia's current fee when first published")</dd>
                 <dt>Created</dt><dd>@_listing.CreatedAt.ToString("dd MMM yyyy")</dd>
@@ -101,6 +121,17 @@ else
                     <dd>@(al.IsNoReserve ? "No reserve" : (al.ReservePrice.HasValue ? $"${al.ReservePrice:N0}" : "—"))</dd>
                 </dl>
             </div>
+        }
+
+        @if (_listing is MakeAnOfferListingDto mao)
+        {
+            <div class="form-section">
+                <div class="form-section-title">Make an Offer</div>
+                <dl class="detail-list">
+                    <dt>Offers close</dt><dd>@mao.ExpiresAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</dd>
+                </dl>
+            </div>
+            <StudOffersPanel ListingId="@mao.Id" BuyerFeeIncGst="@mao.BuyerFeeIncGst" />
         }
 
         @* ── Terms & Conditions ──────────────────────────────────────────── *@
@@ -162,6 +193,7 @@ else
     private bool _loading = true;
     private bool _busy;
     private bool _saved;
+    private bool _confirmConvert;
     private string? _error;
 
     // Edit fields — populated from _listing on load
@@ -186,10 +218,23 @@ else
     // Null = unknown (lookup failed); the server enforces the listing-fee rule regardless.
     private bool? _hasActiveSubscription;
 
+    private Guid _loadedId;
+    private bool _authorised;
+
     protected override async Task OnInitializedAsync()
     {
         await UserState.LoadAsync();
         if (!UserState.IsStudFarmAdmin) { Nav.NavigateTo("/", replace: true); return; }
+        _authorised = true;
+    }
+
+    // Navigating between listings reuses this instance and only changes Id, so reload when it changes.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_authorised || Id == _loadedId) return;
+        _loadedId = Id;
+        _listing = null; _error = null; _saved = false; _confirmConvert = false; _busy = false;
+        _editTerms = string.Empty; _editDescription = null; _hasActiveSubscription = null;
         await LoadAsync();
     }
 
@@ -287,6 +332,18 @@ else
             await LoadAsync();
         }
         catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task HandleConvert()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var created = await AdminApi.ConvertToMakeAnOfferAsync(Id);
+            Nav.NavigateTo($"/admin/listings/{created.Id}");
+        }
+        catch (ApiException ex) { _error = ex.Message; _confirmConvert = false; }
         finally { _busy = false; }
     }
 

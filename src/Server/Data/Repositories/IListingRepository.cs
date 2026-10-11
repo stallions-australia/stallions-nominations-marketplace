@@ -14,6 +14,12 @@ public interface IListingRepository
     Task<IReadOnlyList<Guid>> GetAuctionIdsDueToCloseAsync(DateTime endedAtOrBefore, int max);
     /// <summary>The auction with Stallion, Season, StudFarm and the farm's owner (for emails).</summary>
     Task<AuctionListing?> GetAuctionWithDetailsAsync(Guid id);
+    /// <summary>The Active Make an Offer listing created from this auction, if any.</summary>
+    Task<MakeAnOfferListing?> GetActiveMakeAnOfferForAuctionAsync(Guid auctionId);
+    /// <summary>With Stallion, Season, StudFarm and the farm's owner (for emails).</summary>
+    Task<MakeAnOfferListing?> GetMakeAnOfferWithDetailsAsync(Guid id);
+    /// <summary>Active Make an Offer listings whose season has ended (ExpiresAt passed), oldest first.</summary>
+    Task<IReadOnlyList<Guid>> GetMakeAnOfferIdsExpiredAsync(DateTime now, int max);
     Task<IReadOnlyList<Listing>> GetAllStaffAsync();
     Task<Listing> AddAsync(Listing listing);
     Task UpdateAsync(Listing listing);

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stallions.Server.Auctions;
+using Stallions.Server.Sales;
 
 namespace Stallions.Server.Tests.Auctions;
 
@@ -14,6 +15,8 @@ public class AuctionCloseServiceTests
     {
         var services = new ServiceCollection();
         services.AddScoped(_ => _closer.Object);
+        var expirer = new Mock<IOfferExpirer>();
+        services.AddScoped(_ => expirer.Object);
         var scopes = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
         return new AuctionCloseService(scopes,
             Microsoft.Extensions.Options.Options.Create(new AuctionCloseOptions { Enabled = enabled, IntervalSeconds = 60 }),

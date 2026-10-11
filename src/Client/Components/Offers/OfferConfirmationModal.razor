@@ -1,0 +1,52 @@
+@* src/Client/Components/Offers/OfferConfirmationModal.razor *@
+<Modal IsOpen="true" Title="Confirm your offer" CloseOnBackdrop="false" OnClose="Cancel">
+    <div class="bid-confirm-body">
+        <p>You're offering <strong>@AmountIncGst.ToString("C2", AuCulture)</strong> inc. GST for this nomination.
+           Only the stud sees your offer. If the stud accepts it, this is binding.</p>
+        @if (BuyerFeeIncGst is decimal fee)
+        {
+            <p>If accepted, the buyer fee of <strong>@fee.ToString("C0", AuCulture)</strong> inc. GST is charged to your
+               saved card straight away, and you pay the stud the balance of
+               <strong>@((AmountIncGst - fee).ToString("C2", AuCulture))</strong> directly.</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(BuyerFeeExplanation))
+        {
+            <p class="text-secondary text-sm">@BuyerFeeExplanation</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(BalanceArrangement))
+        {
+            <p class="text-secondary text-sm">@BalanceArrangement</p>
+        }
+    </div>
+    @if (!string.IsNullOrWhiteSpace(DisclosureError)) { <div class="alert alert-error" role="alert">@DisclosureError</div> }
+    <div class="bid-confirm-actions">
+        <button class="btn btn-outline" @onclick="Cancel" disabled="@_busy">Cancel</button>
+        <button class="btn btn-gold" @onclick="Confirm" disabled="@(_busy || ConfirmDisabled)">@(_busy ? "Sending…" : "Send offer")</button>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public decimal AmountIncGst { get; set; }
+    /// <summary>The listing's snapshotted buyer fee (inc. GST).</summary>
+    [Parameter] public decimal? BuyerFeeIncGst { get; set; }
+    /// <summary>Configured disclosure wording — never hardcoded here.</summary>
+    [Parameter] public string? BuyerFeeExplanation { get; set; }
+    /// <summary>True until the disclosure wording has loaded — the buyer cannot confirm without having seen it.</summary>
+    [Parameter] public bool ConfirmDisabled { get; set; }
+    [Parameter] public string? DisclosureError { get; set; }
+    [Parameter] public string? BalanceArrangement { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private static readonly System.Globalization.CultureInfo AuCulture = System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+    private bool _busy;
+
+    private async Task Confirm()
+    {
+        _busy = true;
+        await OnConfirm.InvokeAsync();
+        _busy = false;
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+}

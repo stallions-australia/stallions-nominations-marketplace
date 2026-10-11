@@ -1,0 +1,100 @@
+@* src/Client/Pages/MyOffers.razor *@
+@page "/my-offers"
+@attribute [Authorize]
+@inject OfferApiService OfferApi
+
+<PageTitle>My Offers — Stallions Australia</PageTitle>
+
+<div class="container" style="padding-block: var(--space-10)">
+    <h1 class="page-title">My Offers</h1>
+
+    @if (_error is not null)
+    {
+        <ErrorMessage Message="@_error" OnRetry="Load" />
+    }
+    else if (_offers is null)
+    {
+        <LoadingSpinner />
+    }
+    else if (!_offers.Any())
+    {
+        <EmptyState Message="No offers yet" Icon="✉">
+            <a href="/" class="btn btn-primary">Browse nominations</a>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="offers-list">
+            @foreach (var o in _offers)
+            {
+                <div class="offer-row">
+                    <div class="offer-info">
+                        <a href="/listings/@o.ListingId" class="offer-stallion">@o.StallionName</a>
+                        <div class="text-muted text-sm">@o.SeasonName · @o.StudFarmName</div>
+                    </div>
+                    <div class="offer-amount">@o.AmountIncGst.ToString("C0", AuCulture)</div>
+                    <div class="offer-status">
+                        <span class="badge @Badge(o)">@Label(o)</span>
+                        @if (o.Status == "Pending")
+                        {
+                            <div class="text-muted text-xs">Until @o.ExpiresAt.ToLocalTime().ToString("d MMM, h:mm tt")</div>
+                            <button class="btn btn-sm btn-outline" @onclick="() => Withdraw(o)" disabled="@_busy">Withdraw</button>
+                        }
+                        @if (o.Status == "Accepted")
+                        {
+                            <a href="/my-purchases" class="btn btn-sm btn-outline">Sale record</a>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<OfferDto>? _offers;
+    private string? _error;
+    private bool _busy;
+    private static readonly System.Globalization.CultureInfo AuCulture = System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        _offers = null;
+        try { _offers = await OfferApi.GetMineAsync(); }
+        catch (ApiException) { _error = "Failed to load your offers. Please try again."; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException) { _error = NetworkErrorText(ex); }
+    }
+
+    private async Task Withdraw(OfferDto offer)
+    {
+        _busy = true;
+        try { await OfferApi.WithdrawAsync(offer.Id); offer.Status = "Withdrawn"; }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException) { _error = NetworkErrorText(ex); }
+        finally { _busy = false; }
+    }
+
+    private static string NetworkErrorText(Exception ex) => ex is AccessTokenNotAvailableException
+        ? "Your session has expired — please sign in again."
+        : "We couldn't reach the server. Check your connection and try again.";
+
+    private static string Label(OfferDto o) => (o.Status, o.SaleStatus) switch
+    {
+        ("Pending", _) => "With the stud",
+        ("Accepted", "Completed") => "Accepted — paid",
+        ("Accepted", "Pending") when o.ChargeDueBy is not null => "Accepted — payment failed",
+        ("Accepted", "Pending") => "Accepted — charging",
+        ("Accepted", "Voided") => "Accepted — no sale",
+        _ => o.Status
+    };
+
+    private static string Badge(OfferDto o) => o.Status switch
+    {
+        "Pending" => "badge-auction",
+        "Accepted" => o.SaleStatus == "Completed" ? "badge-won" : "badge-ending",
+        _ => "badge-lost"
+    };
+}

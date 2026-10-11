@@ -3,7 +3,7 @@ namespace Stallions.Shared.DTOs.Listings;
 public class ListingCardDto
 {
     public Guid Id { get; set; }
-    public string ListingType { get; set; } = string.Empty; // "Auction"
+    public string ListingType { get; set; } = string.Empty; // "Auction" or "MakeAnOffer"
     public Guid StallionId { get; set; }
     public string StallionName { get; set; } = string.Empty;
     public string? PrimaryImagePath { get; set; }
@@ -17,4 +17,7 @@ public class ListingCardDto
     public DateTime? AuctionClosesAt { get; set; }
     /// <summary>null = no reserve (IsNoReserve=true); true/false = reserve met status.</summary>
     public bool? ReserveMet { get; set; }
+
+    // Make an Offer: when offers close.
+    public DateTime? OffersUntil { get; set; }
 }

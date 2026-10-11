@@ -16,9 +16,10 @@
             <span>Don't show this message again.</span>
         </label>
     </div>
+    @if (!string.IsNullOrWhiteSpace(DisclosureError)) { <div class="alert alert-error" role="alert">@DisclosureError</div> }
     <div class="bid-confirm-actions">
         <button class="btn btn-outline" @onclick="Cancel" disabled="@_busy">Cancel</button>
-        <button class="btn btn-gold" @onclick="Confirm" disabled="@_busy">
+        <button class="btn btn-gold" @onclick="Confirm" disabled="@(_busy || ConfirmDisabled)">
             @(_busy ? "Placing…" : "Confirm bid")
         </button>
     </div>
@@ -32,6 +33,9 @@
     [Parameter] public decimal? BuyerFeeIncGst { get; set; }
     /// <summary>Configured disclosure wording — never hardcoded here.</summary>
     [Parameter] public string? BuyerFeeExplanation { get; set; }
+    /// <summary>True until the disclosure wording has loaded — the buyer cannot confirm without having seen it.</summary>
+    [Parameter] public bool ConfirmDisabled { get; set; }
+    [Parameter] public string? DisclosureError { get; set; }
 
     private static readonly System.Globalization.CultureInfo AuCulture =
         System.Globalization.CultureInfo.GetCultureInfo("en-AU");

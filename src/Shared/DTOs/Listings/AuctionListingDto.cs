@@ -14,4 +14,7 @@ public class AuctionListingDto : ListingDto
     public decimal MinimumBidIncrement { get; set; }
     public DateTime EndDateTime { get; set; }
     public decimal? CurrentHighestBidIncGst { get; set; }
+
+    /// <summary>Owner view only: the live Make an Offer listing created from this lot, if any.</summary>
+    public Guid? MakeAnOfferListingId { get; set; }
 }
