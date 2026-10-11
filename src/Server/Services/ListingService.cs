@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Stallions.Server.Infrastructure;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
@@ -309,11 +310,13 @@ public class ListingService : IListingService
 
         listing.Status = ListingStatus.Cancelled;
         listing.ClosedAt = DateTime.UtcNow;
-        await _listingRepo.UpdateAsync(listing);
+        try { await _listingRepo.UpdateAsync(listing); }
+        catch (DbUpdateConcurrencyException) { return ServiceResult.Conflict(ChangedMessage); }
         if (listing is MakeAnOfferListing) await _offerExpirer.ExpirePendingOffersAsync(listing.Id);
         return ServiceResult.Ok();
     }
 
+    private const string ChangedMessage = "This listing has just changed — refresh and try again.";
     private const string AuctionEndedMessage = "This auction has ended and is being closed.";
 
     // Past its end time the auction closer owns the listing (it charges the winner's buyer fee), so
@@ -342,7 +345,8 @@ public class ListingService : IListingService
 
         listing.Status = ListingStatus.Cancelled;
         listing.ClosedAt = DateTime.UtcNow;
-        await _listingRepo.UpdateAsync(listing);
+        try { await _listingRepo.UpdateAsync(listing); }
+        catch (DbUpdateConcurrencyException) { return ServiceResult.Conflict(ChangedMessage); }
         if (listing is MakeAnOfferListing) await _offerExpirer.ExpirePendingOffersAsync(listing.Id);
         return ServiceResult.Ok();
     }

@@ -45,6 +45,69 @@ public class OfferServiceTests
 
     private void SignIn(User user) => _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
 
+    private sealed class ThrowingRunner(Exception toThrow) : ITransactionRunner
+    {
+        public Task<T> RunAsync<T>(Func<Task<T>> work) => throw toThrow;
+    }
+
+    private sealed class CountingRunner : ITransactionRunner
+    {
+        public int Runs { get; private set; }
+        public Task<T> RunAsync<T>(Func<Task<T>> work) { Runs++; return work(); }
+    }
+
+    [Fact]
+    public async Task Make_ExpiryIsCappedAtTheListingsOwnExpiry()
+    {
+        var (listing, _, buyer) = Setup(expiresAt: _clock.UtcNow.AddDays(2));
+
+        var offer = await MakeOffer(listing, buyer);
+
+        offer.ExpiresAt.Should().Be(listing.ExpiresAt);
+    }
+
+    [Theory]
+    [InlineData(2601)]
+    [InlineData(2627)]
+    public async Task Make_AUniqueIndexViolation_IsAConflict(int sqlNumber)
+    {
+        var (listing, _, buyer) = Setup();
+        SignIn(buyer);
+        var runner = new ThrowingRunner(new DbUpdateException("dup", SqlExceptionFactory.WithNumber(sqlNumber)));
+
+        var r = await Sut(runner: runner).MakeAsync(listing.Id, new MakeOfferRequest { AmountIncGst = 9000m });
+
+        r.HttpStatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task Make_AnyOtherSaveFailure_IsNotReportedAsADuplicate()
+    {
+        var (listing, _, buyer) = Setup();
+        SignIn(buyer);
+        var runner = new ThrowingRunner(new DbUpdateException("boom", SqlExceptionFactory.WithNumber(547)));
+
+        var act = () => Sut(runner: runner).MakeAsync(listing.Id, new MakeOfferRequest { AmountIncGst = 9000m });
+
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
+
+    [Fact]
+    public async Task Decline_AndWithdraw_RunInsideATransaction()
+    {
+        var (listing, owner, buyer) = Setup();
+        var declined = await MakeOffer(listing, buyer);
+        var counting = new CountingRunner();
+        SignIn(owner);
+        (await Sut(runner: counting).DeclineAsync(declined.Id)).Succeeded.Should().BeTrue();
+        counting.Runs.Should().Be(1);
+
+        var second = await MakeOffer(listing, buyer, 9500m);
+        SignIn(buyer);
+        (await Sut(runner: counting).WithdrawAsync(second.Id)).Succeeded.Should().BeTrue();
+        counting.Runs.Should().Be(2);
+    }
+
     /// <summary>An Active Make an Offer listing, its stud owner, and a verified buyer.</summary>
     private (MakeAnOfferListing Listing, User Owner, User Buyer) Setup(DateTime? expiresAt = null)
     {

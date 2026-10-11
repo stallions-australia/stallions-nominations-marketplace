@@ -692,4 +692,32 @@ public class ListingServiceTests
 
         _offerExpirerMock.Verify(x => x.ExpirePendingOffersAsync(It.IsAny<Guid>()), Times.Never);
     }
+
+    [Fact]
+    public async Task CloseByStudFarmAsync_WhenTheListingChangedUnderneath_IsAConflict()
+    {
+        var (_, farm) = SignedInFarm();
+        var mao = new MakeAnOfferListing { Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            ExpiresAt = DateTime.UtcNow.AddDays(10) };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(mao.Id)).ReturnsAsync(mao);
+        _listingRepoMock.Setup(r => r.UpdateAsync(It.IsAny<Listing>())).ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException());
+
+        var result = await CreateSut().CloseByStudFarmAsync(mao.Id);
+
+        result.HttpStatusCode.Should().Be(409);
+        _offerExpirerMock.Verify(x => x.ExpirePendingOffersAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelListingAsync_WhenTheListingChangedUnderneath_IsAConflict()
+    {
+        var mao = new MakeAnOfferListing { Id = Guid.NewGuid(), Status = ListingStatus.Active,
+            ExpiresAt = DateTime.UtcNow.AddDays(10) };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(mao.Id)).ReturnsAsync(mao);
+        _listingRepoMock.Setup(r => r.UpdateAsync(It.IsAny<Listing>())).ThrowsAsync(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException());
+
+        var result = await CreateSut().CancelListingAsync(mao.Id);
+
+        result.HttpStatusCode.Should().Be(409);
+    }
 }

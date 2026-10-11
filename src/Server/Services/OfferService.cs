@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
@@ -86,7 +87,7 @@ public class OfferService : IOfferService
                 var offer = new Offer
                 {
                     ListingId = listingId, BuyerUserId = caller.Id, AmountIncGst = amount, Status = OfferStatus.Pending,
-                    CreatedAt = now, ExpiresAt = now.AddDays(settings.OfferExpiryDays)
+                    CreatedAt = now, ExpiresAt = Min(now.AddDays(settings.OfferExpiryDays), listing.ExpiresAt)
                 };
                 await _offers.AddAsync(offer);
                 await _audit.LogAsync("Offer", offer.Id, "OfferMade", caller.Id,
@@ -95,29 +96,50 @@ public class OfferService : IOfferService
                 return ServiceResult<OfferDto>.Created(ToBuyerDto(offer, listing, null, now));
             });
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
             // The unique "one pending offer per buyer per listing" index caught a simultaneous second offer.
             return ServiceResult<OfferDto>.Conflict("You already have an offer with the stud — withdraw it to make a new one.");
         }
+        catch (DbUpdateException ex)
+        {
+            _log.LogError(ex, "Saving an offer on listing {ListingId} failed", listingId);
+            throw;
+        }
     }
+
+    // SQL Server: 2601 = duplicate key in a unique index, 2627 = unique constraint violation.
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is SqlException { Number: 2601 or 2627 };
+
+    private static DateTime Min(DateTime a, DateTime b) => a <= b ? a : b;
 
     public async Task<ServiceResult> WithdrawAsync(Guid offerId)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
         if (caller == null) return ServiceResult.Forbidden();
 
-        var offer = await _offers.GetByIdAsync(offerId);
-        if (offer == null) return ServiceResult.NotFound("Offer not found.");
-        if (offer.BuyerUserId != caller.Id) return ServiceResult.Forbidden();
-        if (offer.Status != OfferStatus.Pending) return ServiceResult.BadRequest("Only a pending offer can be withdrawn.");
+        var check = await _offers.GetByIdAsync(offerId);
+        if (check == null) return ServiceResult.NotFound("Offer not found.");
+        if (check.BuyerUserId != caller.Id) return ServiceResult.Forbidden();
 
-        offer.Status = OfferStatus.Withdrawn;
-        offer.RespondedAt = Now;
-        try { await _offers.UpdateAsync(offer); }
+        try
+        {
+            return await _transactions.RunAsync(async () =>
+            {
+                // Re-read inside the transaction: the offer may just have been answered or expired.
+                var offer = await _offers.GetByIdAsync(offerId);
+                if (offer == null) return ServiceResult.NotFound("Offer not found.");
+                if (offer.Status != OfferStatus.Pending) return ServiceResult.BadRequest("Only a pending offer can be withdrawn.");
+
+                offer.Status = OfferStatus.Withdrawn;
+                offer.RespondedAt = Now;
+                await _offers.UpdateAsync(offer);
+                await _audit.LogAsync("Offer", offer.Id, "OfferWithdrawn", caller.Id);
+                return ServiceResult.Ok();
+            });
+        }
         catch (DbUpdateConcurrencyException) { return ServiceResult.Conflict("This offer has just changed — refresh and try again."); }
-        await _audit.LogAsync("Offer", offer.Id, "OfferWithdrawn", caller.Id);
-        return ServiceResult.Ok();
     }
 
     public async Task<ServiceResult<IReadOnlyList<OfferDto>>> GetMineAsync()
@@ -173,18 +195,28 @@ public class OfferService : IOfferService
         var caller = await _users.GetOrCreateCurrentUserAsync();
         if (caller == null) return ServiceResult.Forbidden();
 
-        var offer = await _offers.GetByIdAsync(offerId);
-        if (offer == null) return ServiceResult.NotFound("Offer not found.");
-        if (!await CanManageAsync(caller, offer.Listing, allowStaff: false)) return ServiceResult.Forbidden();
-        if (offer.Status != OfferStatus.Pending) return ServiceResult.BadRequest("Only a pending offer can be declined.");
+        var check = await _offers.GetByIdAsync(offerId);
+        if (check == null) return ServiceResult.NotFound("Offer not found.");
+        if (!await CanManageAsync(caller, check.Listing, allowStaff: false)) return ServiceResult.Forbidden();
 
-        offer.Status = OfferStatus.Declined;
-        offer.RespondedAt = Now;
-        try { await _offers.UpdateAsync(offer); }
+        try
+        {
+            return await _transactions.RunAsync(async () =>
+            {
+                // Re-read inside the transaction: the offer may just have been answered or expired.
+                var offer = await _offers.GetByIdAsync(offerId);
+                if (offer == null) return ServiceResult.NotFound("Offer not found.");
+                if (offer.Status != OfferStatus.Pending) return ServiceResult.BadRequest("Only a pending offer can be declined.");
+
+                offer.Status = OfferStatus.Declined;
+                offer.RespondedAt = Now;
+                await _offers.UpdateAsync(offer);
+                await _audit.LogAsync("Offer", offer.Id, "OfferDeclined", caller.Id);
+                await _emails.OfferDeclinedAsync(offer.Listing, offer, offer.Buyer);
+                return ServiceResult.Ok();
+            });
+        }
         catch (DbUpdateConcurrencyException) { return ServiceResult.Conflict("This offer has just changed — refresh and try again."); }
-        await _audit.LogAsync("Offer", offer.Id, "OfferDeclined", caller.Id);
-        await _emails.OfferDeclinedAsync(offer.Listing, offer, offer.Buyer);
-        return ServiceResult.Ok();
     }
 
     public async Task<ServiceResult<AcceptOfferResultDto>> AcceptAsync(Guid offerId)
