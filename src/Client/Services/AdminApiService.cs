@@ -136,6 +136,16 @@ public class AdminApiService
     }
 
 
+    /// <summary>Opens an Unsold auction lot to offers; returns the new Make an Offer listing.</summary>
+    public virtual async Task<ListingDto> ConvertToMakeAnOfferAsync(Guid auctionId)
+    {
+        var r = await _http.PostAsync($"api/listings/{auctionId}/make-an-offer", null);
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, await ReadError(r, "The lot could not be offered as Make an Offer."));
+        return await r.Content.ReadFromJsonAsync<ListingDto>(Stallions.Shared.StallionsJsonContext.Default.Options)
+               ?? throw new ApiException(500, "Empty response.");
+    }
+
     public virtual async Task<ListingDto> CreateAuctionListingAsync(CreateAuctionListingRequest request)
     {
         var r = await _http.PostAsJsonAsync("api/listings/auction", request);

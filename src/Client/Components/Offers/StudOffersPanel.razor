@@ -1,0 +1,103 @@
+@inject OfferApiService OfferApi
+
+<div class="form-section">
+    <div class="form-section-title">Offers</div>
+    @if (_error is not null) { <div class="alert alert-error">@_error</div> }
+    @if (_offers is null)
+    {
+        <LoadingSpinner />
+    }
+    else if (!_offers.Any())
+    {
+        <p class="text-muted">No offers yet. Buyers' offers appear here; only you can see them.</p>
+    }
+    else
+    {
+        <table class="admin-table">
+            <thead><tr><th>Buyer</th><th>Offer</th><th>Received</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var o in _offers)
+                {
+                    <tr>
+                        <td>@o.BuyerName<div class="text-muted text-xs">@o.BuyerEmail</div></td>
+                        <td>@o.AmountIncGst.ToString("C0", AuCulture)</td>
+                        <td>@o.CreatedAt.ToLocalTime().ToString("d MMM, h:mm tt")</td>
+                        <td>@StatusText(o)</td>
+                        <td class="admin-table-actions">
+                            @if (o.Status == "Pending" && _confirming == o.Id)
+                            {
+                                <span class="text-sm">Accepting charges the buyer the @BuyerFeeIncGst?.ToString("C0", AuCulture) buyer fee straight away.</span>
+                                <button class="btn btn-sm btn-primary" @onclick="() => Accept(o)" disabled="@_busy">Yes, accept</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="() => _confirming = null" disabled="@_busy">Cancel</button>
+                            }
+                            else if (o.Status == "Pending")
+                            {
+                                <button class="btn btn-sm btn-primary" @onclick="() => _confirming = o.Id" disabled="@_busy">Accept</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="() => Decline(o)" disabled="@_busy">Decline</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    @if (_message is not null) { <p class="text-sm" role="status">@_message</p> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid ListingId { get; set; }
+    [Parameter] public decimal? BuyerFeeIncGst { get; set; }
+
+    private static readonly System.Globalization.CultureInfo AuCulture = System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+    private List<StudOfferDto>? _offers;
+    private Guid? _confirming;
+    private bool _busy;
+    private string? _error;
+    private string? _message;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        try { _offers = await OfferApi.GetForListingAsync(ListingId); }
+        catch (ApiException ex) { _error = ex.Message; _offers = new(); }
+    }
+
+    private async Task Accept(StudOfferDto offer)
+    {
+        _busy = true; _error = null; _message = null;
+        try
+        {
+            var result = await OfferApi.AcceptAsync(offer.Id);
+            _message = result.Charge switch
+            {
+                "Paid" => "Accepted — buyer fee paid. The buyer and you have been emailed the sale details.",
+                "PaymentFailed" => $"Accepted — the buyer's payment failed; the buyer has until {result.ChargeDueBy?.ToLocalTime():d MMM, h:mm tt} to update their card.",
+                "Processing" or "Skipped" => "Accepted — the payment is being processed; refresh in a minute.",
+                _ => "Accepted."
+            };
+            _confirming = null;
+            await Load();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task Decline(StudOfferDto offer)
+    {
+        _busy = true; _error = null; _message = null;
+        try { await OfferApi.DeclineAsync(offer.Id); _message = "Offer declined; the buyer has been told."; await Load(); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string StatusText(StudOfferDto o) => (o.Status, o.SaleStatus) switch
+    {
+        ("Pending", _) => $"Open until {o.ExpiresAt.ToLocalTime():d MMM}",
+        ("Accepted", "Completed") => "Accepted — paid",
+        ("Accepted", "Pending") when o.ChargeDueBy is not null => $"Accepted — payment failed (until {o.ChargeDueBy.Value.ToLocalTime():d MMM, h:mm tt})",
+        ("Accepted", "Pending") => "Accepted — charging",
+        ("Accepted", "Voided") => "Accepted — no sale",
+        _ => o.Status
+    };
+}

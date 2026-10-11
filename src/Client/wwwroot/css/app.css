@@ -479,7 +479,8 @@ h1:focus { outline: none; }
 .badge-status-suspended           { background: #fee2e2; color: #991b1b; }
 .badge-status-pendingverification { background: #fef3c7; color: #92400e; }
 .badge-type-auction               { background: #ede9fe; color: #5b21b6; }
-.badge-type-fixedprice            { background: #dbeafe; color: #1e40af; }
+.badge-type-makeanoffer            { background: #dcfce7; color: #166534; }
+.badge-type-fixedprice           { background: #dbeafe; color: #1e40af; }
 .badge-role                       { background: #f3f4f6; color: #374151; }
 
 /* ── Utility buttons ──────────────────────────────────────────────── */

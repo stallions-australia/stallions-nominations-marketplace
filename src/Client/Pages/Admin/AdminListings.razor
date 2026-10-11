@@ -61,7 +61,7 @@ else
                         @foreach (var listing in group)
                         {
                             <tr>
-                                <td>@listing.ListingType</td>
+                                <td>@ListingTypeText.Label(listing.ListingType)</td>
                                 <td>@listing.SeasonName</td>
                                 <td>
                                     @if (listing is AuctionListingDto al)
@@ -74,6 +74,10 @@ else
                                     @if (listing is AuctionListingDto al2)
                                     {
                                         <text>Ends @al2.EndDateTime.ToLocalTime().ToString("dd MMM yyyy")</text>
+                                    }
+                                    else if (listing is MakeAnOfferListingDto mao)
+                                    {
+                                        <text>Offers until @mao.ExpiresAt.ToLocalTime().ToString("dd MMM yyyy")</text>
                                     }
                                 </td>
                                 <td class="admin-table-actions">
