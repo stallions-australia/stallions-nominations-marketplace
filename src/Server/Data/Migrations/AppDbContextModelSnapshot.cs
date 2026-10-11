@@ -22,6 +22,8 @@ namespace Stallions.Server.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.HasSequence("TaxDocumentNumbers");
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.AuditLog", b =>
                 {
                     b.Property<long>("Id")
@@ -164,6 +166,65 @@ namespace Stallions.Server.Data.Migrations
                     b.ToTable("EnquiryMessages");
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.IntroOffer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("AmountOffIncGst")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("EndsAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsRetired")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("SeasonId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("StudFarmId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("SeasonId");
+
+                    b.HasIndex("StudFarmId");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("IsRetired", "EndsAt");
+
+                    b.ToTable("IntroOffers");
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.Listing", b =>
                 {
                     b.Property<Guid>("Id")
@@ -229,49 +290,6 @@ namespace Stallions.Server.Data.Migrations
                     b.ToTable("Listings", (string)null);
 
                     b.UseTptMappingStrategy();
-                });
-
-            modelBuilder.Entity("Stallions.Server.Data.Entities.NominationBinding", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("AcknowledgedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("AcknowledgedByUserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("BuyerSignedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("FarmSignedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PdfBlobPath")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<Guid>("PurchaseId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AcknowledgedByUserId");
-
-                    b.HasIndex("PurchaseId")
-                        .IsUnique();
-
-                    b.ToTable("NominationBindings");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.Offer", b =>
@@ -393,11 +411,42 @@ namespace Stallions.Server.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("BankBsb")
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<string>("BusinessAbn")
+                        .HasMaxLength(11)
+                        .HasColumnType("nvarchar(11)");
+
+                    b.Property<string>("BusinessAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("BusinessEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("BusinessLegalName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<decimal>("BuyerFeeIncGst")
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
                     b.Property<int>("ChargeGracePeriodHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InvoicePaymentTermsDays")
                         .HasColumnType("int");
 
                     b.Property<decimal>("MinimumBidIncrement")
@@ -429,6 +478,7 @@ namespace Stallions.Server.Data.Migrations
                             Id = new Guid("5e771265-0000-4000-8000-000000000001"),
                             BuyerFeeIncGst = 150m,
                             ChargeGracePeriodHours = 2,
+                            InvoicePaymentTermsDays = 14,
                             MinimumBidIncrement = 25m,
                             OfferExpiryDays = 7,
                             StandardListingFeeIncGst = 990m,
@@ -841,6 +891,9 @@ namespace Stallions.Server.Data.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<Guid?>("IntroOfferId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -869,6 +922,10 @@ namespace Stallions.Server.Data.Migrations
                     b.Property<Guid>("StallionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal>("StandardFeeIncGst")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -884,6 +941,8 @@ namespace Stallions.Server.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("IntroOfferId");
 
                     b.HasIndex("SeasonId");
 
@@ -1004,6 +1063,163 @@ namespace Stallions.Server.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("StudFarms");
+                });
+
+            modelBuilder.Entity("Stallions.Server.Data.Entities.TaxDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("AmountExGst")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal>("AmountIncGst")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("BankBsb")
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<Guid?>("BuyerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<decimal?>("DiscountIncGst")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<DateTime?>("DueAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("GstAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("IntroOfferName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("OriginalDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("PurchaseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(600)
+                        .HasColumnType("nvarchar(600)");
+
+                    b.Property<string>("RecipientAbn")
+                        .HasMaxLength(14)
+                        .HasColumnType("nvarchar(14)");
+
+                    b.Property<string>("RecipientAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("RecipientEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal?>("StandardAmountIncGst")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("StudFarmId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SupplierAbn")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("nvarchar(11)");
+
+                    b.Property<string>("SupplierAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SupplierEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SupplierName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuyerUserId");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
+
+                    b.HasIndex("OriginalDocumentId")
+                        .IsUnique()
+                        .HasFilter("[Kind] = 'AdjustmentNote'");
+
+                    b.HasIndex("PurchaseId")
+                        .IsUnique()
+                        .HasFilter("[Kind] = 'BuyerFeeInvoice'");
+
+                    b.HasIndex("StudFarmId");
+
+                    b.HasIndex("SubscriptionId")
+                        .IsUnique()
+                        .HasFilter("[Kind] = 'ListingFeeInvoice'");
+
+                    b.HasIndex("Kind", "IssuedAt");
+
+                    b.ToTable("TaxDocuments");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.TermsDocument", b =>
@@ -1222,6 +1438,34 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("Sender");
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.IntroOffer", b =>
+                {
+                    b.HasOne("Stallions.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Stallions.Server.Data.Entities.Season", "Season")
+                        .WithMany()
+                        .HasForeignKey("SeasonId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Stallions.Server.Data.Entities.StudFarm", "StudFarm")
+                        .WithMany()
+                        .HasForeignKey("StudFarmId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Stallions.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Season");
+
+                    b.Navigation("StudFarm");
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.Listing", b =>
                 {
                     b.HasOne("Stallions.Server.Data.Entities.Season", "Season")
@@ -1247,24 +1491,6 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("Stallion");
 
                     b.Navigation("StudFarm");
-                });
-
-            modelBuilder.Entity("Stallions.Server.Data.Entities.NominationBinding", b =>
-                {
-                    b.HasOne("Stallions.Server.Data.Entities.User", "AcknowledgedBy")
-                        .WithMany()
-                        .HasForeignKey("AcknowledgedByUserId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.HasOne("Stallions.Server.Data.Entities.Purchase", "Purchase")
-                        .WithOne("NominationBinding")
-                        .HasForeignKey("Stallions.Server.Data.Entities.NominationBinding", "PurchaseId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("AcknowledgedBy");
-
-                    b.Navigation("Purchase");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.Offer", b =>
@@ -1398,6 +1624,11 @@ namespace Stallions.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("Stallions.Server.Data.Entities.IntroOffer", "IntroOffer")
+                        .WithMany()
+                        .HasForeignKey("IntroOfferId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Stallions.Server.Data.Entities.Season", "Season")
                         .WithMany()
                         .HasForeignKey("SeasonId")
@@ -1417,6 +1648,8 @@ namespace Stallions.Server.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("IntroOffer");
 
                     b.Navigation("Season");
 
@@ -1441,6 +1674,36 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("StudDirectory");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Stallions.Server.Data.Entities.TaxDocument", b =>
+                {
+                    b.HasOne("Stallions.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("BuyerUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Stallions.Server.Data.Entities.TaxDocument", "OriginalDocument")
+                        .WithMany()
+                        .HasForeignKey("OriginalDocumentId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Stallions.Server.Data.Entities.Purchase", null)
+                        .WithMany()
+                        .HasForeignKey("PurchaseId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Stallions.Server.Data.Entities.StudFarm", null)
+                        .WithMany()
+                        .HasForeignKey("StudFarmId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Stallions.Server.Data.Entities.StallionSeasonSubscription", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("OriginalDocument");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.TermsDocument", b =>
@@ -1507,11 +1770,6 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("Enquiries");
 
                     b.Navigation("Purchases");
-                });
-
-            modelBuilder.Entity("Stallions.Server.Data.Entities.Purchase", b =>
-                {
-                    b.Navigation("NominationBinding");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.Season", b =>

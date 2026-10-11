@@ -20,6 +20,10 @@ public class AdminServiceTests
     private readonly Mock<ICurrentUserService> _currentUserMock = new();
     private readonly Mock<IUserService> _userServiceMock = new();
     private readonly Mock<IStallionRepository> _stallionRepoMock = new();
+    private readonly Mock<ITaxDocumentRepository> _taxDocRepoMock = new();
+
+    public AdminServiceTests() =>
+        _taxDocRepoMock.Setup(r => r.GetByPurchaseIdsAsync(It.IsAny<IEnumerable<Guid>>())).ReturnsAsync(new List<TaxDocument>());
 
     private AdminService CreateSut() => new(
         _listingRepoMock.Object,
@@ -30,7 +34,8 @@ public class AdminServiceTests
         _auditRepoMock.Object,
         _currentUserMock.Object,
         _userServiceMock.Object,
-        _stallionRepoMock.Object);
+        _stallionRepoMock.Object,
+        _taxDocRepoMock.Object);
 
     [Fact]
     public async Task GetAllStudFarmsAsync_ReturnsMappedDtos()
@@ -407,25 +412,6 @@ public class AdminServiceTests
     }
 
     [Fact]
-    public async Task GetInvoices_ShowsBuyerFeesAndBalancePayableToStud()
-    {
-        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
-        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
-        {
-            CompletedSale(farm, 10000m, 150m),
-            CompletedSale(farm, 20000m, 150m)
-        });
-
-        var result = await CreateSut().GetInvoicesAsync();
-
-        var invoice = result.Value!.Should().ContainSingle().Subject;
-        invoice.TotalSalesIncGst.Should().Be(30000m);
-        invoice.TotalBuyerFeesIncGst.Should().Be(300m);
-        invoice.TotalBalancePayableToStudIncGst.Should().Be(29700m);
-        invoice.Lines.Should().Contain(l => l.BuyerFeeIncGst == 150m && l.BalancePayableToStudIncGst == 9850m);
-    }
-
-    [Fact]
     public async Task GetTransactions_MapsBuyerFeeGstSplitAndBalance()
     {
         var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
@@ -459,5 +445,26 @@ public class AdminServiceTests
         var result = await CreateSut().GetDashboardAsync();
 
         result.Value!.RecentFeeRevenueIncGst.Should().Be(300m);
+    }
+
+    [Fact]
+    public async Task GetTransactions_ShowsTheBuyerFeeInvoiceAndAnyAdjustmentNote()
+    {
+        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
+        var refunded = CompletedSale(farm, 10000m, 150m);
+        var plain = CompletedSale(farm, 20000m, 150m);
+        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase> { refunded, plain });
+        var invoiceId = Guid.NewGuid();
+        _taxDocRepoMock.Setup(r => r.GetByPurchaseIdsAsync(It.IsAny<IEnumerable<Guid>>())).ReturnsAsync(new List<TaxDocument>
+        {
+            new() { Id = invoiceId, PurchaseId = refunded.Id, Kind = TaxDocumentKind.BuyerFeeInvoice, Number = "SA-000124" },
+            new() { PurchaseId = refunded.Id, Kind = TaxDocumentKind.AdjustmentNote, Number = "SA-000130" }
+        });
+
+        var result = (await CreateSut().GetTransactionsAsync()).Value!;
+
+        var t = result.Single(x => x.PurchaseId == refunded.Id);
+        (t.TaxInvoiceId, t.TaxInvoiceNumber, t.AdjustmentNoteNumber).Should().Be((invoiceId, "SA-000124", "SA-000130"));
+        result.Single(x => x.PurchaseId == plain.Id).TaxInvoiceNumber.Should().BeNull();
     }
 }

@@ -1,0 +1,293 @@
+@* src/Client/Pages/Staff/StaffIntroOffers.razor *@
+@page "/staff/intro-offers"
+@layout StaffLayout
+@attribute [Authorize]
+@inject IntroOfferApiService IntroOfferApi
+@inject StaffApiService StaffApi
+@inject UserStateService UserState
+@inject NavigationManager Nav
+
+<PageTitle>Intro Offers — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Intro Offers</h1>
+    <button class="btn btn-gold" @onclick="OpenCreate">+ New intro offer</button>
+</div>
+
+<p class="text-secondary text-sm">
+    An intro offer waives the listing fee or takes dollars off it. It applies automatically to new listing fee
+    subscriptions created up to the end of its last day (Sydney time); when several match, the lowest fee wins.
+    A fee typed by hand on a new subscription ignores offers. Once an offer has been applied, only its name and
+    last day can change.
+</p>
+
+@if (_lookupError is not null)
+{
+    <div class="alert alert-danger">@_lookupError</div>
+}
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_offers.Count == 0)
+{
+    <div class="admin-empty-state"><p>No intro offers yet.</p></div>
+}
+else
+{
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Offer</th>
+                <th>Applies to</th>
+                <th>Last day</th>
+                <th>State</th>
+                <th>Applied</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var o in _offers)
+            {
+                <tr>
+                    <td>@o.Name</td>
+                    <td>@OfferText(o)</td>
+                    <td>@(o.StudFarmName ?? "All studs") · @(o.SeasonName ?? "Any season")</td>
+                    <td>@o.EndsOn.ToString("d MMM yyyy", AuCulture)</td>
+                    <td><span class="badge @StateBadge(o.State)">@o.State</span></td>
+                    <td>@o.TimesApplied</td>
+                    <td>
+                        @if (!o.IsRetired)
+                        {
+                            <button class="btn btn-sm btn-outline" @onclick="() => OpenEdit(o)">Edit</button>
+                            <button class="btn btn-sm btn-outline" @onclick="() => OpenRetire(o)">Retire</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<Modal IsOpen="@_formOpen" Title="@(_editing is null ? "New intro offer" : $"Edit intro offer — {_editing.Name}")" OnClose="CloseModals">
+    @if (Locked)
+    {
+        <div class="alert alert-warning">
+            Applied to @_editing!.TimesApplied subscription(s), so only the name and end date can change.
+        </div>
+    }
+    <div class="form-group">
+        <label class="form-label" for="offer-name">Name <span class="required">*</span></label>
+        <input id="offer-name" class="form-input" maxlength="100" @bind="_name" placeholder="e.g. Launch 2026" />
+        <p class="form-hint">Shown on the tax invoice as "Intro offer: name".</p>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="offer-type">Offer</label>
+        <select id="offer-type" class="form-select" @bind="_type" disabled="@Locked">
+            <option value="AmountOff">Dollars off the listing fee</option>
+            <option value="Waiver">Waive the listing fee</option>
+        </select>
+    </div>
+    @if (_type == "AmountOff")
+    {
+        <div class="form-group">
+            <label class="form-label" for="offer-amount">Amount off (inc. GST)</label>
+            <div class="input-prefix">
+                <span>$</span>
+                <input id="offer-amount" type="number" class="form-input" min="0.01" step="0.01" @bind="_amount" disabled="@Locked" />
+            </div>
+            <p class="form-hint">At or above the standard listing fee, the fee is waived.</p>
+        </div>
+    }
+    <div class="form-group">
+        <label class="form-label" for="offer-farm">Stud farm</label>
+        <select id="offer-farm" class="form-select" @bind="_farmId" disabled="@Locked">
+            <option value="">All studs</option>
+            @foreach (var f in _farms)
+            {
+                <option value="@f.Id">@f.Name</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="offer-season">Season</label>
+        <select id="offer-season" class="form-select" @bind="_seasonId" disabled="@Locked">
+            <option value="">Any season</option>
+            @foreach (var s in _seasons)
+            {
+                <option value="@s.Id">@s.Name</option>
+            }
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="offer-ends">Last day (Sydney time)</label>
+        <input id="offer-ends" type="date" class="form-input" @bind="_endsOn" />
+        <p class="form-hint">Applies to subscriptions created up to 11:59 pm on this day.</p>
+    </div>
+    @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_busy">@(_busy ? "Saving…" : "Save intro offer")</button>
+        <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+<Modal IsOpen="@(_retireFor is not null)" Title="@($"Retire {_retireFor?.Name}?")" OnClose="CloseModals">
+    <p>It stops applying to new subscriptions straight away. Subscriptions it was already applied to keep it.</p>
+    @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="RetireAsync" disabled="@_busy">@(_busy ? "Retiring…" : "Retire offer")</button>
+        <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@code {
+    private List<IntroOfferDto> _offers = [];
+    private List<StudFarmSummaryDto> _farms = [];
+    private List<SeasonDto> _seasons = [];
+    private bool _loading = true;
+    private bool _busy;
+    private bool _formOpen;
+    private string? _error;
+    private string? _lookupError; // stud farms / seasons for the form: a failure there still shows the offers
+    private string? _modalError;
+
+    private IntroOfferDto? _editing;
+    private IntroOfferDto? _retireFor;
+    private string _name = string.Empty;
+    private string _type = "AmountOff";
+    private decimal? _amount;
+    private string _farmId = string.Empty;
+    private string _seasonId = string.Empty;
+    private DateOnly _endsOn;
+
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    // Recorded subscriptions name the offer: its terms stay as they were when applied.
+    private bool Locked => _editing is { TimesApplied: > 0 };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        try
+        {
+            _farms = await StaffApi.GetStudFarmsAsync();
+            _seasons = await StaffApi.GetSeasonsAsync();
+        }
+        catch (Exception ex) { _lookupError = ex is ApiException ae ? ae.Message : "Failed to load the stud farms and seasons."; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _offers = await IntroOfferApi.GetAllAsync(); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load intro offers."; }
+        finally { _loading = false; }
+    }
+
+    private static string OfferText(IntroOfferDto o) =>
+        o.Type == "Waiver" ? "Fee waived" : $"{(o.AmountOffIncGst ?? 0m).ToString("C2", AuCulture)} off";
+
+    private static string StateBadge(string state) => state switch
+    {
+        "Active" => "badge-sub-paid",
+        "Ended" => "badge-sub-none",
+        _ => "badge-sub-waived"
+    };
+
+    private void OpenCreate()
+    {
+        CloseModals();
+        _name = string.Empty;
+        _type = "AmountOff";
+        _amount = null;
+        _farmId = string.Empty;
+        _seasonId = string.Empty;
+        _endsOn = DateOnly.FromDateTime(DateTime.Today.AddMonths(1));
+        _formOpen = true;
+    }
+
+    private void OpenEdit(IntroOfferDto offer)
+    {
+        CloseModals();
+        _editing = offer;
+        _name = offer.Name;
+        _type = offer.Type;
+        _amount = offer.AmountOffIncGst;
+        _farmId = offer.StudFarmId?.ToString() ?? string.Empty;
+        _seasonId = offer.SeasonId?.ToString() ?? string.Empty;
+        _endsOn = offer.EndsOn;
+        _formOpen = true;
+    }
+
+    private void OpenRetire(IntroOfferDto offer)
+    {
+        CloseModals();
+        _retireFor = offer;
+    }
+
+    // Mirrors the server's checks (which remain the authority).
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) return "A name is required.";
+        if (_type == "AmountOff" && _amount is not > 0m) return "Enter the dollars off the listing fee (more than $0).";
+        return null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _modalError = Validate();
+        if (_modalError is not null) return;
+
+        var request = new SaveIntroOfferRequest
+        {
+            Name = _name.Trim(),
+            Type = _type,
+            AmountOffIncGst = _type == "AmountOff" ? _amount : null,
+            StudFarmId = Guid.TryParse(_farmId, out var farmId) ? farmId : null,
+            SeasonId = Guid.TryParse(_seasonId, out var seasonId) ? seasonId : null,
+            EndsOn = _endsOn
+        };
+        _busy = true;
+        try
+        {
+            if (_editing is null) await IntroOfferApi.CreateAsync(request);
+            else await IntroOfferApi.UpdateAsync(_editing.Id, request);
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to save the intro offer."; }
+        finally { _busy = false; }
+    }
+
+    private async Task RetireAsync()
+    {
+        if (_retireFor is null) return;
+        _busy = true;
+        try
+        {
+            await IntroOfferApi.RetireAsync(_retireFor.Id);
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to retire the intro offer."; }
+        finally { _busy = false; }
+    }
+
+    private void CloseModals()
+    {
+        _formOpen = false;
+        _editing = null;
+        _retireFor = null;
+        _modalError = null;
+    }
+}

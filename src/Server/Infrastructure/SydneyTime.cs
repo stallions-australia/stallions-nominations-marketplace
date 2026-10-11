@@ -12,6 +12,10 @@ public static class SydneyTime
     public static DateTime EndOfDayUtc(DateOnly date) =>
         TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(new TimeOnly(23, 59, 59)), Zone);
 
+    /// <summary>00:00:00 on that date in Sydney, as UTC.</summary>
+    public static DateTime StartOfDayUtc(DateOnly date) =>
+        TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(TimeOnly.MinValue), Zone);
+
     private static TimeZoneInfo Find()
     {
         try { return TimeZoneInfo.FindSystemTimeZoneById("Australia/Sydney"); }

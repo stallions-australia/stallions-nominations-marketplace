@@ -3,6 +3,7 @@
 @attribute [Authorize]
 @inject AdminApiService AdminApi
 @inject SubscriptionApiService SubscriptionApi
+@inject TaxDocumentApiService TaxDocumentApi
 @inject PlatformSettingsApiService SettingsApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
@@ -127,6 +128,17 @@ else if (_authorized != null)
         </table>
     }
 
+    @* ── Tax invoices (listing fees) ─────────────────────────────────────── *@
+    <h2 style="font-size:var(--font-size-lg);margin:var(--space-8) 0 var(--space-4)">Tax invoices</h2>
+    @if (_taxDocuments.Count == 0)
+    {
+        <p style="color:var(--text-muted)">No tax invoices yet. Listing fee tax invoices appear here once issued.</p>
+    }
+    else
+    {
+        <TaxDocumentList Documents="_taxDocuments" />
+    }
+
     @* ── Available to add (directory-linked farms only) ───────────────────── *@
     @if (_authorized.IsLinked)
     {
@@ -206,6 +218,7 @@ else if (_authorized != null)
     private string? _activateError;
     private bool _confirmingPayment;
     private string? _paymentNotice;
+    private List<TaxDocumentSummaryDto> _taxDocuments = [];
     private readonly CancellationTokenSource _cts = new();
 
     private static readonly System.Globalization.CultureInfo AuCulture =
@@ -277,6 +290,7 @@ else if (_authorized != null)
             _authorized = await AdminApi.GetAuthorizedStallionsAsync();
             _openSeason = (await AdminApi.GetSeasonsAsync() ?? []).FirstOrDefault(s => s.IsOpen);
             _subscriptions = await SubscriptionApi.GetMineAsync() ?? [];
+            _taxDocuments = await TaxDocumentApi.GetForStudAsync() ?? [];
             // Shown on the Activate button; without it the stud is asked to contact Stallions Australia.
             try { _standardFee = (await SettingsApi.GetAsync()).StandardListingFeeIncGst; }
             catch (ApiException) { _standardFee = null; }
@@ -312,10 +326,23 @@ else if (_authorized != null)
 
     private async Task ActivateAsync(Guid stallionId)
     {
-        _activating = stallionId; _activateError = null;
-        // Stripe returns an absolute URL, the dev fake a relative one — both need a full page load.
-        // The buttons stay disabled on success: the browser is leaving the page.
-        try { Nav.NavigateTo(await SubscriptionApi.ActivateAsync(stallionId), forceLoad: true); }
+        _activating = stallionId; _activateError = null; _paymentNotice = null;
+        try
+        {
+            var result = await SubscriptionApi.ActivateAsync(stallionId);
+            if (result.ActivatedWithoutPayment)
+            {
+                // An intro offer made the fee $0: the stallion is already active, no payment page.
+                var name = _stallions.FirstOrDefault(s => s.Id == stallionId)?.Name ?? "Your stallion";
+                _paymentNotice = $"{name} is active for {_openSeason?.Name} — intro offer applied.";
+                _subscriptions = await SubscriptionApi.GetMineAsync() ?? [];
+                _activating = null;
+                return;
+            }
+            // Stripe returns an absolute URL, the dev fake a relative one — both need a full page load.
+            // The buttons stay disabled on success: the browser is leaving the page.
+            Nav.NavigateTo(result.Url, forceLoad: true);
+        }
         catch (ApiException ex) { _activateError = ex.Message; _activating = null; }
     }
 

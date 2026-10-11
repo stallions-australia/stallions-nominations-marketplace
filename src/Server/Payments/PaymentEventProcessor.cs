@@ -2,6 +2,7 @@ using System.Text.Json;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.TaxDocuments;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Payments;
@@ -21,16 +22,19 @@ public class PaymentEventProcessor : IPaymentEventProcessor
     private readonly IPurchaseRepository _purchases;
     private readonly IPaymentProvider _provider;
     private readonly IAuditLogRepository _audit;
+    private readonly ITaxDocumentService _taxDocuments;
     private readonly ITransactionRunner _transactions;
     private readonly ILogger<PaymentEventProcessor> _log;
 
     public PaymentEventProcessor(
         IProcessedPaymentEventRepository processed, ISavedCardRepository cards, IUserRepository users,
         ISubscriptionRepository subscriptions, IPurchaseRepository purchases, IPaymentProvider provider,
-        IAuditLogRepository audit, ITransactionRunner transactions, ILogger<PaymentEventProcessor> log)
+        IAuditLogRepository audit, ITaxDocumentService taxDocuments, ITransactionRunner transactions,
+        ILogger<PaymentEventProcessor> log)
     {
         _processed = processed; _cards = cards; _users = users; _subscriptions = subscriptions;
-        _purchases = purchases; _provider = provider; _audit = audit; _transactions = transactions; _log = log;
+        _purchases = purchases; _provider = provider; _audit = audit; _taxDocuments = taxDocuments;
+        _transactions = transactions; _log = log;
     }
 
     /// <summary>A handler's outcome, plus a replaced payment method to detach once committed.</summary>
@@ -194,6 +198,15 @@ public class PaymentEventProcessor : IPaymentEventProcessor
 
         await _audit.LogAsync("StallionSeasonSubscription", subscription.Id, "ListingFeePaidByCard", null,
             JsonSerializer.Serialize(new { subscription.FeeIncGst, e.PaymentReference }));
+
+        // The tax invoice commits with the payment (same transaction). Missing business details must
+        // never fail the payment: it is recorded as pending for Staff to issue later.
+        // The subscription update and audit row above are already saved, so no tracked change is pending
+        // when the tax document service saves (see the ITaxDocumentService precondition).
+        var invoice = await _taxDocuments.SettleListingFeeAsync(subscription, subscription.PaidAt!.Value, null);
+        if (invoice.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
+            await _taxDocuments.RecordPendingAsync("StallionSeasonSubscription", subscription.Id, TaxDocumentKind.ListingFeeInvoice);
+
         return new HandlerResult(PaymentEventOutcome.Processed);
     }
 }

@@ -1,0 +1,21 @@
+.tax-doc-page { padding-block: var(--space-10); max-width: 820px; }
+.tax-doc-actions { display: flex; justify-content: flex-end; margin-bottom: var(--space-4); }
+.tax-doc { background: var(--white); border: 1px solid var(--border, #e5e7eb); border-radius: 8px; padding: var(--space-8); }
+.tax-doc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); margin-bottom: var(--space-6); }
+.tax-doc-title { font-size: var(--font-size-2xl, 1.75rem); margin: 0; }
+.tax-doc-number { color: var(--text-secondary); font-size: var(--font-size-lg); }
+.tax-doc-meta { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: 0 0 var(--space-6); }
+.tax-doc-meta dt { color: var(--text-secondary); }
+.tax-doc-meta dd { margin: 0; }
+.tax-doc-parties { display: grid; grid-template-columns: 1fr; gap: var(--space-6); margin-bottom: var(--space-6); }
+.tax-doc-parties h2, .tax-doc-pay h2 { font-size: var(--font-size-sm); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); margin: 0 0 var(--space-2); }
+.tax-doc-address { white-space: pre-line; }
+.tax-doc-lines { width: 100%; border-collapse: collapse; margin-bottom: var(--space-6); }
+.tax-doc-lines th, .tax-doc-lines td { padding: var(--space-2) 0; border-bottom: 1px solid var(--border, #e5e7eb); text-align: left; }
+.tax-doc-lines .num { text-align: right; white-space: nowrap; }
+.tax-doc-total td { font-weight: 700; border-bottom: 2px solid var(--navy); }
+.tax-doc-note, .tax-doc-adjusts { color: var(--text-secondary); }
+
+@media (min-width: 640px) {
+    .tax-doc-parties { grid-template-columns: 1fr 1fr; }
+}

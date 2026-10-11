@@ -1,6 +1,9 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.TaxDocuments;
 using Stallions.Shared;
 using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.Enums;
@@ -15,15 +18,22 @@ public class PurchaseService : IPurchaseService
 
     private readonly IListingRepository _listingRepo;
     private readonly IBidRepository _bidRepo;
+    private readonly ITaxDocumentRepository _taxDocumentRepo;
+    private readonly ITaxDocumentService _taxDocuments;
+    private readonly ITransactionRunner _transactions;
 
     public PurchaseService(IPurchaseRepository purchaseRepo, IAuditLogRepository auditRepo, IUserService users,
-        IListingRepository listingRepo, IBidRepository bidRepo)
+        IListingRepository listingRepo, IBidRepository bidRepo, ITaxDocumentRepository taxDocumentRepo,
+        ITaxDocumentService taxDocuments, ITransactionRunner transactions)
     {
         _purchaseRepo = purchaseRepo;
         _auditRepo = auditRepo;
         _users = users;
         _listingRepo = listingRepo;
         _bidRepo = bidRepo;
+        _taxDocumentRepo = taxDocumentRepo;
+        _taxDocuments = taxDocuments;
+        _transactions = transactions;
     }
 
     public async Task<ServiceResult<MyAuctionResultDto>> GetMyAuctionResultAsync(Guid listingId)
@@ -94,33 +104,72 @@ public class PurchaseService : IPurchaseService
         return ServiceResult<PurchaseDto>.Ok(MapToDto(purchase));
     }
 
-    public async Task<ServiceResult> RefundAsync(Guid id)
+    public async Task<ServiceResult<RefundResultDto>> RefundAsync(Guid id, RefundBuyerFeeRequest request)
     {
         var caller = await _users.GetOrCreateCurrentUserAsync();
-        if (caller == null) return ServiceResult.Forbidden();
-        if (caller.Role != UserRole.Staff) return ServiceResult.Forbidden("Only Staff can process refunds.");
+        if (caller == null) return ServiceResult<RefundResultDto>.Forbidden();
+        if (caller.Role != UserRole.Staff) return ServiceResult<RefundResultDto>.Forbidden("Only Staff can process refunds.");
 
-        var purchase = await _purchaseRepo.GetByIdAsync(id);
-        if (purchase == null)
-            return ServiceResult.NotFound("Sale record not found.");
+        var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+        if (note?.Length > 500) return ServiceResult<RefundResultDto>.BadRequest("The note can be at most 500 characters.");
 
-        if (purchase.Status != PurchaseStatus.Completed)
-            return ServiceResult.BadRequest("Only paid sale records can be refunded.");
+        try
+        {
+            return await RefundInTransactionAsync(id, note, caller);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another Staff member refunded it at the same time; their refund (and adjustment note) stands.
+            return ServiceResult<RefundResultDto>.Conflict("This sale was just refunded — refresh the page.");
+        }
+    }
 
-        // Records a refund Staff have made in the payment provider's dashboard — no money moves here.
-        purchase.RefundAmount = purchase.BuyerFeeIncGst;
-        purchase.RefundedAt = DateTime.UtcNow;
-        purchase.Status = PurchaseStatus.Refunded;
-        await _purchaseRepo.UpdateAsync(purchase);
+    private Task<ServiceResult<RefundResultDto>> RefundInTransactionAsync(Guid id, string? note, User caller) =>
+        _transactions.RunAsync(async () =>
+        {
+            var purchase = await _purchaseRepo.GetByIdAsync(id);
+            if (purchase == null)
+                return ServiceResult<RefundResultDto>.NotFound("Sale record not found.");
+            if (purchase.Status != PurchaseStatus.Completed)
+                return ServiceResult<RefundResultDto>.BadRequest("Only paid sale records can be refunded.");
 
-        await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseRefunded",
-            caller.Id, JsonSerializer.Serialize(new
+            // The adjustment note first, before any tracked entity is modified (the document insert saves
+            // everything pending): if it can't be issued, nothing has been written.
+            TaxDocument? adjustment = null;
+            var alreadyIssued = false;
+            if (await _taxDocumentRepo.GetBuyerFeeInvoiceAsync(purchase.Id) is { } invoice)
             {
-                purchase.RefundAmount, purchase.PaymentProvider, purchase.PaymentReference
+                var result = await _taxDocuments.IssueAdjustmentNoteAsync(invoice,
+                    note == null ? "Buyer fee refunded" : $"Buyer fee refunded — {note}", caller.Id);
+                if (result.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
+                    return ServiceResult<RefundResultDto>.BadRequest(TaxDocumentService.BusinessDetailsMissingMessage);
+                adjustment = result.Document;
+                alreadyIssued = result.Status == TaxDocumentIssueStatus.Existing;
+            }
+
+            // Records a refund Staff have made in the payment provider's dashboard — no money moves here.
+            purchase.RefundAmount = purchase.BuyerFeeIncGst;
+            purchase.RefundedAt = DateTime.UtcNow;
+            purchase.Status = PurchaseStatus.Refunded;
+            await _purchaseRepo.UpdateAsync(purchase);
+
+            await _auditRepo.LogAsync("Purchase", purchase.Id, "PurchaseRefunded", caller.Id, JsonSerializer.Serialize(new
+            {
+                purchase.RefundAmount, purchase.PaymentProvider, purchase.PaymentReference,
+                Note = note, AdjustmentNoteNumber = adjustment?.Number
             }));
 
-        return ServiceResult.Ok();
-    }
+            return ServiceResult<RefundResultDto>.Ok(new RefundResultDto
+            {
+                AdjustmentNoteId = adjustment?.Id,
+                AdjustmentNoteNumber = adjustment?.Number,
+                Message = adjustment == null
+                    ? "Refund recorded. This sale has no tax invoice, so no adjustment note was issued."
+                    : alreadyIssued
+                        ? $"Refund recorded. Adjustment note {adjustment.Number} was already issued."
+                        : $"Refund recorded. Adjustment note {adjustment.Number} has been emailed to the buyer."
+            });
+        });
 
     internal static PurchaseDto MapToDto(Purchase p) => new()
     {

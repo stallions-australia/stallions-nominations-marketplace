@@ -18,6 +18,10 @@ public class StallionSeasonSubscription
     public decimal FeeIncGst { get; set; }
     public decimal FeeExGst { get; set; }
     public decimal GstAmount { get; set; }
+    /// <summary>The standard listing fee when this subscription was created (shown on the tax invoice).</summary>
+    public decimal StandardFeeIncGst { get; set; }
+    /// <summary>The intro offer applied, if any. Not set when Staff entered a fee override.</summary>
+    public Guid? IntroOfferId { get; set; }
 
     public SubscriptionStatus Status { get; set; } = SubscriptionStatus.Pending;
     public SubscriptionPaymentMethod? PaymentMethod { get; set; }
@@ -38,4 +42,5 @@ public class StallionSeasonSubscription
     public Season Season { get; set; } = null!;
     public StudFarm StudFarm { get; set; } = null!;
     public User CreatedBy { get; set; } = null!;
+    public IntroOffer? IntroOffer { get; set; }
 }

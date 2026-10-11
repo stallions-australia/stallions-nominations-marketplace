@@ -12,6 +12,7 @@ using Stallions.Server.Email;
 using Stallions.Server.Options;
 using Stallions.Server.Payments;
 using Stallions.Server.Services;
+using Stallions.Server.TaxDocuments;
 using Stallions.Shared.Enums;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -111,7 +112,6 @@ builder.Services.AddScoped<IListingRepository, ListingRepository>();
 builder.Services.AddScoped<IBidRepository, BidRepository>();
 builder.Services.AddScoped<IPurchaseRepository, PurchaseRepository>();
 builder.Services.AddScoped<IOfferRepository, OfferRepository>();
-builder.Services.AddScoped<INominationBindingRepository, NominationBindingRepository>();
 builder.Services.AddScoped<IEnquiryRepository, EnquiryRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IStudDirectoryRepository, StudDirectoryRepository>();
@@ -121,6 +121,9 @@ builder.Services.AddScoped<IPlatformSettingsRepository, PlatformSettingsReposito
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<ISavedCardRepository, SavedCardRepository>();
 builder.Services.AddScoped<IProcessedPaymentEventRepository, ProcessedPaymentEventRepository>();
+builder.Services.AddScoped<IIntroOfferRepository, IntroOfferRepository>();
+builder.Services.AddScoped<ITaxDocumentRepository, TaxDocumentRepository>();
+builder.Services.AddScoped<ITaxDocumentNumberSource, SqlTaxDocumentNumberSource>();
 
 // Blob Storage (uses DefaultAzureCredential; requires AZURE_STORAGE_ACCOUNT_NAME in appsettings.Development.json)
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
@@ -134,7 +137,6 @@ builder.Services.AddScoped<IBidService, BidService>();
 builder.Services.AddScoped<IPurchaseService, PurchaseService>();
 builder.Services.AddScoped<IOfferService, OfferService>();
 builder.Services.AddScoped<ICardService, CardService>();
-builder.Services.AddScoped<INominationBindingService, NominationBindingService>();
 builder.Services.AddScoped<IEnquiryService, EnquiryService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IDirectoryService, DirectoryService>();
@@ -142,6 +144,10 @@ builder.Services.AddScoped<ITermsService, TermsService>();
 builder.Services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
 builder.Services.AddScoped<IAuctionEmails, AuctionEmails>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
+builder.Services.AddScoped<IIntroOfferService, IntroOfferService>();
+builder.Services.AddScoped<ITaxDocumentEmails, TaxDocumentEmails>();
+builder.Services.AddScoped<ITaxDocumentService, TaxDocumentService>();
+builder.Services.AddScoped<ITaxDocumentQueryService, TaxDocumentQueryService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>

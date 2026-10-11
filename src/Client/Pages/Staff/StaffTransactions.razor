@@ -11,6 +11,8 @@
     <h1 class="admin-page-title">Transactions</h1>
 </div>
 
+@if (_notice is not null) { <div class="alert alert-success">@_notice</div> }
+
 @if (_loading)
 {
     <p>Loading…</p>
@@ -40,6 +42,8 @@ else
                 <th>GST Amount</th>
                 <th>Balance to Stud</th>
                 <th>Status</th>
+                <th>Tax invoice</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -56,16 +60,90 @@ else
                     <td>@t.BuyerFeeGst.ToString("C")</td>
                     <td>@t.BalancePayableToStudIncGst.ToString("C")</td>
                     <td><span class="badge badge-status-@t.Status.ToLowerInvariant()">@t.Status</span></td>
+                    <td class="text-sm">
+                        @if (t.TaxInvoiceId is { } invoiceId)
+                        {
+                            <a href="/tax-documents/@invoiceId">@t.TaxInvoiceNumber</a>
+                            @if (t.AdjustmentNoteNumber is not null)
+                            {
+                                <div class="text-muted text-xs">Adjusted by @t.AdjustmentNoteNumber</div>
+                            }
+                        }
+                        else
+                        {
+                            <text>—</text>
+                        }
+                    </td>
+                    <td>
+                        @if (t.Status == "Completed")
+                        {
+                            <button class="btn btn-sm btn-outline" @onclick="() => OpenRefund(t)">Refund buyer fee</button>
+                        }
+                    </td>
                 </tr>
             }
         </tbody>
     </table>
 }
 
+<Modal IsOpen="@(_refundFor is not null)" Title="@($"Refund buyer fee — {_refundFor?.StallionName}")" OnClose="CloseRefund">
+    <p>Refund @Money(_refundFor?.BuyerFeeIncGst ?? 0) in Stripe first. This records the refund and emails the buyer an adjustment note.</p>
+    <div class="form-group">
+        <label class="form-label" for="refund-note">Note (optional, shown on the adjustment note)</label>
+        <textarea id="refund-note" class="form-control" rows="2" maxlength="500" @bind="_refundNote"
+                  placeholder="e.g. Duplicate charge"></textarea>
+    </div>
+    @if (_refundError is not null) { <div class="alert alert-danger">@_refundError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="RefundAsync" disabled="@_busy">@(_busy ? "Recording…" : "Record refund")</button>
+        <button class="btn btn-outline" @onclick="CloseRefund" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
 @code {
     private List<TransactionDto> _transactions = [];
     private bool _loading = true;
     private string? _error;
+    private TransactionDto? _refundFor;
+    private string? _refundNote;
+    private string? _refundError;
+    private string? _notice;
+    private bool _busy;
+
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+    private static string Money(decimal amount) => amount.ToString("C2", AuCulture);
+
+    private void OpenRefund(TransactionDto t)
+    {
+        _refundFor = t;
+        _refundNote = null;
+        _refundError = null;
+    }
+
+    private void CloseRefund()
+    {
+        _refundFor = null;
+        _refundError = null;
+    }
+
+    private async Task RefundAsync()
+    {
+        if (_refundFor is null) return;
+        _busy = true; _refundError = null; _notice = null;
+        try
+        {
+            var result = await StaffApi.RefundPurchaseAsync(_refundFor.PurchaseId, new RefundBuyerFeeRequest
+            {
+                Note = string.IsNullOrWhiteSpace(_refundNote) ? null : _refundNote.Trim()
+            });
+            _notice = result.Message;
+            CloseRefund();
+            await Load();
+        }
+        catch (Exception ex) { _refundError = ex is ApiException ae ? ae.Message : "Failed to record the refund."; }
+        finally { _busy = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {

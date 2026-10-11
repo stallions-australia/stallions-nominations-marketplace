@@ -18,6 +18,7 @@ public class AdminService : IAdminService
     private readonly ICurrentUserService _currentUser;
     private readonly IUserService _users;
     private readonly IStallionRepository _stallionRepo;
+    private readonly ITaxDocumentRepository _taxDocumentRepo;
 
     public AdminService(
         IListingRepository listingRepo,
@@ -28,9 +29,11 @@ public class AdminService : IAdminService
         IAuditLogRepository auditRepo,
         ICurrentUserService currentUser,
         IUserService users,
-        IStallionRepository stallionRepo)
+        IStallionRepository stallionRepo,
+        ITaxDocumentRepository taxDocumentRepo)
     {
         _stallionRepo = stallionRepo;
+        _taxDocumentRepo = taxDocumentRepo;
         _listingRepo = listingRepo;
         _purchaseRepo = purchaseRepo;
         _userRepo = userRepo;
@@ -66,53 +69,31 @@ public class AdminService : IAdminService
     public async Task<ServiceResult<IReadOnlyList<TransactionDto>>> GetTransactionsAsync()
     {
         var purchases = await _purchaseRepo.GetAllAsync();
-        var dtos = purchases.Select(p => new TransactionDto
+        var documents = await _taxDocumentRepo.GetByPurchaseIdsAsync(purchases.Select(p => p.Id));
+        var dtos = purchases.Select(p =>
         {
-            PurchaseId = p.Id,
-            StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
-            BuyerDisplayName = p.Buyer?.DisplayName ?? string.Empty,
-            StudFarmName = p.Listing?.StudFarm?.Name ?? string.Empty,
-            TotalPriceIncGst = p.TotalPriceIncGst,
-            BuyerFeeIncGst = p.BuyerFeeIncGst,
-            BuyerFeeExGst = p.BuyerFeeExGst,
-            BuyerFeeGst = p.BuyerFeeGst,
-            BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
-            PaidAt = p.PaidAt,
-            Status = p.Status.ToString()
+            var invoice = documents.FirstOrDefault(d => d.PurchaseId == p.Id && d.Kind == TaxDocumentKind.BuyerFeeInvoice);
+            var note = documents.FirstOrDefault(d => d.PurchaseId == p.Id && d.Kind == TaxDocumentKind.AdjustmentNote);
+            return new TransactionDto
+            {
+                PurchaseId = p.Id,
+                StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
+                BuyerDisplayName = p.Buyer?.DisplayName ?? string.Empty,
+                StudFarmName = p.Listing?.StudFarm?.Name ?? string.Empty,
+                TotalPriceIncGst = p.TotalPriceIncGst,
+                BuyerFeeIncGst = p.BuyerFeeIncGst,
+                BuyerFeeExGst = p.BuyerFeeExGst,
+                BuyerFeeGst = p.BuyerFeeGst,
+                BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
+                PaidAt = p.PaidAt,
+                Status = p.Status.ToString(),
+                TaxInvoiceId = invoice?.Id,
+                TaxInvoiceNumber = invoice?.Number,
+                AdjustmentNoteNumber = note?.Number
+            };
         }).ToList();
         return ServiceResult<IReadOnlyList<TransactionDto>>.Ok(dtos);
     }
-
-    public async Task<ServiceResult<IReadOnlyList<InvoiceDto>>> GetInvoicesAsync()
-    {
-        var purchases = await _purchaseRepo.GetAllAsync();
-        var completed = purchases
-            .Where(p => p.Status == PurchaseStatus.Completed && p.PaidAt.HasValue)
-            .ToList();
-
-        var invoices = completed
-            .GroupBy(p => p.Listing?.StudFarmId ?? Guid.Empty)
-            .Select(g => new InvoiceDto
-            {
-                StudFarmId = g.Key,
-                StudFarmName = g.First().Listing?.StudFarm?.Name ?? string.Empty,
-                Lines = g.Select(p => new InvoiceLineDto
-                {
-                    PurchaseId = p.Id,
-                    StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
-                    SalePriceIncGst = p.TotalPriceIncGst,
-                    BuyerFeeIncGst = p.BuyerFeeIncGst,
-                    BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
-                    PaidAt = p.PaidAt!.Value
-                }).ToList(),
-                TotalSalesIncGst = g.Sum(p => p.TotalPriceIncGst),
-                TotalBuyerFeesIncGst = g.Sum(p => p.BuyerFeeIncGst),
-                TotalBalancePayableToStudIncGst = g.Sum(p => p.BalancePayableToStudIncGst)
-            }).ToList();
-
-        return ServiceResult<IReadOnlyList<InvoiceDto>>.Ok(invoices);
-    }
-
 
     public async Task<ServiceResult<IReadOnlyList<StudFarmSummaryDto>>> GetAllStudFarmsAsync()
     {

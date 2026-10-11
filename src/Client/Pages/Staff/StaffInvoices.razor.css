@@ -1,44 +1,39 @@
-.invoice-section {
+.invoice-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
+}
+
+.invoice-filters .form-label { margin: 0; }
+.invoice-filters .form-select, .invoice-filters .form-input { width: auto; min-width: 150px; }
+
+.invoice-totals-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+.invoice-total {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
     background: var(--white);
     border: 1px solid var(--border);
     border-radius: 8px;
-    margin-bottom: var(--space-4);
-    overflow: hidden;
+    padding: var(--space-4) var(--space-5);
 }
 
-.invoice-summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-5) var(--space-6);
-    cursor: pointer;
-    list-style: none;
-    gap: var(--space-4);
-}
+.invoice-total-label { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.invoice-total strong { color: var(--navy); font-size: var(--font-size-xl, 1.25rem); }
+.invoice-total small { color: var(--text-muted); }
+.invoice-total-net { border-color: var(--navy); }
+.invoice-total-unpaid strong { color: var(--warning); }
 
-.invoice-summary::-webkit-details-marker {
-    display: none;
-}
+.num { text-align: right; white-space: nowrap; }
 
-.invoice-farm-name {
-    font-weight: 700;
-    font-size: var(--font-size-lg);
-    color: var(--navy);
-}
-
-.invoice-totals {
-    display: flex;
-    gap: var(--space-6);
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
-}
-
-.remittance-amount {
-    color: var(--navy);
-    font-size: 1.05em;
-}
-
-.invoice-lines {
-    padding: 0 var(--space-6) var(--space-5);
-    border-top: 1px solid var(--border);
+@media (min-width: 900px) {
+    .invoice-totals-grid { grid-template-columns: repeat(4, 1fr); }
 }

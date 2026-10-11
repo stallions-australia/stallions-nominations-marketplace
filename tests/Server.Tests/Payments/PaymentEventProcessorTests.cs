@@ -6,6 +6,7 @@ using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Payments;
+using Stallions.Server.TaxDocuments;
 using Stallions.Server.Tests.Helpers;
 using Stallions.Shared.Enums;
 
@@ -15,6 +16,7 @@ public class PaymentEventProcessorTests : IDisposable
 {
     private readonly AppDbContext _db = DbContextFactory.Create(Guid.NewGuid().ToString());
     private readonly Mock<IPaymentProvider> _provider = new();
+    private readonly Mock<ITaxDocumentService> _taxDocuments = new();
     private readonly User _buyer = new()
     {
         ObjectId = "b", Email = "buyer@x", DisplayName = "Buyer", Role = UserRole.Buyer, Status = UserStatus.Active
@@ -23,6 +25,8 @@ public class PaymentEventProcessorTests : IDisposable
     public PaymentEventProcessorTests()
     {
         _provider.SetupGet(p => p.Name).Returns("Fake");
+        _taxDocuments.Setup(t => t.SettleListingFeeAsync(It.IsAny<StallionSeasonSubscription>(), It.IsAny<DateTime>(), It.IsAny<Guid?>()))
+            .ReturnsAsync(new TaxDocumentIssueResult(TaxDocumentIssueStatus.Issued, new TaxDocument()));
         _db.Users.Add(_buyer);
         _db.SaveChanges();
     }
@@ -32,7 +36,7 @@ public class PaymentEventProcessorTests : IDisposable
     private PaymentEventProcessor CreateSut() => new(
         new ProcessedPaymentEventRepository(_db), new SavedCardRepository(_db), new UserRepository(_db),
         new SubscriptionRepository(_db), new PurchaseRepository(_db), _provider.Object, new AuditLogRepository(_db),
-        new InlineTransactionRunner(), NullLogger<PaymentEventProcessor>.Instance);
+        _taxDocuments.Object, new InlineTransactionRunner(), NullLogger<PaymentEventProcessor>.Instance);
 
     private CardSavedEvent CardSaved(string eventId, string pm = "pm_1", string last4 = "4242") =>
         new(eventId, _buyer.Id, "cus_1", pm, "visa", last4, 8, 2028);
@@ -187,7 +191,7 @@ public class PaymentEventProcessorTests : IDisposable
         var failing = new PaymentEventProcessor(
             new ProcessedPaymentEventRepository(_db), failingCards.Object, new UserRepository(_db),
             new SubscriptionRepository(_db), new PurchaseRepository(_db), _provider.Object, new AuditLogRepository(_db),
-        new InlineTransactionRunner(),
+        _taxDocuments.Object, new InlineTransactionRunner(),
             NullLogger<PaymentEventProcessor>.Instance);
 
         await FluentActions.Awaiting(() => failing.ProcessAsync(CardSaved("evt_1")))
@@ -200,7 +204,7 @@ public class PaymentEventProcessorTests : IDisposable
         IProcessedPaymentEventRepository? processed = null, ISavedCardRepository? cards = null) => new(
         processed ?? new ProcessedPaymentEventRepository(_db), cards ?? new SavedCardRepository(_db),
         new UserRepository(_db), new SubscriptionRepository(_db), new PurchaseRepository(_db), _provider.Object,
-        new AuditLogRepository(_db), new InlineTransactionRunner(), NullLogger<PaymentEventProcessor>.Instance);
+        new AuditLogRepository(_db), _taxDocuments.Object, new InlineTransactionRunner(), NullLogger<PaymentEventProcessor>.Instance);
 
     [Fact]
     public async Task Detach_ThatThrows_IsSwallowedAndTheCardIsStillSaved()
@@ -340,5 +344,41 @@ public class PaymentEventProcessorTests : IDisposable
         var processed = await _db.ProcessedPaymentEvents.SingleAsync();
         processed.EventId.Should().Be("evt_x");
         processed.CompletedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ListingFeePaid_SettlesTheTaxInvoice()
+    {
+        var sub = PendingSubscription(990m);
+
+        await CreateSut().ProcessAsync(new ListingFeePaidEvent("evt_p", sub.Id, 99000, "aud", "pi_1"));
+
+        _taxDocuments.Verify(t => t.SettleListingFeeAsync(It.Is<StallionSeasonSubscription>(s => s.Id == sub.Id
+            && s.Status == SubscriptionStatus.Paid), It.IsAny<DateTime>(), null), Times.Once);
+        _taxDocuments.Verify(t => t.RecordPendingAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<TaxDocumentKind>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ListingFeePaid_WhenNoInvoiceCanBeIssued_StillPays_AndRecordsItAsPending()
+    {
+        var sub = PendingSubscription(990m);
+        _taxDocuments.Setup(t => t.SettleListingFeeAsync(It.IsAny<StallionSeasonSubscription>(), It.IsAny<DateTime>(), It.IsAny<Guid?>()))
+            .ReturnsAsync(TaxDocumentIssueResult.Missing);
+
+        var outcome = await CreateSut().ProcessAsync(new ListingFeePaidEvent("evt_p", sub.Id, 99000, "aud", "pi_1"));
+
+        outcome.Should().Be(PaymentEventOutcome.Processed);
+        (await _db.StallionSeasonSubscriptions.SingleAsync()).Status.Should().Be(SubscriptionStatus.Paid);
+        _taxDocuments.Verify(t => t.RecordPendingAsync("StallionSeasonSubscription", sub.Id, TaxDocumentKind.ListingFeeInvoice), Times.Once);
+    }
+
+    [Fact]
+    public async Task ListingFeePaid_ThatIsRejected_IssuesNoInvoice()
+    {
+        var sub = PendingSubscription(990m);
+
+        await CreateSut().ProcessAsync(new ListingFeePaidEvent("evt_p", sub.Id, 1, "aud", "pi_1"));
+
+        _taxDocuments.Verify(t => t.SettleListingFeeAsync(It.IsAny<StallionSeasonSubscription>(), It.IsAny<DateTime>(), It.IsAny<Guid?>()), Times.Never);
     }
 }

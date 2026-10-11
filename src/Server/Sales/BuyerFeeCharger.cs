@@ -5,6 +5,7 @@ using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Email;
 using Stallions.Server.Payments;
+using Stallions.Server.TaxDocuments;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Sales;
@@ -44,6 +45,7 @@ public class BuyerFeeCharger : IBuyerFeeCharger
     private readonly IPlatformSettingsRepository _settings;
     private readonly IAuditLogRepository _audit;
     private readonly IAuctionEmails _emails;
+    private readonly ITaxDocumentService _taxDocuments;
     private readonly IPaymentProvider _provider;
     private readonly ITransactionRunner _transactions;
     private readonly TimeProvider _clock;
@@ -51,11 +53,12 @@ public class BuyerFeeCharger : IBuyerFeeCharger
 
     public BuyerFeeCharger(
         IPurchaseRepository purchases, IListingRepository listings, IBidRepository bids, ISavedCardRepository cards,
-        IPlatformSettingsRepository settings, IAuditLogRepository audit, IAuctionEmails emails,
+        IPlatformSettingsRepository settings, IAuditLogRepository audit, IAuctionEmails emails, ITaxDocumentService taxDocuments,
         IPaymentProvider provider, ITransactionRunner transactions, TimeProvider clock, ILogger<BuyerFeeCharger> log)
     {
         _purchases = purchases; _listings = listings; _bids = bids; _cards = cards; _settings = settings;
-        _audit = audit; _emails = emails; _provider = provider; _transactions = transactions; _clock = clock; _log = log;
+        _audit = audit; _emails = emails; _taxDocuments = taxDocuments; _provider = provider;
+        _transactions = transactions; _clock = clock; _log = log;
     }
 
     private DateTime Now => _clock.GetUtcNow().UtcDateTime;
@@ -210,6 +213,13 @@ public class BuyerFeeCharger : IBuyerFeeCharger
             {
                 purchase.BuyerFeeIncGst, purchase.BuyerFeeExGst, purchase.BuyerFeeGst, purchase.PaymentReference, attempt.AttemptNo
             }));
+            // The buyer fee tax invoice commits with the sale, before the win email (which links it).
+            // Every change above has already been saved (each repository call saves), so the service's
+            // insert flushes nothing else. Missing business details must never undo a successful charge:
+            // Staff issue it later.
+            var invoice = await _taxDocuments.IssueBuyerFeeInvoiceAsync(purchase);
+            if (invoice.Status == TaxDocumentIssueStatus.BusinessDetailsMissing)
+                await _taxDocuments.RecordPendingAsync("Purchase", purchase.Id, TaxDocumentKind.BuyerFeeInvoice);
             await _emails.WonAndChargedAsync(listing, purchase, purchase.Buyer);
             await _emails.StudSaleConfirmationAsync(listing, purchase, purchase.Buyer);
             return ChargeOutcome.Paid;

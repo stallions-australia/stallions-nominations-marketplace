@@ -20,15 +20,18 @@ public class AuctionEmails : IAuctionEmails
 
     private readonly IEmailOutbox _outbox;
     private readonly IUserRepository _users;
+    private readonly ITaxDocumentRepository _taxDocuments;
     private readonly DisclosureOptions _disclosure;
     private readonly string _baseUrl;
     private readonly ILogger<AuctionEmails> _log;
 
-    public AuctionEmails(IEmailOutbox outbox, IUserRepository users, IOptions<DisclosureOptions> disclosure,
+    public AuctionEmails(IEmailOutbox outbox, IUserRepository users, ITaxDocumentRepository taxDocuments,
+        IOptions<DisclosureOptions> disclosure,
         IOptions<EmailOptions> email, ILogger<AuctionEmails> log)
     {
         _outbox = outbox;
         _users = users;
+        _taxDocuments = taxDocuments;
         _disclosure = disclosure.Value;
         _baseUrl = email.Value.PublicBaseUrl.TrimEnd('/');
         _log = log;
@@ -56,23 +59,32 @@ public class AuctionEmails : IAuctionEmails
 
     private static bool FromOffer(Purchase p) => p.OfferId != null;
 
-    public Task WonAndChargedAsync(Listing listing, Purchase purchase, User winner) => FromOffer(purchase)
-        ? QueueAsync(winner.Email, "OfferAcceptedAndCharged", $"Your offer for the {Name(listing)} nomination was accepted", listing,
-            Para($"Your offer of {Money(purchase.TotalPriceIncGst)} for the {Name(listing)} nomination ({Season(listing)}) was accepted by {Farm(listing)}."),
-            Amounts(purchase, "Price (your accepted offer)", "Balance you pay the stud directly"),
+    public async Task WonAndChargedAsync(Listing listing, Purchase purchase, User winner)
+    {
+        // The charger issues the buyer fee tax invoice just before this email, in the same transaction.
+        var invoice = await _taxDocuments.GetBuyerFeeInvoiceAsync(purchase.Id);
+        var fromOffer = FromOffer(purchase);
+        var blocks = new List<Block>
+        {
+            fromOffer
+                ? Para($"Your offer of {Money(purchase.TotalPriceIncGst)} for the {Name(listing)} nomination ({Season(listing)}) was accepted by {Farm(listing)}.")
+                : Para($"Your bid of {Money(purchase.TotalPriceIncGst)} won the auction for the {Name(listing)} nomination ({Season(listing)}), offered by {Farm(listing)}."),
+            fromOffer
+                ? Amounts(purchase, "Price (your accepted offer)", "Balance you pay the stud directly")
+                : Amounts(purchase, "Price (your winning bid)", "Balance you pay the stud directly"),
             Para($"The buyer fee of {Money(purchase.BuyerFeeIncGst)} has been charged to your saved card."),
             Para(_disclosure.BuyerFeeExplanation),
             Para(_disclosure.StudFarmBalanceArrangement),
-            Para(StudContact(listing)),
-            Link("/my-purchases", "View your sale record"))
-        : QueueAsync(winner.Email, "WonAndCharged", $"You won the {Name(listing)} nomination", listing,
-            Para($"Your bid of {Money(purchase.TotalPriceIncGst)} won the auction for the {Name(listing)} nomination ({Season(listing)}), offered by {Farm(listing)}."),
-            Amounts(purchase, "Price (your winning bid)", "Balance you pay the stud directly"),
-            Para($"The buyer fee of {Money(purchase.BuyerFeeIncGst)} has been charged to your saved card."),
-            Para(_disclosure.BuyerFeeExplanation),
-            Para(_disclosure.StudFarmBalanceArrangement),
-            Para(StudContact(listing)),
-            Link("/my-purchases", "View your sale record"));
+            Para(StudContact(listing))
+        };
+        if (invoice != null)
+            blocks.Add(Link($"/tax-documents/{invoice.Id}", $"Your tax invoice {invoice.Number} is available here"));
+        blocks.Add(Link("/my-purchases", "View your sale record"));
+
+        await (fromOffer
+            ? QueueAsync(winner.Email, "OfferAcceptedAndCharged", $"Your offer for the {Name(listing)} nomination was accepted", listing, blocks.ToArray())
+            : QueueAsync(winner.Email, "WonAndCharged", $"You won the {Name(listing)} nomination", listing, blocks.ToArray()));
+    }
 
     public Task PaymentFailedAsync(Listing listing, Purchase purchase, User winner) =>
         QueueAsync(winner.Email, "PaymentFailed", $"Action needed: payment for {Name(listing)} failed", listing,

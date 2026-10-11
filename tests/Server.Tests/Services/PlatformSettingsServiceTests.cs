@@ -149,4 +149,107 @@ public class PlatformSettingsServiceTests
         details.Should().Contain("150").And.Contain("200");
         details.Should().Contain("990").And.Contain("1100");
     }
+
+    private static UpdateBusinessDetailsRequest Business(string? abn = "12 345 678 901", string? bsb = "062-000",
+        int terms = 14, string? legalName = "Stallions Australia Pty Ltd") => new()
+    {
+        LegalName = legalName, Abn = abn, Address = "1 Racecourse Road\nScone NSW 2337",
+        Email = "accounts@stallions.example", BankAccountName = "Stallions Australia Pty Ltd", BankBsb = bsb,
+        BankAccountNumber = "1234 5678", InvoicePaymentTermsDays = terms
+    };
+
+    private PlatformSettings SignedInStaffWithSettings(out User staff)
+    {
+        staff = Staff();
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(staff);
+        var settings = Current();
+        _repo.Setup(r => r.GetAsync()).ReturnsAsync(settings);
+        return settings;
+    }
+
+    [Fact]
+    public async Task UpdateBusinessDetails_AcceptsSpacesAndHyphens_AndStoresDigitsOnly()
+    {
+        var settings = SignedInStaffWithSettings(out var staff);
+
+        var r = await CreateSut().UpdateBusinessDetailsAsync(Business(abn: " 12 345 678 901 "));
+
+        r.Succeeded.Should().BeTrue(r.Error);
+        settings.BusinessAbn.Should().Be("12345678901");
+        settings.BankBsb.Should().Be("062000");
+        settings.BankAccountNumber.Should().Be("12345678");
+        settings.BusinessAddress.Should().Be("1 Racecourse Road\nScone NSW 2337");
+        settings.InvoicePaymentTermsDays.Should().Be(14);
+        r.Value!.CanIssueTaxDocuments.Should().BeTrue();
+        r.Value.CanIssueUnpaidInvoices.Should().BeTrue();
+        _repo.Verify(x => x.UpdateAsync(settings), Times.Once);
+        _audit.Verify(a => a.LogAsync("PlatformSettings", PlatformSettings.SingletonId, "UpdateBusinessDetails", staff.Id,
+            It.Is<string?>(d => d != null && d.Contains("12345678901") && d.Contains("Old"))), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("1234567890")]
+    [InlineData("123456789012")]
+    [InlineData("1234567890A")]
+    [InlineData("12-345-678-90")]
+    public async Task UpdateBusinessDetails_RejectsABadAbn(string abn)
+    {
+        SignedInStaffWithSettings(out _);
+
+        var r = await CreateSut().UpdateBusinessDetailsAsync(Business(abn: abn));
+
+        r.HttpStatusCode.Should().Be(400);
+        r.Error.Should().Be("ABN must be 11 digits.");
+        _repo.Verify(x => x.UpdateAsync(It.IsAny<PlatformSettings>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("06200")]
+    [InlineData("0620000")]
+    [InlineData("06A-000")]
+    public async Task UpdateBusinessDetails_RejectsABadBsb(string bsb)
+    {
+        SignedInStaffWithSettings(out _);
+
+        var r = await CreateSut().UpdateBusinessDetailsAsync(Business(bsb: bsb));
+
+        r.Error.Should().Be("BSB must be 6 digits.");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(91)]
+    public async Task UpdateBusinessDetails_RejectsPaymentTermsOutOfRange(int terms)
+    {
+        SignedInStaffWithSettings(out _);
+
+        var r = await CreateSut().UpdateBusinessDetailsAsync(Business(terms: terms));
+
+        r.Error.Should().Be("Payment terms must be between 1 and 90 days.");
+    }
+
+    [Fact]
+    public async Task UpdateBusinessDetails_BlankValues_AreStoredAsNull_AndCannotIssue()
+    {
+        var settings = SignedInStaffWithSettings(out _);
+
+        var r = await CreateSut().UpdateBusinessDetailsAsync(Business(abn: "  ", bsb: "", legalName: "   "));
+
+        settings.BusinessLegalName.Should().BeNull();
+        settings.BusinessAbn.Should().BeNull();
+        settings.BankBsb.Should().BeNull();
+        r.Value!.CanIssueTaxDocuments.Should().BeFalse();
+        r.Value.CanIssueUnpaidInvoices.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task BusinessDetails_AsNonStaff_AreForbidden()
+    {
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync())
+            .ReturnsAsync(new User { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active });
+
+        (await CreateSut().GetBusinessDetailsAsync()).HttpStatusCode.Should().Be(403);
+        (await CreateSut().UpdateBusinessDetailsAsync(Business())).HttpStatusCode.Should().Be(403);
+        _repo.Verify(x => x.UpdateAsync(It.IsAny<PlatformSettings>()), Times.Never);
+    }
 }

@@ -1,0 +1,50 @@
+@* A list of tax documents (buyer's or stud's). Adjustment notes are shown as negative amounts. *@
+
+<table class="admin-table tax-doc-list">
+    <thead>
+        <tr>
+            <th>Number</th>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Type</th>
+            <th class="num">Total (incl. GST)</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var d in Documents)
+        {
+            <tr>
+                <td><a href="/tax-documents/@d.Id">@d.Number</a></td>
+                <td>@d.IssuedOn.ToString("d MMM yyyy", Au)</td>
+                <td>@d.Description</td>
+                <td>@KindText(d.Kind)</td>
+                <td class="num">@SignedTotal(d)</td>
+                <td>@StatusText(d)</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TaxDocumentSummaryDto> Documents { get; set; } = [];
+
+    private static readonly System.Globalization.CultureInfo Au = System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+
+    public static string KindText(string kind) => kind switch
+    {
+        "ListingFeeInvoice" => "Listing fee invoice",
+        "BuyerFeeInvoice" => "Buyer fee invoice",
+        "AdjustmentNote" => "Adjustment note",
+        _ => kind
+    };
+
+    public static string SignedTotal(TaxDocumentSummaryDto d) =>
+        (d.Kind == "AdjustmentNote" ? "−" : "") + d.AmountIncGst.ToString("C2", Au);
+
+    public static string StatusText(TaxDocumentSummaryDto d) =>
+        d.ReversedByNumber is { } note ? $"Reversed by {note}"
+        : d.Kind == "AdjustmentNote" ? $"Adjusts {d.OriginalNumber}"
+        : d.Status == "Unpaid" ? (d.DueOn is { } due ? $"Unpaid — due {due.ToString("d MMM yyyy", Au)}" : "Unpaid")
+        : "Paid";
+}
