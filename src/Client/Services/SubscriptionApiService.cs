@@ -48,6 +48,13 @@ public class SubscriptionApiService
         return await ReadSubscription(r);
     }
 
+    /// <summary>Staff: email the stud an unpaid tax invoice for a Pending subscription.</summary>
+    public virtual async Task<SubscriptionDto> IssueInvoiceAsync(Guid id)
+    {
+        var r = await _http.PostAsync($"api/subscriptions/{id}/issue-invoice", null);
+        return await ReadSubscription(r);
+    }
+
     /// <summary>
     /// Starts the listing-fee payment for one of the stud's stallions. Url is the page to send the browser to,
     /// unless an intro offer made the fee $0 (ActivatedWithoutPayment).

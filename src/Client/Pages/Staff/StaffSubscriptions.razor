@@ -4,6 +4,7 @@
 @inject SubscriptionApiService SubscriptionApi
 @inject StaffApiService StaffApi
 @inject PlatformSettingsApiService SettingsApi
+@inject IntroOfferApiService IntroOfferApi
 @inject UserStateService UserState
 @inject NavigationManager Nav
 
@@ -18,6 +19,8 @@
     A stud pays one listing fee per stallion per season. A listing can only be published once its
     stallion's subscription for that season is <strong>Paid</strong> or <strong>Waived</strong>.
 </p>
+
+@if (_notice is not null) { <div class="alert alert-success">@_notice</div> }
 
 <div class="subs-filters">
     <label class="form-label" for="season-filter">Season</label>
@@ -60,6 +63,7 @@ else
                 <th>Fee (inc. GST)</th>
                 <th>Status</th>
                 <th>Payment</th>
+                <th>Tax invoice</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -73,6 +77,10 @@ else
                     <td>
                         @Money(s.FeeIncGst)
                         <div class="text-muted text-xs">ex GST @Money(s.FeeExGst) · GST @Money(s.GstAmount)</div>
+                        @if (s.IntroOfferName is not null)
+                        {
+                            <div class="text-muted text-xs">Intro offer: @s.IntroOfferName (standard @Money(s.StandardFeeIncGst))</div>
+                        }
                     </td>
                     <td><span class="badge badge-sub-@s.Status.ToLowerInvariant()">@s.Status</span></td>
                     <td class="text-sm">
@@ -90,11 +98,30 @@ else
                             <text>—</text>
                         }
                     </td>
+                    <td class="text-sm">
+                        @if (s.TaxInvoiceId is { } invoiceId)
+                        {
+                            <a href="/tax-documents/@invoiceId">@s.TaxInvoiceNumber</a>
+                            <span class="text-muted"> · @s.TaxInvoiceStatus</span>
+                            @if (s.AdjustmentNoteNumber is not null)
+                            {
+                                <div class="text-muted text-xs">Reversed by @s.AdjustmentNoteNumber</div>
+                            }
+                        }
+                        else
+                        {
+                            <text>—</text>
+                        }
+                    </td>
                     <td>
                         @if (s.Status == "Pending")
                         {
                             <button class="btn btn-sm btn-gold" @onclick="() => OpenMarkPaid(s)">Mark paid</button>
                             <button class="btn btn-sm btn-outline" @onclick="() => OpenWaive(s)">Waive</button>
+                            @if (s.TaxInvoiceId is null && s.FeeIncGst > 0)
+                            {
+                                <button class="btn btn-sm btn-outline" @onclick="() => OpenIssueInvoice(s)">Issue tax invoice</button>
+                            }
                         }
                     </td>
                 </tr>
@@ -127,7 +154,7 @@ else
     </div>
     <div class="form-group">
         <label class="form-label" for="new-season">Season</label>
-        <select id="new-season" class="form-select" @bind="_newSeasonId">
+        <select id="new-season" class="form-select" value="@_newSeasonId" @onchange="OnNewSeasonChanged">
             <option value="">— Select a season —</option>
             @foreach (var s in _seasons)
             {
@@ -141,9 +168,15 @@ else
             <span>$</span>
             <input id="new-fee" type="number" class="form-input" min="0.01" step="0.01" @bind="_newFee" />
         </div>
+        @if (_preview is { IntroOfferName: not null } preview && _newFee == _standardFee)
+        {
+            <p class="form-hint intro-offer-preview">
+                Intro offer <strong>@preview.IntroOfferName</strong> applies: @Money(preview.StandardFeeIncGst) → @Money(preview.FeeIncGst)@(preview.FeeIncGst == 0m ? " (the fee will be waived)" : "")
+            </p>
+        }
         <p class="form-hint">
-            Pre-filled with the standard fee (@Money(_standardFee)). Lower it to apply an intro offer;
-            use Waive to remove the fee entirely.
+            Leave the standard fee (@Money(_standardFee)) and the best intro offer applies automatically. Type a different
+            fee to set it by hand — no intro offer is then recorded. Use Waive to remove the fee entirely.
         </p>
     </div>
     <div class="form-group">
@@ -161,6 +194,16 @@ else
 @* ── Mark paid ────────────────────────────────────────────────────────── *@
 <Modal IsOpen="@(_markPaidFor is not null)" Title="@($"Mark paid — {_markPaidFor?.StallionName}")" OnClose="CloseModals">
     <p>Fee: <strong>@Money(_markPaidFor?.FeeIncGst ?? 0)</strong> inc. GST (@_markPaidFor?.SeasonName)</p>
+    <p class="form-hint">
+        @if (_markPaidFor?.TaxInvoiceNumber is { } invoice)
+        {
+            <text>Tax invoice @invoice is marked paid and a receipt is emailed to the stud.</text>
+        }
+        else
+        {
+            <text>A paid tax invoice is emailed to the stud.</text>
+        }
+    </p>
     <div class="form-group">
         <label class="form-label" for="paid-method">Payment method</label>
         <select id="paid-method" class="form-select" @bind="_paidMethod">
@@ -183,6 +226,10 @@ else
 @* ── Waive ────────────────────────────────────────────────────────────── *@
 <Modal IsOpen="@(_waiveFor is not null)" Title="@($"Waive listing fee — {_waiveFor?.StallionName}")" OnClose="CloseModals">
     <p>The fee will be set to $0 and the stallion can be listed for @_waiveFor?.SeasonName.</p>
+    @if (_waiveFor?.TaxInvoiceNumber is { } waivedInvoice)
+    {
+        <p class="form-hint">Tax invoice @waivedInvoice is reversed by an adjustment note emailed to the stud.</p>
+    }
     <div class="form-group">
         <label class="form-label" for="waive-reason">Reason <span class="required">*</span></label>
         <textarea id="waive-reason" class="form-control" rows="2" @bind="_waiveReason"
@@ -191,6 +238,19 @@ else
     @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
     <div class="form-actions">
         <button class="btn btn-gold" @onclick="WaiveAsync" disabled="@_busy">@(_busy ? "Saving…" : "Waive fee")</button>
+        <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@* ── Issue tax invoice ────────────────────────────────────────────────── *@
+<Modal IsOpen="@(_issueFor is not null)" Title="@($"Issue tax invoice — {_issueFor?.StallionName}")" OnClose="CloseModals">
+    <p>
+        Emails @_issueFor?.StudFarmName an unpaid tax invoice for @Money(_issueFor?.FeeIncGst ?? 0) (@_issueFor?.SeasonName),
+        due within the payment terms set in Settings, with the bank details to pay by transfer.
+    </p>
+    @if (_modalError is not null) { <div class="alert alert-danger">@_modalError</div> }
+    <div class="form-actions">
+        <button class="btn btn-gold" @onclick="IssueInvoiceAsync" disabled="@_busy">@(_busy ? "Issuing…" : "Issue and email")</button>
         <button class="btn btn-outline" @onclick="CloseModals" disabled="@_busy">Cancel</button>
     </div>
 </Modal>
@@ -222,6 +282,9 @@ else
 
     private SubscriptionDto? _waiveFor;
     private string _waiveReason = string.Empty;
+    private IntroOfferPreviewDto? _preview;
+    private SubscriptionDto? _issueFor;
+    private string? _notice;
 
     private static readonly System.Globalization.CultureInfo AuCulture =
         System.Globalization.CultureInfo.GetCultureInfo("en-AU");
@@ -274,6 +337,7 @@ else
         _newSeasonId = _seasons.FirstOrDefault(s => s.IsOpen)?.Id ?? Guid.Empty;
         _newFee = _standardFee;
         _newNotes = null;
+        _preview = null;
         _createOpen = true;
     }
 
@@ -282,9 +346,47 @@ else
         _newFarmId = e.Value?.ToString() ?? string.Empty;
         _newStallionId = Guid.Empty;
         _farmStallions = [];
+        _preview = null;
         if (!Guid.TryParse(_newFarmId, out var farmId)) return;
         try { _farmStallions = await StaffApi.GetStudFarmStallionsAsync(farmId); }
         catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to load stallions."; }
+        await LoadPreviewAsync();
+    }
+
+    private async Task OnNewSeasonChanged(ChangeEventArgs e)
+    {
+        _newSeasonId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : Guid.Empty;
+        await LoadPreviewAsync();
+    }
+
+    // A hint only: the server applies the best offer when the subscription is created.
+    private async Task LoadPreviewAsync()
+    {
+        _preview = null;
+        if (!Guid.TryParse(_newFarmId, out var farmId) || _newSeasonId == Guid.Empty) return;
+        try { _preview = await IntroOfferApi.PreviewAsync(farmId, _newSeasonId); }
+        catch (ApiException) { _preview = null; }
+    }
+
+    private void OpenIssueInvoice(SubscriptionDto s)
+    {
+        CloseModals();
+        _issueFor = s;
+    }
+
+    private async Task IssueInvoiceAsync()
+    {
+        if (_issueFor is null) return;
+        _busy = true; _modalError = null; _notice = null;
+        try
+        {
+            var issued = await SubscriptionApi.IssueInvoiceAsync(_issueFor.Id);
+            _notice = $"Tax invoice {issued.TaxInvoiceNumber} issued and emailed to {_issueFor.StudFarmName}.";
+            CloseModals();
+            await LoadAsync();
+        }
+        catch (Exception ex) { _modalError = ex is ApiException ae ? ae.Message : "Failed to issue the tax invoice."; }
+        finally { _busy = false; }
     }
 
     private async Task CreateAsync()
@@ -366,6 +468,7 @@ else
         _createOpen = false;
         _markPaidFor = null;
         _waiveFor = null;
+        _issueFor = null;
         _modalError = null;
     }
 }
