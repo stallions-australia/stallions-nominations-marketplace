@@ -3,7 +3,7 @@ window.stallionsDownload = {
     text: function (fileName, contentType, text) {
         // A byte-order mark so Excel reads the UTF-8 text (em dashes, accents) correctly.
         // HttpContent.ReadAsStringAsync strips the BOM the server writes, so this adds exactly one.
-        const blob = new Blob(['﻿', text], { type: contentType + ';charset=utf-8' });
+        const blob = new Blob([String.fromCharCode(0xFEFF), text], { type: contentType + ';charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
