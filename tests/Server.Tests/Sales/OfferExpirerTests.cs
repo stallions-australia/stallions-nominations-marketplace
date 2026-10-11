@@ -86,7 +86,7 @@ public class OfferExpirerTests
     [Fact]
     public async Task ExpirePendingOffers_ForOneListing_LeavesOthersAlone()
     {
-        var (listingId, offerId) = Seed(_clock.UtcNow.AddDays(30), _clock.UtcNow.AddDays(5));
+        var (listingId, offerId) = Seed(_clock.UtcNow.AddDays(30), _clock.UtcNow.AddDays(5), ListingStatus.Cancelled);
         var (_, otherOffer) = Seed(_clock.UtcNow.AddDays(30), _clock.UtcNow.AddDays(5));
 
         await Sut().ExpirePendingOffersAsync(listingId);
@@ -102,5 +102,16 @@ public class OfferExpirerTests
 
         (await Sut().RunAsync()).Should().Be(0);
         (await Db().Offers.SingleAsync(o => o.Id == offerId)).Status.Should().Be(OfferStatus.Pending);
+    }
+
+    [Fact]
+    public async Task ExpirePendingOffers_OnAnOpenListing_DoesNothing()
+    {
+        var (listingId, offerId) = Seed(_clock.UtcNow.AddDays(30), _clock.UtcNow.AddDays(5));
+
+        await Sut().ExpirePendingOffersAsync(listingId);
+
+        (await Db().Offers.SingleAsync(o => o.Id == offerId)).Status.Should().Be(OfferStatus.Pending);
+        _emails.Verify(e => e.OfferExpiredAsync(It.IsAny<MakeAnOfferListing>(), It.IsAny<Offer>(), It.IsAny<User>(), It.IsAny<bool>()), Times.Never);
     }
 }

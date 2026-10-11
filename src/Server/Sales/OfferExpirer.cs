@@ -12,7 +12,7 @@ public interface IOfferExpirer
 {
     /// <summary>Expires Make an Offer listings past their season end, then pending offers that are past their expiry or on a closed listing.</summary>
     Task<int> RunAsync(CancellationToken ct = default);
-    /// <summary>After a stud closes (or Staff cancel) a Make an Offer listing.</summary>
+    /// <summary>After a stud closes (or Staff cancel) a Make an Offer listing. Call after the listing has been closed; offers on a listing that is still open are left alone.</summary>
     Task ExpirePendingOffersAsync(Guid listingId);
 }
 
@@ -60,7 +60,7 @@ public class OfferExpirer : IOfferExpirer
     public async Task ExpirePendingOffersAsync(Guid listingId)
     {
         foreach (var id in await _offers.GetPendingIdsForListingAsync(listingId))
-            await TryAsync(() => ExpireOfferAsync(id, listingClosing: true), "expire offer", id);
+            await TryAsync(() => ExpireOfferAsync(id), "expire offer", id);
     }
 
     private async Task<bool> ExpireListingAsync(Guid listingId)
@@ -81,12 +81,12 @@ public class OfferExpirer : IOfferExpirer
         return expired;
     }
 
-    private Task<bool> ExpireOfferAsync(Guid offerId, bool listingClosing = false) => _transactions.RunAsync(async () =>
+    private Task<bool> ExpireOfferAsync(Guid offerId) => _transactions.RunAsync(async () =>
     {
         var now = Now;
         var offer = await _offers.GetByIdAsync(offerId);
         if (offer is not { Status: OfferStatus.Pending }) return false;
-        var listingClosed = listingClosing || offer.Listing.Status != ListingStatus.Active || offer.Listing.ExpiresAt <= now;
+        var listingClosed = offer.Listing.Status != ListingStatus.Active || offer.Listing.ExpiresAt <= now;
         if (!listingClosed && offer.ExpiresAt > now) return false;
 
         offer.Status = OfferStatus.Expired;
