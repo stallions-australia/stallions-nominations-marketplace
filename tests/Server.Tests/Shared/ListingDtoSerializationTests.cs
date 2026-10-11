@@ -65,4 +65,19 @@ public class ListingDtoSerializationTests
         fp.Description.Should().Be("Premium service, live foal guarantee.");
         fp.TermsAndConditions.Should().Be("45-day payment required on live foal.");
     }
+
+    [Fact]
+    public void MakeAnOfferListingDto_RoundTrips_AsAListingDto()
+    {
+        var expires = new DateTime(2027, 1, 31, 12, 59, 59, DateTimeKind.Utc);
+        var dto = new MakeAnOfferListingDto { Id = Guid.NewGuid(), ExpiresAt = expires, SourceAuctionListingId = Guid.NewGuid() };
+
+        var json = JsonSerializer.Serialize<ListingDto>(dto);
+        var back = JsonSerializer.Deserialize<ListingDto>(json);
+
+        json.Should().Contain("\"MakeAnOffer\"");
+        var mao = back.Should().BeOfType<MakeAnOfferListingDto>().Subject;
+        mao.ExpiresAt.Should().Be(expires);
+        mao.SourceAuctionListingId.Should().Be(dto.SourceAuctionListingId);
+    }
 }

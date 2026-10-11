@@ -2,6 +2,7 @@ using FluentAssertions;
 using Moq;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Infrastructure;
 using Stallions.Server.Services;
 using Stallions.Shared.DTOs.Listings;
 using Stallions.Shared.Enums;
@@ -17,6 +18,7 @@ public class ListingServiceTests
     private readonly Mock<IUserService> _usersMock = new();
     private readonly Mock<IPlatformSettingsRepository> _settingsRepoMock = new();
     private readonly Mock<ISubscriptionService> _subscriptionsMock = new();
+    private readonly Mock<IAuditLogRepository> _auditMock = new();
 
     public ListingServiceTests()
     {
@@ -36,7 +38,7 @@ public class ListingServiceTests
     private ListingService CreateSut() => new(
         _listingRepoMock.Object, _seasonRepoMock.Object,
         _stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object,
-        _settingsRepoMock.Object, _subscriptionsMock.Object);
+        _settingsRepoMock.Object, _subscriptionsMock.Object, _auditMock.Object);
 
     private void SetBuyerFeeSetting(decimal fee) =>
         _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
@@ -508,5 +510,157 @@ public class ListingServiceTests
         result.Succeeded.Should().BeTrue();
         added!.BuyerFeeIncGst.Should().BeNull();
         added.Status.Should().Be(ListingStatus.Draft);
+    }
+
+    private static AuctionListing UnsoldAuction(Guid farmId, DateOnly seasonEnd) => new()
+    {
+        Id = Guid.NewGuid(), StudFarmId = farmId, StallionId = Guid.NewGuid(), SeasonId = Guid.NewGuid(),
+        Status = ListingStatus.Unsold, CloseReason = ListingCloseReason.ReserveNotMet,
+        EndDateTime = DateTime.UtcNow.AddDays(-1), BuyerFeeIncGst = 150m, PublishedAt = DateTime.UtcNow.AddDays(-8),
+        TermsAndConditions = "Stud terms", Description = "Lovely type",
+        Season = new Season { Name = "2026 Season", EndDate = seasonEnd }
+    };
+
+    private AuctionListing ConvertibleAuction(Guid farmId)
+    {
+        var auction = UnsoldAuction(farmId, DateOnly.FromDateTime(DateTime.UtcNow.AddDays(60)));
+        _listingRepoMock.Setup(r => r.GetByIdAsync(auction.Id)).ReturnsAsync(auction);
+        _subscriptionsMock.Setup(s => s.HasActiveSubscriptionAsync(auction.StallionId, auction.SeasonId)).ReturnsAsync(true);
+        _listingRepoMock.Setup(r => r.AddAsync(It.IsAny<Listing>())).ReturnsAsync((Listing l) => l);
+        SetBuyerFeeSetting(175m);
+        return auction;
+    }
+
+    [Fact]
+    public async Task Convert_CreatesALiveMakeAnOfferListing_FromTheUnsoldLot()
+    {
+        var (_, farm) = SignedInFarm();
+        var auction = ConvertibleAuction(farm.Id);
+        Listing? added = null;
+        _listingRepoMock.Setup(r => r.AddAsync(It.IsAny<Listing>())).Callback<Listing>(l => added = l).ReturnsAsync((Listing l) => l);
+
+        var result = await CreateSut().ConvertToMakeAnOfferAsync(auction.Id);
+
+        result.HttpStatusCode.Should().Be(201);
+        var mao = added.Should().BeOfType<MakeAnOfferListing>().Subject;
+        mao.SourceAuctionListingId.Should().Be(auction.Id);
+        mao.Status.Should().Be(ListingStatus.Active);
+        mao.ListingType.Should().Be(ListingType.MakeAnOffer);
+        mao.BuyerFeeIncGst.Should().Be(175m, "the fee is snapshotted from current settings, like a publish");
+        mao.PublishedAt.Should().NotBeNull();
+        mao.TermsAndConditions.Should().Be("Stud terms");
+        mao.Description.Should().Be("Lovely type");
+        mao.ExpiresAt.Should().Be(SydneyTime.EndOfDayUtc(auction.Season.EndDate));
+        result.Value.Should().BeOfType<MakeAnOfferListingDto>();
+        _auditMock.Verify(a => a.LogAsync("Listing", mao.Id, "ConvertedToMakeAnOffer", It.IsAny<Guid?>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Convert_SomeoneElsesLot_IsForbidden()
+    {
+        SignedInFarm();
+        var auction = ConvertibleAuction(Guid.NewGuid());
+
+        (await CreateSut().ConvertToMakeAnOfferAsync(auction.Id)).HttpStatusCode.Should().Be(403);
+    }
+
+    [Theory]
+    [InlineData(ListingStatus.Active)]
+    [InlineData(ListingStatus.Sold)]
+    [InlineData(ListingStatus.Cancelled)]
+    public async Task Convert_OnlyUnsoldLots(ListingStatus status)
+    {
+        var (_, farm) = SignedInFarm();
+        var auction = ConvertibleAuction(farm.Id);
+        auction.Status = status;
+
+        (await CreateSut().ConvertToMakeAnOfferAsync(auction.Id)).HttpStatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task Convert_AfterTheSeasonEnded_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var auction = ConvertibleAuction(farm.Id);
+        auction.Season.EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-3));
+
+        var result = await CreateSut().ConvertToMakeAnOfferAsync(auction.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Contain("season has ended");
+    }
+
+    [Fact]
+    public async Task Convert_WithoutAPaidListingFee_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var auction = ConvertibleAuction(farm.Id);
+        _subscriptionsMock.Setup(s => s.HasActiveSubscriptionAsync(auction.StallionId, auction.SeasonId)).ReturnsAsync(false);
+
+        (await CreateSut().ConvertToMakeAnOfferAsync(auction.Id)).HttpStatusCode.Should().Be(400);
+    }
+
+    [Fact]
+    public async Task Convert_Twice_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var auction = ConvertibleAuction(farm.Id);
+        _listingRepoMock.Setup(r => r.GetActiveMakeAnOfferForAuctionAsync(auction.Id))
+            .ReturnsAsync(new MakeAnOfferListing { Id = Guid.NewGuid(), Status = ListingStatus.Active });
+
+        var result = await CreateSut().ConvertToMakeAnOfferAsync(auction.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        _listingRepoMock.Verify(r => r.AddAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Unpublish_AMakeAnOfferListing_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var mao = new MakeAnOfferListing { Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            ExpiresAt = DateTime.UtcNow.AddDays(10) };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(mao.Id)).ReturnsAsync(mao);
+
+        var result = await CreateSut().UnpublishListingAsync(mao.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Contain("close it instead");
+    }
+
+    [Fact]
+    public async Task GetById_MapsAMakeAnOfferListing_WithoutAnyPrice()
+    {
+        var mao = new MakeAnOfferListing
+        {
+            Id = Guid.NewGuid(), Status = ListingStatus.Active, ListingType = ListingType.MakeAnOffer,
+            ExpiresAt = new DateTime(2027, 1, 31, 12, 59, 59, DateTimeKind.Utc), BuyerFeeIncGst = 150m,
+            Stallion = new Stallion { Name = "Snitzel" }, Season = new Season { Name = "2026 Season" }, StudFarm = new StudFarm { Name = "Arrowfield" }
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(mao.Id)).ReturnsAsync(mao);
+
+        var dto = (await CreateSut().GetByIdAsync(mao.Id)).Value.Should().BeOfType<MakeAnOfferListingDto>().Subject;
+
+        dto.ListingType.Should().Be("MakeAnOffer");
+        dto.ExpiresAt.Should().Be(mao.ExpiresAt);
+        dto.BuyerFeeIncGst.Should().Be(150m);
+    }
+
+    [Fact]
+    public async Task ListingCards_IncludeMakeAnOfferListings()
+    {
+        var mao = new MakeAnOfferListing
+        {
+            Id = Guid.NewGuid(), Status = ListingStatus.Active, ListingType = ListingType.MakeAnOffer,
+            ExpiresAt = DateTime.UtcNow.AddDays(30), Stallion = new Stallion { Name = "Snitzel" },
+            StudFarm = new StudFarm { Name = "Arrowfield" }, Season = new Season { Name = "2026 Season" }
+        };
+        _listingRepoMock.Setup(r => r.GetActiveAsync(null, null, ListingType.MakeAnOffer)).ReturnsAsync(new List<Listing> { mao });
+
+        var cards = (await CreateSut().GetListingCardsAsync(null, null, "MakeAnOffer")).Value!;
+
+        cards.Single().ListingType.Should().Be("MakeAnOffer");
+        cards.Single().OffersUntil.Should().Be(mao.ExpiresAt);
+        cards.Single().CurrentHighestBidIncGst.Should().BeNull();
     }
 }

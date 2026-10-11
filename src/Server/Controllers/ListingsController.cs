@@ -88,6 +88,14 @@ public class ListingsController : ControllerBase
         return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
     }
 
+    [HttpPost("{id:guid}/make-an-offer")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
+    public async Task<IActionResult> ConvertToMakeAnOffer(Guid id)
+    {
+        var r = await _listings.ConvertToMakeAnOfferAsync(id);
+        return r.Succeeded ? StatusCode(201, r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
     [HttpPost("{id:guid}/close")]
     [Authorize(Policy = "StudFarmAdminOnly")]
     public async Task<IActionResult> Close(Guid id)

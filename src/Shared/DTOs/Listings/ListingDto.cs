@@ -9,6 +9,7 @@ namespace Stallions.Shared.DTOs.Listings;
 // See: ListingDtoSerializationTests for verification.
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "listingType")]
 [JsonDerivedType(typeof(AuctionListingDto), "Auction")]
+[JsonDerivedType(typeof(MakeAnOfferListingDto), "MakeAnOffer")]
 public class ListingDto
 {
     public Guid Id { get; set; }

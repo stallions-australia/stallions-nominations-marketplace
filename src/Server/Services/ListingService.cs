@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Stallions.Server.Infrastructure;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Shared.DTOs.Listings;
@@ -14,6 +16,7 @@ public class ListingService : IListingService
     private readonly IUserService _users;
     private readonly IPlatformSettingsRepository _settingsRepo;
     private readonly ISubscriptionService _subscriptions;
+    private readonly IAuditLogRepository _audit;
 
     public ListingService(
         IListingRepository listingRepo,
@@ -22,7 +25,8 @@ public class ListingService : IListingService
         IStudFarmRepository farmRepo,
         IUserService users,
         IPlatformSettingsRepository settingsRepo,
-        ISubscriptionService subscriptions)
+        ISubscriptionService subscriptions,
+        IAuditLogRepository audit)
     {
         _listingRepo = listingRepo;
         _seasonRepo = seasonRepo;
@@ -31,6 +35,7 @@ public class ListingService : IListingService
         _users = users;
         _settingsRepo = settingsRepo;
         _subscriptions = subscriptions;
+        _audit = audit;
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff)
@@ -76,7 +81,10 @@ public class ListingService : IListingService
         if (listing.StudFarmId != farm.Id)
             return ServiceResult<ListingDto>.Forbidden("You do not have permission to view this listing.");
 
-        return ServiceResult<ListingDto>.Ok(await ToDtoAsync(listing, canSeeReserve: true));
+        var dto = await ToDtoAsync(listing, canSeeReserve: true);
+        if (dto is AuctionListingDto auctionDto && listing.Status == ListingStatus.Unsold)
+            auctionDto.MakeAnOfferListingId = (await _listingRepo.GetActiveMakeAnOfferForAuctionAsync(listing.Id))?.Id;
+        return ServiceResult<ListingDto>.Ok(dto);
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetMineAsync()
@@ -256,6 +264,9 @@ public class ListingService : IListingService
         if (listing.StudFarmId != farm.Id)
             return ServiceResult.Forbidden("You do not have permission to unpublish this listing.");
 
+        if (listing is MakeAnOfferListing)
+            return ServiceResult.BadRequest("Make an Offer listings can't be unpublished — close it instead.");
+
         if (listing.Status != ListingStatus.Active)
             return ServiceResult.BadRequest("Only Active listings can be unpublished.");
 
@@ -308,7 +319,7 @@ public class ListingService : IListingService
     // Closed or being charged: the stud and Staff edit flows cannot change it any more.
     private static bool IsFinished(ListingStatus status) =>
         status is ListingStatus.Cancelled or ListingStatus.Sold
-            or ListingStatus.AwaitingPayment or ListingStatus.Unsold;
+            or ListingStatus.AwaitingPayment or ListingStatus.Unsold or ListingStatus.Expired;
 
     public async Task<ServiceResult> CancelListingAsync(Guid id)
     {
@@ -374,12 +385,67 @@ public class ListingService : IListingService
         return ServiceResult<ListingDto>.Created(MapToDto(created, canSeeReserve: true, highestBid: null));
     }
 
+    public async Task<ServiceResult<ListingDto>> ConvertToMakeAnOfferAsync(Guid auctionId)
+    {
+        var caller = await _users.GetOrCreateCurrentUserAsync();
+        if (caller == null)
+            return ServiceResult<ListingDto>.Forbidden("Caller identity could not be resolved.");
+
+        var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
+        if (farm == null)
+            return ServiceResult<ListingDto>.Forbidden("No stud farm found for the current user.");
+
+        var listing = await _listingRepo.GetByIdAsync(auctionId);
+        if (listing == null)
+            return ServiceResult<ListingDto>.NotFound("Listing not found.");
+        if (listing.StudFarmId != farm.Id)
+            return ServiceResult<ListingDto>.Forbidden("You do not have permission to change this listing.");
+        if (listing is not AuctionListing auction || auction.Status != ListingStatus.Unsold)
+            return ServiceResult<ListingDto>.BadRequest("Only an auction lot that closed unsold can be offered as Make an Offer.");
+
+        var season = auction.Season;
+        if (season == null || SydneyTime.Today(DateTime.UtcNow) > season.EndDate)
+            return ServiceResult<ListingDto>.BadRequest("The season has ended, so this lot can no longer be offered.");
+
+        if (!await _subscriptions.HasActiveSubscriptionAsync(auction.StallionId, auction.SeasonId))
+            return ServiceResult<ListingDto>.BadRequest(
+                $"This stallion has no paid listing fee for {season.Name}. Contact Stallions Australia.");
+
+        if (await _listingRepo.GetActiveMakeAnOfferForAuctionAsync(auction.Id) != null)
+            return ServiceResult<ListingDto>.BadRequest("This lot is already open for offers.");
+
+        // Goes live straight away; the buyer fee is locked in now, exactly as when an auction is published.
+        var offerListing = new MakeAnOfferListing
+        {
+            StallionId = auction.StallionId,
+            SeasonId = auction.SeasonId,
+            StudFarmId = auction.StudFarmId,
+            ListingType = ListingType.MakeAnOffer,
+            Status = ListingStatus.Active,
+            BuyerFeeIncGst = (await _settingsRepo.GetAsync()).BuyerFeeIncGst,
+            Description = auction.Description,
+            TermsAndConditions = auction.TermsAndConditions,
+            PublishedAt = DateTime.UtcNow,
+            SourceAuctionListingId = auction.Id,
+            ExpiresAt = SydneyTime.EndOfDayUtc(season.EndDate)
+        };
+        var created = await _listingRepo.AddAsync(offerListing);
+        await _audit.LogAsync("Listing", created.Id, "ConvertedToMakeAnOffer", caller.Id,
+            JsonSerializer.Serialize(new { SourceAuctionListingId = auction.Id, created.BuyerFeeIncGst, offerListing.ExpiresAt }));
+
+        created.Stallion = auction.Stallion;
+        created.Season = season;
+        created.StudFarm = auction.StudFarm;
+        return ServiceResult<ListingDto>.Created(MapToDto(created, canSeeReserve: true, highestBid: null));
+    }
+
     public async Task<ServiceResult<IReadOnlyList<ListingCardDto>>> GetListingCardsAsync(
         Guid? seasonId, Guid? studFarmId, string? type)
     {
         ListingType? listingType = type switch
         {
             "Auction" => ListingType.Auction,
+            "MakeAnOffer" => ListingType.MakeAnOffer,
             _         => null
         };
 
@@ -420,6 +486,22 @@ public class ListingService : IListingService
                 BidCount         = bidData.Count,
                 AuctionClosesAt  = al.EndDateTime,
                 ReserveMet       = al.IsReserveMetBy(bidData.Highest)
+            };
+        }
+
+        if (l is MakeAnOfferListing m)
+        {
+            return new ListingCardDto
+            {
+                Id               = m.Id,
+                ListingType      = "MakeAnOffer",
+                StallionId       = m.StallionId,
+                StallionName     = m.Stallion?.Name ?? string.Empty,
+                PrimaryImagePath = primaryImage,
+                StudFarmId       = m.StudFarmId,
+                StudFarmName     = m.StudFarm?.Name ?? string.Empty,
+                SeasonName       = m.Season?.Name,
+                OffersUntil      = m.ExpiresAt
             };
         }
 
@@ -466,6 +548,27 @@ public class ListingService : IListingService
             MinimumBidIncrement = al.MinimumBidIncrement,
             EndDateTime = al.EndDateTime,
             CurrentHighestBidIncGst = highestBid
+        },
+        MakeAnOfferListing m => new MakeAnOfferListingDto
+        {
+            Id = m.Id,
+            StallionId = m.StallionId,
+            StallionName = m.Stallion?.Name ?? string.Empty,
+            SeasonId = m.SeasonId,
+            SeasonName = m.Season?.Name ?? string.Empty,
+            StudFarmId = m.StudFarmId,
+            StudFarmName = m.StudFarm?.Name ?? string.Empty,
+            ListingType = m.ListingType.ToString(),
+            Status = m.Status.ToString(),
+            BuyerFeeIncGst = m.BuyerFeeIncGst,
+            CreatedAt = m.CreatedAt,
+            PublishedAt = m.PublishedAt,
+            ClosedAt = m.ClosedAt,
+            CloseReason = m.CloseReason?.ToString(),
+            Description = m.Description,
+            TermsAndConditions = m.TermsAndConditions,
+            ExpiresAt = m.ExpiresAt,
+            SourceAuctionListingId = m.SourceAuctionListingId
         },
         _ => throw new InvalidOperationException($"Unknown listing type: {l.GetType().Name}")
     };

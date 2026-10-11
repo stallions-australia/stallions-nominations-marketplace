@@ -160,6 +160,7 @@ public class EnquiryService : IEnquiryService
     {
         AuctionListing al =>
             $"{al.Stallion?.Name} — Auction ({al.Season?.Name})",
+        MakeAnOfferListing m => $"{m.Stallion?.Name} — Make an Offer ({m.Season?.Name})",
         _ => string.Empty
     };
 
