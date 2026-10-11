@@ -2,5 +2,6 @@ namespace Stallions.Shared.Enums;
 
 public enum ListingType
 {
-    Auction
+    Auction,
+    MakeAnOffer
 }

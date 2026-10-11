@@ -8,6 +8,8 @@ public class Purchase : IHasConcurrencyStamp
     public Guid ListingId { get; set; }
     public Guid BuyerUserId { get; set; }
     public Guid? BidId { get; set; }
+    /// <summary>Set when the sale came from an accepted offer (exactly one of BidId / OfferId is set).</summary>
+    public Guid? OfferId { get; set; }
     public decimal TotalPriceIncGst { get; set; }
     // Flat buyer fee paid to Stallions Australia, split for BAS. It forms part of the price.
     public decimal BuyerFeeIncGst { get; set; }
@@ -47,5 +49,6 @@ public class Purchase : IHasConcurrencyStamp
     public Listing Listing { get; set; } = null!;
     public User Buyer { get; set; } = null!;
     public Bid? Bid { get; set; }
+    public Offer? Offer { get; set; }
     public NominationBinding? NominationBinding { get; set; }
 }

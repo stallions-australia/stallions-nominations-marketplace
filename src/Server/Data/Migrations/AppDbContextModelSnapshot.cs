@@ -274,6 +274,53 @@ namespace Stallions.Server.Data.Migrations
                     b.ToTable("NominationBindings");
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.Offer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("AmountIncGst")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<Guid>("BuyerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuyerUserId");
+
+                    b.HasIndex("ListingId", "BuyerUserId")
+                        .IsUnique()
+                        .HasFilter("[Status] = 'Pending'");
+
+                    b.HasIndex("Status", "ExpiresAt");
+
+                    b.ToTable("Offers");
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.OutboundEmail", b =>
                 {
                     b.Property<Guid>("Id")
@@ -485,6 +532,9 @@ namespace Stallions.Server.Data.Migrations
                     b.Property<Guid>("ListingId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("OfferId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("datetime2");
 
@@ -524,6 +574,10 @@ namespace Stallions.Server.Data.Migrations
                     b.HasIndex("BuyerUserId");
 
                     b.HasIndex("ListingId");
+
+                    b.HasIndex("OfferId")
+                        .IsUnique()
+                        .HasFilter("[OfferId] IS NOT NULL AND [Status] <> 'Voided'");
 
                     b.HasIndex("Status", "ChargeDueBy");
 
@@ -1078,6 +1132,21 @@ namespace Stallions.Server.Data.Migrations
                     b.ToTable("AuctionListings", (string)null);
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.MakeAnOfferListing", b =>
+                {
+                    b.HasBaseType("Stallions.Server.Data.Entities.Listing");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SourceAuctionListingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasIndex("SourceAuctionListingId");
+
+                    b.ToTable("MakeAnOfferListings", (string)null);
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.AuditLog", b =>
                 {
                     b.HasOne("Stallions.Server.Data.Entities.User", "User")
@@ -1198,6 +1267,25 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("Purchase");
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.Offer", b =>
+                {
+                    b.HasOne("Stallions.Server.Data.Entities.User", "Buyer")
+                        .WithMany()
+                        .HasForeignKey("BuyerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Stallions.Server.Data.Entities.MakeAnOfferListing", "Listing")
+                        .WithMany("Offers")
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Buyer");
+
+                    b.Navigation("Listing");
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.PlatformSettings", b =>
                 {
                     b.HasOne("Stallions.Server.Data.Entities.User", "UpdatedBy")
@@ -1227,11 +1315,18 @@ namespace Stallions.Server.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Stallions.Server.Data.Entities.Offer", "Offer")
+                        .WithMany()
+                        .HasForeignKey("OfferId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Bid");
 
                     b.Navigation("Buyer");
 
                     b.Navigation("Listing");
+
+                    b.Navigation("Offer");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.SavedCard", b =>
@@ -1385,6 +1480,23 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("WinningBid");
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.MakeAnOfferListing", b =>
+                {
+                    b.HasOne("Stallions.Server.Data.Entities.Listing", null)
+                        .WithOne()
+                        .HasForeignKey("Stallions.Server.Data.Entities.MakeAnOfferListing", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Stallions.Server.Data.Entities.AuctionListing", "SourceAuctionListing")
+                        .WithMany()
+                        .HasForeignKey("SourceAuctionListingId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("SourceAuctionListing");
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.Enquiry", b =>
                 {
                     b.Navigation("Messages");
@@ -1442,6 +1554,11 @@ namespace Stallions.Server.Data.Migrations
             modelBuilder.Entity("Stallions.Server.Data.Entities.AuctionListing", b =>
                 {
                     b.Navigation("Bids");
+                });
+
+            modelBuilder.Entity("Stallions.Server.Data.Entities.MakeAnOfferListing", b =>
+                {
+                    b.Navigation("Offers");
                 });
 #pragma warning restore 612, 618
         }
