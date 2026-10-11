@@ -65,6 +65,7 @@
         _offers = null;
         try { _offers = await OfferApi.GetMineAsync(); }
         catch (ApiException) { _error = "Failed to load your offers. Please try again."; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException) { _error = NetworkErrorText(ex); }
     }
 
     private async Task Withdraw(OfferDto offer)
@@ -72,8 +73,13 @@
         _busy = true;
         try { await OfferApi.WithdrawAsync(offer.Id); offer.Status = "Withdrawn"; }
         catch (ApiException ex) { _error = ex.Message; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException) { _error = NetworkErrorText(ex); }
         finally { _busy = false; }
     }
+
+    private static string NetworkErrorText(Exception ex) => ex is AccessTokenNotAvailableException
+        ? "Your session has expired — please sign in again."
+        : "We couldn't reach the server. Check your connection and try again.";
 
     private static string Label(OfferDto o) => (o.Status, o.SaleStatus) switch
     {

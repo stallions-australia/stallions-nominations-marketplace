@@ -307,6 +307,7 @@ else
     <OfferConfirmationModal AmountIncGst="@_offerAmount" BuyerFeeIncGst="@confirmListing.BuyerFeeIncGst"
                             BuyerFeeExplanation="@_disclosure?.BuyerFeeExplanation"
                             BalanceArrangement="@_disclosure?.BalanceArrangement"
+                            ConfirmDisabled="@(_disclosure is null)" DisclosureError="@DisclosureErrorText"
                             OnConfirm="SendOffer" OnCancel="() => _showOfferConfirm = false" />
 }
 
@@ -314,6 +315,7 @@ else
 {
     <BidConfirmationModal BuyerFeeIncGst="@((_listing as AuctionListingDto)?.BuyerFeeIncGst)"
                           BuyerFeeExplanation="@_disclosure?.BuyerFeeExplanation"
+                          ConfirmDisabled="@(_disclosure is null)" DisclosureError="@DisclosureErrorText"
                           OnConfirm="ConfirmBidAndPlace" OnCancel="() => _showBidConfirm = false" />
 }
 
@@ -400,10 +402,22 @@ else
         catch (ApiException) { _bidHistory = []; }
     }
 
+    private bool _disclosureFailed;
+
+    private string? DisclosureErrorText => _disclosureFailed
+        ? "We couldn't load the buyer fee information, so you can't confirm right now. Refresh the page to try again."
+        : null;
+
+    private static string NetworkErrorText(Exception ex) => ex is AccessTokenNotAvailableException
+        ? "Your session has expired — please sign in again."
+        : "We couldn't reach the server. Check your connection and try again.";
+
     private async Task LoadDisclosureAsync()
     {
-        try { _disclosure = await ListingApi.GetBuyerFeeDisclosureAsync(); }
-        catch (ApiException) { _disclosure = null; }
+        _disclosure = null;
+        _disclosureFailed = false;
+        try { _disclosure = await ListingApi.GetBuyerFeeDisclosureAsync(); _disclosureFailed = _disclosure is null; }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException) { _disclosure = null; _disclosureFailed = true; }
     }
 
     // Bidding needs a valid saved card. Only signed-in buyers have one to check.
@@ -456,6 +470,7 @@ else
         _bidError = null;
         if (UserState.SuppressBidConfirmation)
         {
+            if (_disclosure is null) { _bidError = DisclosureErrorText ?? "Still loading the buyer fee information — try again in a moment."; return; }
             _ = DoPlaceBidAsync();
         }
         else
@@ -544,6 +559,7 @@ else
         _offerBusy = true;
         try { _myOffer = await OfferApi.MakeOfferAsync(Id, _offerAmount); }
         catch (ApiException ex) { _offerError = ex.Message; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException) { _offerError = NetworkErrorText(ex); }
         finally { _offerBusy = false; }
     }
 
@@ -557,6 +573,7 @@ else
             _myOffer.Status = "Withdrawn";
         }
         catch (ApiException ex) { _offerError = ex.Message; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException) { _offerError = NetworkErrorText(ex); }
         finally { _offerBusy = false; }
     }
 

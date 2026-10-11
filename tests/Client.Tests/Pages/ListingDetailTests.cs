@@ -21,13 +21,14 @@ public class ListingDetailTests : TestContext
 
     private void RegisterServices(ListingDto listing, string? role = null, List<PublicBidDto>? history = null,
         SavedCardDto? card = null, Exception? cardError = null, MyAuctionResultDto? myResult = null,
-        OfferDto? myOffer = null)
+        OfferDto? myOffer = null, bool disclosureFails = false)
     {
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         listingMock.Setup(s => s.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
         listingMock.Setup(s => s.GetBidHistoryAsync(listing.Id)).ReturnsAsync(history ?? []);
-        listingMock.Setup(s => s.GetBuyerFeeDisclosureAsync()).ReturnsAsync(new BuyerFeeDisclosureDto
+        if (disclosureFails) listingMock.Setup(s => s.GetBuyerFeeDisclosureAsync()).ThrowsAsync(new ApiException(503, "down"));
+        else listingMock.Setup(s => s.GetBuyerFeeDisclosureAsync()).ReturnsAsync(new BuyerFeeDisclosureDto
         {
             BuyerFeeExplanation = "CONFIGURED: the buyer fee forms part of the price.",
             BalanceArrangement = "CONFIGURED: pay the stud directly."
@@ -367,5 +368,77 @@ public class ListingDetailTests : TestContext
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("No longer taking offers"));
         cut.FindAll("input.offer-amount").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TheOfferConfirmation_ShowsAndSendsTheExactAmountWithCents()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = OfferListing();
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true });
+        _offerMock!.Setup(s => s.MakeOfferAsync(listing.Id, 20000.50m)).ReturnsAsync(new OfferDto { Id = Guid.NewGuid(),
+            AmountIncGst = 20000.50m, Status = "Pending", ExpiresAt = DateTime.UtcNow.AddDays(7), ListingOpen = true });
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+        cut.WaitForAssertion(() => cut.Find("input.offer-amount"));
+
+        cut.Find("input.offer-amount").Change("20000.50");
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Make an offer").Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Confirm your offer"));
+        cut.Markup.Should().Contain("$20,000.50").And.Contain("$19,850.50");
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Send offer")).Click();
+        _offerMock.Verify(s => s.MakeOfferAsync(listing.Id, 20000.50m), Times.Once);
+    }
+
+    [Fact]
+    public void TheOfferConfirmation_CannotBeSent_WhenTheDisclosureFailedToLoad()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = OfferListing();
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true }, disclosureFails: true);
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+        cut.WaitForAssertion(() => cut.Find("input.offer-amount"));
+
+        cut.Find("input.offer-amount").Change("9000");
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Make an offer").Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Confirm your offer"));
+        cut.Markup.Should().Contain("couldn't load the buyer fee information");
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Send offer")).HasAttribute("disabled").Should().BeTrue();
+    }
+
+    [Fact]
+    public void TheBidConfirmation_CannotBeConfirmed_WhenTheDisclosureFailedToLoad()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = ActiveAuction();
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true }, disclosureFails: true);
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+        cut.WaitForAssertion(() => cut.FindAll(".bid-form").Should().ContainSingle());
+
+        cut.Find(".bid-form input").Change("200");
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Place bid").Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Confirm your bid"));
+        cut.Markup.Should().Contain("couldn't load the buyer fee information");
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Confirm bid")).HasAttribute("disabled").Should().BeTrue();
+    }
+
+    [Fact]
+    public void AOfferThatFailsOnTheNetwork_ShowsAFriendlyError()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = OfferListing();
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true });
+        _offerMock!.Setup(s => s.MakeOfferAsync(listing.Id, 9000m)).ThrowsAsync(new HttpRequestException("offline"));
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+        cut.WaitForAssertion(() => cut.Find("input.offer-amount"));
+
+        cut.Find("input.offer-amount").Change("9000");
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Make an offer").Click();
+        cut.WaitForAssertion(() => cut.FindAll("button").Single(b => b.TextContent.Contains("Send offer")));
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Send offer")).Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("couldn't reach the server"));
     }
 }

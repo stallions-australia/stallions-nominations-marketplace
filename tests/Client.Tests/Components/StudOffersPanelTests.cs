@@ -88,4 +88,18 @@ public class StudOffersPanelTests : TestContext
 
         _api.Verify(a => a.DeclineAsync(_pending.Id), Times.Once);
     }
+
+    [Fact]
+    public void Accept_WhenTheNetworkFails_ShowsAnError_AndReloadsTheTrueState()
+    {
+        _api.Setup(a => a.AcceptAsync(_pending.Id)).ThrowsAsync(new HttpRequestException("offline"));
+        var cut = Render(_pending);
+        cut.WaitForAssertion(() => cut.FindAll("button").Single(b => b.TextContent.Trim() == "Accept"));
+
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Accept").Click();
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Yes, accept")).Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("couldn't reach the server"));
+        _api.Verify(a => a.GetForListingAsync(_listingId), Times.Exactly(2));
+    }
 }

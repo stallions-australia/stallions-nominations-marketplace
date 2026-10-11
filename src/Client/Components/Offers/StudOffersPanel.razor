@@ -61,6 +61,7 @@
     {
         try { _offers = await OfferApi.GetForListingAsync(ListingId); }
         catch (ApiException ex) { _error = ex.Message; _offers = new(); }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException) { _error = NetworkErrorText(ex); _offers ??= new(); }
     }
 
     private async Task Accept(StudOfferDto offer)
@@ -80,6 +81,12 @@
             await Load();
         }
         catch (ApiException ex) { _error = ex.Message; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException)
+        {
+            // The request may or may not have reached the server — show the stud the true state.
+            _error = NetworkErrorText(ex);
+            await Load();
+        }
         finally { _busy = false; }
     }
 
@@ -88,8 +95,18 @@
         _busy = true; _error = null; _message = null;
         try { await OfferApi.DeclineAsync(offer.Id); _message = "Offer declined; the buyer has been told."; await Load(); }
         catch (ApiException ex) { _error = ex.Message; }
+        catch (Exception ex) when (ex is HttpRequestException or AccessTokenNotAvailableException)
+        {
+            // The request may or may not have reached the server — show the stud the true state.
+            _error = NetworkErrorText(ex);
+            await Load();
+        }
         finally { _busy = false; }
     }
+
+    private static string NetworkErrorText(Exception ex) => ex is AccessTokenNotAvailableException
+        ? "Your session has expired — please sign in again."
+        : "We couldn't reach the server. Check your connection and try again.";
 
     private static string StatusText(StudOfferDto o) => (o.Status, o.SaleStatus) switch
     {

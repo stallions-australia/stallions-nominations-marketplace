@@ -31,4 +31,21 @@ public class MyOffersTests : TestContext
         cut.Find("a[href='/my-purchases']").Should().NotBeNull();
         cut.FindAll("button").Count(b => b.TextContent.Contains("Withdraw")).Should().Be(1);
     }
+
+    [Fact]
+    public void Withdraw_WhenTheNetworkFails_ShowsAnError()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var offer = new OfferDto { Id = Guid.NewGuid(), StallionName = "Dundeel (NZ)", AmountIncGst = 9000m, Status = "Pending", ExpiresAt = DateTime.UtcNow.AddDays(5), ListingOpen = true };
+        var api = new Mock<OfferApiService>(MockBehavior.Loose, new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        api.Setup(a => a.GetMineAsync()).ReturnsAsync(new List<OfferDto> { offer });
+        api.Setup(a => a.WithdrawAsync(offer.Id)).ThrowsAsync(new HttpRequestException("offline"));
+        Services.AddSingleton(api.Object);
+        var cut = RenderComponent<MyOffers>();
+        cut.WaitForAssertion(() => cut.FindAll("button").Single(b => b.TextContent.Contains("Withdraw")));
+
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Withdraw")).Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("couldn't reach the server"));
+    }
 }
