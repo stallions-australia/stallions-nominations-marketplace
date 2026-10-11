@@ -25,7 +25,11 @@
     <div class="card-body">
         <div class="card-price-row">
             <div>
-                @if (Listing.CurrentHighestBidIncGst is decimal highBid)
+                @if (Listing.ListingType == "MakeAnOffer")
+                {
+                    <span class="card-gst-label">Open to offers</span>
+                }
+                else if (Listing.CurrentHighestBidIncGst is decimal highBid)
                 {
                     <PriceDisplay Amount="@highBid" />
                     <span class="card-gst-label">inc. GST</span>
@@ -42,9 +46,17 @@
 
         </div>
 
-        <div class="progress-bar-track">
-            <div class="progress-bar-fill @GetProgressClass()" style="width: @(GetProgressWidthPct().ToString("F0"))%"></div>
-        </div>
+        @if (Listing.ListingType != "MakeAnOffer")
+        {
+            <div class="progress-bar-track">
+                <div class="progress-bar-fill @GetProgressClass()" style="width: @(GetProgressWidthPct().ToString("F0"))%"></div>
+            </div>
+        }
+
+        @if (Listing.ListingType == "MakeAnOffer" && Listing.OffersUntil.HasValue)
+        {
+            <span class="card-meta">Offers until @Listing.OffersUntil.Value.ToLocalTime().ToString("d MMM yyyy")</span>
+        }
 
         @if (Listing.ListingType == "Auction" && Listing.AuctionClosesAt.HasValue)
         {
@@ -55,7 +67,7 @@
             <button class="btn btn-primary btn-sm"
                     @onclick:stopPropagation="true"
                     @onclick="NavigateToListing">
-                @(Listing.ListingType == "Auction" ? "Place a bid" : "View listing")
+                @(Listing.ListingType switch { "Auction" => "Place a bid", "MakeAnOffer" => "Make an offer", _ => "View listing" })
             </button>
             <button class="btn btn-outline btn-sm"
                     @onclick:stopPropagation="true"
@@ -81,13 +93,19 @@
         Listing.AuctionClosesAt.HasValue &&
         (Listing.AuctionClosesAt.Value - DateTime.UtcNow).TotalHours < 6;
 
-    private string GetBadgeClass() => Listing.ListingType == "Auction"
-        ? (IsEndingSoon() ? "badge-ending" : "badge-auction")
-        : "badge-auction";
+    private string GetBadgeClass() => Listing.ListingType switch
+    {
+        "Auction" => IsEndingSoon() ? "badge-ending" : "badge-auction",
+        "MakeAnOffer" => "badge-offer",
+        _ => "badge-auction"
+    };
 
-    private string GetBadgeText() => Listing.ListingType == "Auction"
-        ? (IsEndingSoon() ? "Ending soon" : "Auction")
-        : "Listing";
+    private string GetBadgeText() => Listing.ListingType switch
+    {
+        "Auction" => IsEndingSoon() ? "Ending soon" : "Auction",
+        "MakeAnOffer" => "Make an Offer",
+        _ => "Listing"
+    };
 
 
     private string GetProgressClass() =>

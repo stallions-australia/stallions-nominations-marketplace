@@ -7,6 +7,7 @@
 @inject UserApiService UserApi
 @inject PaymentsApiService PaymentsApi
 @inject PurchaseApiService PurchaseApi
+@inject OfferApiService OfferApi
 @inject AuthenticationStateProvider AuthProvider
 
 <PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
@@ -27,7 +28,7 @@ else
         <div class="listing-hero-placeholder"></div>
         <div class="listing-hero-overlay"></div>
         <div class="listing-hero-text container">
-            <span class="badge badge-auction">@_listing.ListingType</span>
+            <span class="badge badge-auction">@(_listing is MakeAnOfferListingDto ? "Make an Offer" : _listing.ListingType)</span>
             <h1 class="listing-hero-name">@_listing.StallionName</h1>
             <p class="listing-hero-farm">
                 <a href="/studfarms/@_listing.StudFarmId">@_listing.StudFarmName</a>
@@ -38,6 +39,8 @@ else
     <div class="container listing-body">
         <div class="listing-main">
 
+            @if (_listing is AuctionListingDto)
+            {
             <div class="listing-price-block">
                 @if (GetHighestBid() is decimal highBid)
                 {
@@ -53,6 +56,7 @@ else
                     <span class="badge" style="margin-left: var(--space-3)">No reserve</span>
                 }
             </div>
+            }
 
             @if (_listing is AuctionListingDto auction)
             {
@@ -181,6 +185,102 @@ else
             }
 
 
+            @if (_listing is MakeAnOfferListingDto offerListing)
+            {
+                <div class="listing-auction-block">
+                    <div class="auction-meta">
+                        <span class="text-secondary text-sm">Make an Offer — no asking price; the stud reviews each offer</span>
+                        <span class="text-muted text-sm">Offers close @FormatLocal(offerListing.ExpiresAt)</span>
+                    </div>
+
+                    @if (offerListing.BuyerFeeIncGst is decimal offerFee)
+                    {
+                        <div class="buyer-fee-notice">
+                            <p class="buyer-fee-amount">
+                                Buyer fee: <strong>@FormatPrice(offerFee)</strong> inc. GST, paid to Stallions Australia if your offer is accepted
+                            </p>
+                            @if (!string.IsNullOrWhiteSpace(_disclosure?.BuyerFeeExplanation))
+                            {
+                                <p class="text-secondary text-sm">@_disclosure.BuyerFeeExplanation</p>
+                            }
+                        </div>
+                    }
+
+                    @if (!IsTakingOffers(offerListing))
+                    {
+                        <div class="auction-closed" role="status">
+                            <p class="auction-closed-title">No longer taking offers</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <AuthorizeView>
+                            <Authorized>
+                                @if (UserState.IsBuyer && UserState.IsVerified && !_cardChecked)
+                                {
+                                    <p class="text-muted text-sm" role="status" aria-live="polite">Checking your payment card…</p>
+                                }
+                                else if (UserState.IsBuyer && UserState.IsVerified && _cardCheckFailed)
+                                {
+                                    <p class="text-muted text-sm" role="status" aria-live="polite">We couldn't check your payment card — refresh to try again.</p>
+                                }
+                                else if (UserState.IsBuyer && UserState.IsVerified && _card is not { IsValid: true })
+                                {
+                                    <a href="/account/card" class="btn btn-gold btn-full">Save a card to make an offer</a>
+                                }
+                                else if (UserState.IsBuyer && UserState.IsVerified)
+                                {
+                                    @if (_myOffer is { Status: "Pending" } pending)
+                                    {
+                                        <div class="offer-pending" role="status">
+                                            <p>Your offer of @FormatPrice(pending.AmountIncGst) is with the stud until @FormatLocal(pending.ExpiresAt).</p>
+                                            <button class="btn btn-outline" @onclick="WithdrawOffer" disabled="@_offerBusy">Withdraw</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @if (_myOffer is not null)
+                                        {
+                                            <p class="text-muted text-sm" role="status">@OfferOutcomeText(_myOffer)
+                                                @if (_myOffer is { Status: "Accepted", SaleStatus: "Completed" })
+                                                {
+                                                    <a href="/my-purchases"> View your sale record</a>
+                                                }
+                                                else if (_myOffer is { Status: "Accepted", SaleStatus: "Pending", ChargeDueBy: not null })
+                                                {
+                                                    <a href="/account/card"> Update your card</a>
+                                                }
+                                            </p>
+                                        }
+                                        <div class="bid-form">
+                                            <p class="bid-form-hint">Minimum offer: <strong>@FormatPrice(offerListing.BuyerFeeIncGst ?? 0m)</strong></p>
+                                            <div class="bid-form-row">
+                                                <input class="form-input offer-amount" type="number" step="0.01"
+                                                       min="@(offerListing.BuyerFeeIncGst ?? 0m)"
+                                                       @bind="_offerAmount" placeholder="Your offer (inc. GST)" />
+                                                <button class="btn btn-gold" @onclick="StartOffer" disabled="@_offerBusy">Make an offer</button>
+                                            </div>
+                                            @if (_offerError is not null) { <ErrorMessage Message="@_offerError" /> }
+                                        </div>
+                                    }
+                                }
+                                else if (UserState.IsBuyer && UserState.IsPendingVerification)
+                                {
+                                    <div class="pending-verification-notice">
+                                        <p><strong>Account verification pending</strong></p>
+                                        <p>You'll be able to make offers once your account has been verified.</p>
+                                    </div>
+                                }
+                            </Authorized>
+                            <NotAuthorized>
+                                <a href="authentication/login" class="btn btn-gold btn-full">Sign in to make an offer</a>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    }
+                </div>
+            }
+
+
             <div class="listing-enquire">
                 <AuthorizeView>
                     <Authorized>
@@ -200,6 +300,14 @@ else
             <a href="/stallions/@_listing.StallionId">View @_listing.StallionName profile &rarr;</a>
         </aside>
     </div>
+}
+
+@if (_showOfferConfirm && _listing is MakeAnOfferListingDto confirmListing)
+{
+    <OfferConfirmationModal AmountIncGst="@_offerAmount" BuyerFeeIncGst="@confirmListing.BuyerFeeIncGst"
+                            BuyerFeeExplanation="@_disclosure?.BuyerFeeExplanation"
+                            BalanceArrangement="@_disclosure?.BalanceArrangement"
+                            OnConfirm="SendOffer" OnCancel="() => _showOfferConfirm = false" />
 }
 
 @if (_showBidConfirm)
@@ -242,6 +350,12 @@ else
                 await LoadDisclosureAsync();
                 await LoadCardAsync();
                 if (_listing is AuctionListingDto a && !IsOpen(a)) await LoadMyResultAsync();
+            }
+            else if (_listing is MakeAnOfferListingDto)
+            {
+                await LoadDisclosureAsync();
+                await LoadCardAsync();
+                await LoadMyOfferAsync();
             }
         }
         catch (ApiException ex) when (ex.StatusCode == 404)
@@ -397,6 +511,66 @@ else
             _bidBusy = false;
         }
     }
+
+    private OfferDto? _myOffer;
+    private decimal _offerAmount;
+    private bool _offerBusy;
+    private bool _showOfferConfirm;
+    private string? _offerError;
+
+    private static bool IsTakingOffers(MakeAnOfferListingDto listing) =>
+        listing.Status == "Active" && AsUtc(listing.ExpiresAt) > DateTime.UtcNow;
+
+    // The buyer's latest offer here. Secondary content: failures are ignored.
+    private async Task LoadMyOfferAsync()
+    {
+        _myOffer = null;
+        if (!UserState.IsBuyer) return;
+        try { _myOffer = await OfferApi.GetMyOfferAsync(Id); }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or AccessTokenNotAvailableException) { }
+    }
+
+    private void StartOffer()
+    {
+        _offerError = null;
+        var min = (_listing as MakeAnOfferListingDto)?.BuyerFeeIncGst ?? 0m;
+        if (_offerAmount < min) { _offerError = $"Offers must be at least {FormatPrice(min)}, the buyer fee."; return; }
+        _showOfferConfirm = true;
+    }
+
+    private async Task SendOffer()
+    {
+        _showOfferConfirm = false;
+        _offerBusy = true;
+        try { _myOffer = await OfferApi.MakeOfferAsync(Id, _offerAmount); }
+        catch (ApiException ex) { _offerError = ex.Message; }
+        finally { _offerBusy = false; }
+    }
+
+    private async Task WithdrawOffer()
+    {
+        if (_myOffer is null) return;
+        _offerBusy = true;
+        try
+        {
+            await OfferApi.WithdrawAsync(_myOffer.Id);
+            _myOffer.Status = "Withdrawn";
+        }
+        catch (ApiException ex) { _offerError = ex.Message; }
+        finally { _offerBusy = false; }
+    }
+
+    private static string OfferOutcomeText(OfferDto o) => (o.Status, o.SaleStatus) switch
+    {
+        ("Declined", _) => "The stud declined your last offer.",
+        ("Expired", _) => "Your last offer closed without a response.",
+        ("Withdrawn", _) => "You withdrew your last offer.",
+        ("Accepted", "Completed") => "The stud accepted your offer and the buyer fee has been paid.",
+        ("Accepted", "Pending") when o.ChargeDueBy is not null => $"The stud accepted your offer, but the buyer fee payment failed — update your card by {FormatLocal(o.ChargeDueBy)}.",
+        ("Accepted", "Pending") => "The stud accepted your offer; we're charging the buyer fee.",
+        ("Accepted", "Voided") => "The stud accepted your offer, but the buyer fee wasn't paid in time, so there was no sale.",
+        _ => string.Empty
+    };
 
     private void OpenEnquiry() => Nav.NavigateTo("/enquiries");
 }

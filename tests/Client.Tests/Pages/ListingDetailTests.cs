@@ -9,6 +9,7 @@ using Stallions.Shared;
 using Stallions.Shared.DTOs.Bids;
 using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.DTOs.Listings;
+using Stallions.Shared.DTOs.Offers;
 using Stallions.Shared.DTOs.Payments;
 using Stallions.Shared.DTOs.Users;
 
@@ -16,8 +17,11 @@ namespace Stallions.Client.Tests.Pages;
 
 public class ListingDetailTests : TestContext
 {
+    private Mock<OfferApiService>? _offerMock;
+
     private void RegisterServices(ListingDto listing, string? role = null, List<PublicBidDto>? history = null,
-        SavedCardDto? card = null, Exception? cardError = null, MyAuctionResultDto? myResult = null)
+        SavedCardDto? card = null, Exception? cardError = null, MyAuctionResultDto? myResult = null,
+        OfferDto? myOffer = null)
     {
         var listingMock = new Mock<ListingApiService>(MockBehavior.Loose,
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
@@ -70,6 +74,11 @@ public class ListingDetailTests : TestContext
             new HttpClient { BaseAddress = new Uri("https://localhost/") });
         purchaseMock.Setup(s => s.GetMyResultAsync(listing.Id)).ReturnsAsync(myResult);
         Services.AddSingleton(purchaseMock.Object);
+
+        var offerMock = new Mock<OfferApiService>(MockBehavior.Loose, new HttpClient { BaseAddress = new Uri("https://localhost/") });
+        offerMock.Setup(s => s.GetMyOfferAsync(listing.Id)).ReturnsAsync(myOffer);
+        Services.AddSingleton(offerMock.Object);
+        _offerMock = offerMock;
     }
 
     private static AuctionListingDto ClosedAuction(string status = "AwaitingPayment") => new()
@@ -287,5 +296,76 @@ public class ListingDetailTests : TestContext
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("We couldn't check your payment card — refresh to try again."));
         cut.Markup.Should().NotContain("Save a card to bid");
         cut.FindAll(".bid-form").Should().BeEmpty();
+    }
+
+    private static MakeAnOfferListingDto OfferListing(int daysLeft = 30) => new()
+    {
+        Id = Guid.NewGuid(), StallionName = "Dundeel (NZ)", StudFarmName = "Arrowfield", Status = "Active",
+        ExpiresAt = DateTime.UtcNow.AddDays(daysLeft), BuyerFeeIncGst = 150m
+    };
+
+    [Fact]
+    public void AMakeAnOfferListing_ShowsTheOfferForm_AndNoPrice()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = OfferListing();
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Make an offer"));
+        cut.Markup.Should().Contain("Minimum offer").And.Contain("$150")
+            .And.NotContain("Place bid").And.NotContain("current high bid");
+    }
+
+    [Fact]
+    public void WithAPendingOffer_TheBuyerSeesItAndCanWithdraw()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = OfferListing();
+        var pending = new OfferDto { Id = Guid.NewGuid(), ListingId = listing.Id, AmountIncGst = 9000m, Status = "Pending",
+            ExpiresAt = DateTime.UtcNow.AddDays(7), ListingOpen = true };
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true }, myOffer: pending);
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Your offer of $9,000 is with the stud"));
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Withdraw")).Click();
+        _offerMock!.Verify(s => s.WithdrawAsync(pending.Id), Times.Once);
+    }
+
+    [Fact]
+    public void MakingAnOffer_AsksForConfirmationWithTheDisclosure_ThenSendsIt()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = OfferListing();
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true });
+        _offerMock!.Setup(s => s.MakeOfferAsync(listing.Id, 9000m)).ReturnsAsync(new OfferDto { Id = Guid.NewGuid(),
+            AmountIncGst = 9000m, Status = "Pending", ExpiresAt = DateTime.UtcNow.AddDays(7), ListingOpen = true });
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+        cut.WaitForAssertion(() => cut.Find("input.offer-amount"));
+
+        cut.Find("input.offer-amount").Change("9000");
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Make an offer").Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Confirm your offer"));
+        cut.Markup.Should().Contain("CONFIGURED: the buyer fee forms part of the price.")
+            .And.Contain("CONFIGURED: pay the stud directly.").And.Contain("$8,850");
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Send offer")).Click();
+        _offerMock.Verify(s => s.MakeOfferAsync(listing.Id, 9000m), Times.Once);
+    }
+
+    [Fact]
+    public void AnExpiredMakeAnOfferListing_TakesNoOffers()
+    {
+        this.AddTestAuthorization().SetAuthorized("buyer@example.com");
+        var listing = OfferListing();
+        listing.Status = "Expired";
+        RegisterServices(listing, role: "Buyer", card: new SavedCardDto { IsValid = true });
+
+        var cut = RenderComponent<ListingDetail>(p => p.Add(c => c.Id, listing.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("No longer taking offers"));
+        cut.FindAll("input.offer-amount").Should().BeEmpty();
     }
 }

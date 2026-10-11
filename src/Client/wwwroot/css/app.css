@@ -264,6 +264,7 @@ h1:focus { outline: none; }
   letter-spacing: .04em;
 }
 .badge-auction  { background: var(--gold);    color: var(--white); }
+.badge-offer    { background: var(--success); color: var(--white); }
 .badge-ending   { background: var(--danger);  color: var(--white); }
 .badge-leading  { background: var(--success); color: var(--white); }
 .badge-outbid   { background: #d4821a;        color: var(--white); }
@@ -565,3 +566,9 @@ h1:focus { outline: none; }
 /* StallionDetail extras */
 .stallion-description { color: var(--text-secondary); line-height: 1.7; margin-bottom: var(--space-6); max-width: 720px; }
 .stallion-pedigree { display: flex; gap: var(--space-6); font-size: var(--font-size-sm); color: var(--text-secondary); margin-bottom: var(--space-4); flex-wrap: wrap; }
+
+/* My Offers rows: single column on phones, three columns from tablet up (global: scoped ::deep fails in @media) */
+@media (min-width: 640px) {
+  .offer-row { grid-template-columns: 1fr auto auto; }
+  .offer-status { align-items: flex-end; }
+}
