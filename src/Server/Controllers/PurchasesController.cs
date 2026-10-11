@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stallions.Server.Services;
+using Stallions.Shared.DTOs.Checkout;
 
 namespace Stallions.Server.Controllers;
 
@@ -39,9 +40,9 @@ public class PurchasesController : ControllerBase
 
     [HttpPost("purchases/{id:guid}/refund")]
     [Authorize(Policy = "StaffOnly")]
-    public async Task<IActionResult> Refund(Guid id)
+    public async Task<IActionResult> Refund(Guid id, [FromBody] RefundBuyerFeeRequest? request)
     {
-        var r = await _purchases.RefundAsync(id);
-        return r.Succeeded ? NoContent() : StatusCode(r.HttpStatusCode, r.Error);
+        var r = await _purchases.RefundAsync(id, request ?? new RefundBuyerFeeRequest());
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 }

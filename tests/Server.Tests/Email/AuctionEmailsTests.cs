@@ -13,6 +13,7 @@ public class AuctionEmailsTests
 {
     private readonly List<OutgoingEmail> _queued = new();
     private readonly Mock<IUserRepository> _users = new();
+    private readonly Mock<ITaxDocumentRepository> _taxDocuments = new();
 
     private AuctionEmails CreateSut()
     {
@@ -20,7 +21,7 @@ public class AuctionEmailsTests
         outbox.Setup(o => o.EnqueueAsync(It.IsAny<OutgoingEmail>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .Callback<OutgoingEmail, string?, Guid?>((e, _, _) => _queued.Add(e))
             .Returns(Task.CompletedTask);
-        return new AuctionEmails(outbox.Object, _users.Object,
+        return new AuctionEmails(outbox.Object, _users.Object, _taxDocuments.Object,
             Microsoft.Extensions.Options.Options.Create(new DisclosureOptions
             {
                 BuyerFeeExplanation = "CONFIGURED fee wording.",
@@ -194,5 +195,26 @@ public class AuctionEmailsTests
 
         _queued[0].TextBody.Should().Contain("no longer taking offers");
         _queued[1].TextBody.Should().Contain("expired");
+    }
+
+    [Fact]
+    public async Task WonAndCharged_LinksTheBuyerFeeTaxInvoice_WhenOneWasIssued()
+    {
+        var sale = Sale();
+        var invoice = new TaxDocument { Id = Guid.NewGuid(), Number = "SA-000124" };
+        _taxDocuments.Setup(t => t.GetBuyerFeeInvoiceAsync(sale.Id)).ReturnsAsync(invoice);
+
+        await CreateSut().WonAndChargedAsync(Listing(), sale, Winner);
+
+        _queued.Single().TextBody.Should()
+            .Contain($"Your tax invoice SA-000124 is available here: https://app.example/tax-documents/{invoice.Id}");
+    }
+
+    [Fact]
+    public async Task WonAndCharged_WithoutAnInvoice_HasNoInvoiceLine()
+    {
+        await CreateSut().WonAndChargedAsync(Listing(), Sale(), Winner);
+
+        _queued.Single().TextBody.Should().NotContain("tax invoice");
     }
 }

@@ -8,6 +8,7 @@ using Stallions.Server.Data.Repositories;
 using Stallions.Server.Email;
 using Stallions.Server.Payments;
 using Stallions.Server.Sales;
+using Stallions.Server.TaxDocuments;
 using Stallions.Server.Tests.Helpers;
 
 namespace Stallions.Server.Tests.Auctions;
@@ -24,12 +25,15 @@ public class AuctionCloserFixture
     public Mock<IAuctionEmails> Emails { get; } = new();
     public Mock<IAuditLogRepository> Audit { get; } = new();
     public PlatformSettings Settings { get; } = new() { ChargeGracePeriodHours = 2, BuyerFeeIncGst = 150m };
+    public Mock<ITaxDocumentService> TaxDocuments { get; } = new();
     public List<ChargeRequest> Charges { get; } = new();
 
     public AuctionCloserFixture()
     {
         Provider.SetupGet(p => p.Name).Returns("Fake");
         ChargesSucceed();
+        TaxDocuments.Setup(t => t.IssueBuyerFeeInvoiceAsync(It.IsAny<Purchase>()))
+            .ReturnsAsync(new TaxDocumentIssueResult(TaxDocumentIssueStatus.Issued, new TaxDocument()));
     }
 
     public void ChargesSucceed() =>
@@ -58,7 +62,7 @@ public class AuctionCloserFixture
         settings.Setup(s => s.GetAsync()).ReturnsAsync(Settings);
         return new BuyerFeeCharger(
             new PurchaseRepository(db), listings ?? new ListingRepository(db), new BidRepository(db), new SavedCardRepository(db),
-            settings.Object, Audit.Object, Emails.Object, Provider.Object, new ClearingTransactionRunner(db), Clock,
+            settings.Object, Audit.Object, Emails.Object, TaxDocuments.Object, Provider.Object, new ClearingTransactionRunner(db), Clock,
             NullLogger<BuyerFeeCharger>.Instance);
     }
 

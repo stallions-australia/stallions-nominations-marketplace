@@ -13,4 +13,7 @@ public class TransactionDto
     public decimal BalancePayableToStudIncGst { get; set; }
     public DateTime? PaidAt { get; set; }
     public string Status { get; set; } = string.Empty;
+    public Guid? TaxInvoiceId { get; set; }
+    public string? TaxInvoiceNumber { get; set; }
+    public string? AdjustmentNoteNumber { get; set; }
 }

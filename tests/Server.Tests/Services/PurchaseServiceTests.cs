@@ -3,6 +3,9 @@ using Moq;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Services;
+using Stallions.Server.TaxDocuments;
+using Stallions.Server.Tests.Helpers;
+using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared;
 using Stallions.Shared.Enums;
 
@@ -16,9 +19,12 @@ public class PurchaseServiceTests
 
     private readonly Mock<IListingRepository> _listings = new();
     private readonly Mock<IBidRepository> _bids = new();
+    private readonly Mock<ITaxDocumentRepository> _taxDocumentRepo = new();
+    private readonly Mock<ITaxDocumentService> _taxDocuments = new();
 
     private PurchaseService CreateSut() =>
-        new(_purchases.Object, _audit.Object, _users.Object, _listings.Object, _bids.Object);
+        new(_purchases.Object, _audit.Object, _users.Object, _listings.Object, _bids.Object,
+            _taxDocumentRepo.Object, _taxDocuments.Object, new InlineTransactionRunner());
 
     private (User Buyer, AuctionListing Listing) BuyerAndAuction(ListingStatus status, ListingCloseReason? reason = null)
     {
@@ -72,6 +78,93 @@ public class PurchaseServiceTests
 
     private static User Buyer() => new() { Id = Guid.NewGuid(), Role = UserRole.Buyer, Status = UserStatus.Active };
 
+    private (User Staff, Purchase Sale) StaffAndCompletedSale()
+    {
+        var staff = new User { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active };
+        _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(staff);
+        var sale = new Purchase
+        {
+            Id = Guid.NewGuid(), Status = PurchaseStatus.Completed, TotalPriceIncGst = 10000m, BuyerFeeIncGst = 150m,
+            BalancePayableToStudIncGst = 9850m, PaymentProvider = "Stripe", PaymentReference = "pi_1"
+        };
+        _purchases.Setup(r => r.GetByIdAsync(sale.Id)).ReturnsAsync(sale);
+        return (staff, sale);
+    }
+
+    [Fact]
+    public async Task Refund_WithATaxInvoice_IssuesAnAdjustmentNote_AndSaysSo()
+    {
+        var (staff, sale) = StaffAndCompletedSale();
+        var invoice = new TaxDocument { Id = Guid.NewGuid(), Number = "SA-000124", Kind = TaxDocumentKind.BuyerFeeInvoice };
+        _taxDocumentRepo.Setup(r => r.GetBuyerFeeInvoiceAsync(sale.Id)).ReturnsAsync(invoice);
+        var note = new TaxDocument { Id = Guid.NewGuid(), Number = "SA-000130", Kind = TaxDocumentKind.AdjustmentNote };
+        _taxDocuments.Setup(t => t.IssueAdjustmentNoteAsync(invoice, "Buyer fee refunded — Duplicate charge", staff.Id))
+            .ReturnsAsync(new TaxDocumentIssueResult(TaxDocumentIssueStatus.Issued, note));
+
+        var r = await CreateSut().RefundAsync(sale.Id, new RefundBuyerFeeRequest { Note = "  Duplicate charge " });
+
+        r.Succeeded.Should().BeTrue(r.Error);
+        r.Value!.AdjustmentNoteNumber.Should().Be("SA-000130");
+        r.Value.AdjustmentNoteId.Should().Be(note.Id);
+        r.Value.Message.Should().Be("Refund recorded. Adjustment note SA-000130 has been emailed to the buyer.");
+        sale.Status.Should().Be(PurchaseStatus.Refunded);
+        _audit.Verify(a => a.LogAsync("Purchase", sale.Id, "PurchaseRefunded", staff.Id,
+            It.Is<string?>(d => d != null && d.Contains("SA-000130"))), Times.Once);
+    }
+
+    [Fact]
+    public async Task Refund_WithoutBusinessDetails_IsRejected_AndNothingChanges()
+    {
+        var (_, sale) = StaffAndCompletedSale();
+        _taxDocumentRepo.Setup(r => r.GetBuyerFeeInvoiceAsync(sale.Id)).ReturnsAsync(new TaxDocument { Number = "SA-000124" });
+        _taxDocuments.Setup(t => t.IssueAdjustmentNoteAsync(It.IsAny<TaxDocument>(), It.IsAny<string>(), It.IsAny<Guid?>()))
+            .ReturnsAsync(TaxDocumentIssueResult.Missing);
+
+        var r = await CreateSut().RefundAsync(sale.Id, new RefundBuyerFeeRequest());
+
+        r.HttpStatusCode.Should().Be(400);
+        r.Error.Should().Be("Complete the business details in Settings first.");
+        sale.Status.Should().Be(PurchaseStatus.Completed);
+        _purchases.Verify(p => p.UpdateAsync(It.IsAny<Purchase>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Refund_OfASaleWithNoTaxInvoice_IsRecordedWithoutANote()
+    {
+        var (_, sale) = StaffAndCompletedSale();
+
+        var r = await CreateSut().RefundAsync(sale.Id, new RefundBuyerFeeRequest { Note = "Goodwill" });
+
+        r.Value!.AdjustmentNoteNumber.Should().BeNull();
+        r.Value.Message.Should().Be("Refund recorded. This sale has no tax invoice, so no adjustment note was issued.");
+        sale.Status.Should().Be(PurchaseStatus.Refunded);
+        _taxDocuments.Verify(t => t.IssueAdjustmentNoteAsync(It.IsAny<TaxDocument>(), It.IsAny<string>(), It.IsAny<Guid?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Refund_WithoutANote_UsesThePlainReason()
+    {
+        var (staff, sale) = StaffAndCompletedSale();
+        var invoice = new TaxDocument { Number = "SA-000124" };
+        _taxDocumentRepo.Setup(r => r.GetBuyerFeeInvoiceAsync(sale.Id)).ReturnsAsync(invoice);
+        _taxDocuments.Setup(t => t.IssueAdjustmentNoteAsync(invoice, "Buyer fee refunded", staff.Id))
+            .ReturnsAsync(new TaxDocumentIssueResult(TaxDocumentIssueStatus.Issued, new TaxDocument { Number = "SA-000130" }));
+
+        (await CreateSut().RefundAsync(sale.Id, new RefundBuyerFeeRequest { Note = "   " })).Succeeded.Should().BeTrue();
+
+        _taxDocuments.Verify(t => t.IssueAdjustmentNoteAsync(invoice, "Buyer fee refunded", staff.Id), Times.Once);
+    }
+
+    [Fact]
+    public async Task Refund_WithANoteOver500Characters_IsRejected()
+    {
+        var (_, sale) = StaffAndCompletedSale();
+
+        var r = await CreateSut().RefundAsync(sale.Id, new RefundBuyerFeeRequest { Note = new string('x', 501) });
+
+        r.Error.Should().Be("The note can be at most 500 characters.");
+    }
+
     [Fact]
     public async Task Refund_RefundsTheFullBuyerFee()
     {
@@ -84,7 +177,7 @@ public class PurchaseServiceTests
         };
         _purchases.Setup(r => r.GetByIdAsync(purchase.Id)).ReturnsAsync(purchase);
 
-        var result = await CreateSut().RefundAsync(purchase.Id);
+        var result = await CreateSut().RefundAsync(purchase.Id, new RefundBuyerFeeRequest());
 
         result.Succeeded.Should().BeTrue();
         purchase.RefundAmount.Should().Be(150m);
@@ -103,7 +196,7 @@ public class PurchaseServiceTests
         };
         _purchases.Setup(r => r.GetByIdAsync(purchase.Id)).ReturnsAsync(purchase);
 
-        await CreateSut().RefundAsync(purchase.Id);
+        await CreateSut().RefundAsync(purchase.Id, new RefundBuyerFeeRequest());
 
         _audit.Verify(a => a.LogAsync("Purchase", purchase.Id, "PurchaseRefunded", It.IsAny<Guid?>(),
             It.Is<string?>(d => d != null && d.Contains("pi_refund_me") && d.Contains("Stripe"))), Times.Once);
@@ -114,7 +207,7 @@ public class PurchaseServiceTests
     {
         _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(Buyer());
 
-        var result = await CreateSut().RefundAsync(Guid.NewGuid());
+        var result = await CreateSut().RefundAsync(Guid.NewGuid(), new RefundBuyerFeeRequest());
 
         result.Succeeded.Should().BeFalse();
         result.HttpStatusCode.Should().Be(403);

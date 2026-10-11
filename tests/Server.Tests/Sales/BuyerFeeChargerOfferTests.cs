@@ -4,6 +4,7 @@ using Moq;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Sales;
+using Stallions.Server.TaxDocuments;
 using Stallions.Server.Tests.Auctions;
 using Stallions.Server.Tests.Helpers;
 using Stallions.Shared.Enums;
@@ -100,5 +101,63 @@ public class BuyerFeeChargerOfferTests
         await _f.CreateCharger().ChargeAsync(purchaseId);
 
         (await _f.CreateCharger().ChargeAsync(purchaseId)).Should().Be(ChargeOutcome.Skipped);
+    }
+
+    [Fact]
+    public async Task Paid_IssuesTheBuyerFeeInvoice_OnceTheSaleIsCompleted_BeforeTheWinEmail()
+    {
+        var (_, purchaseId, _) = AcceptedOffer();
+        var calls = new List<string>();
+        PurchaseStatus? statusAtIssue = null;
+        _f.TaxDocuments.Setup(t => t.IssueBuyerFeeInvoiceAsync(It.IsAny<Purchase>()))
+            .Callback<Purchase>(p => { statusAtIssue = p.Status; calls.Add("invoice"); })
+            .ReturnsAsync(new TaxDocumentIssueResult(TaxDocumentIssueStatus.Issued, new TaxDocument()));
+        _f.Emails.Setup(e => e.WonAndChargedAsync(It.IsAny<Listing>(), It.IsAny<Purchase>(), It.IsAny<User>()))
+            .Callback(() => calls.Add("win email"))
+            .Returns(Task.CompletedTask);
+
+        (await _f.CreateCharger().ChargeAsync(purchaseId)).Should().Be(ChargeOutcome.Paid);
+
+        statusAtIssue.Should().Be(PurchaseStatus.Completed);
+        calls.Should().Equal("invoice", "win email");
+        _f.TaxDocuments.Verify(t => t.IssueBuyerFeeInvoiceAsync(It.Is<Purchase>(p => p.Id == purchaseId)), Times.Once);
+        _f.TaxDocuments.Verify(t => t.RecordPendingAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<TaxDocumentKind>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Paid_WithoutBusinessDetails_StillCompletesTheSale_AndRecordsPending()
+    {
+        var (_, purchaseId, _) = AcceptedOffer();
+        _f.TaxDocuments.Setup(t => t.IssueBuyerFeeInvoiceAsync(It.IsAny<Purchase>())).ReturnsAsync(TaxDocumentIssueResult.Missing);
+
+        (await _f.CreateCharger().ChargeAsync(purchaseId)).Should().Be(ChargeOutcome.Paid);
+
+        (await Sale(purchaseId)).Status.Should().Be(PurchaseStatus.Completed);
+        _f.TaxDocuments.Verify(t => t.RecordPendingAsync("Purchase", purchaseId, TaxDocumentKind.BuyerFeeInvoice), Times.Once);
+        _f.Emails.Verify(e => e.WonAndChargedAsync(It.IsAny<Listing>(), It.IsAny<Purchase>(), It.IsAny<User>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Declined_IssuesNoInvoice()
+    {
+        var (_, purchaseId, _) = AcceptedOffer();
+        _f.ChargesDecline();
+
+        (await _f.CreateCharger().ChargeAsync(purchaseId)).Should().Be(ChargeOutcome.PaymentFailed);
+
+        _f.TaxDocuments.Verify(t => t.IssueBuyerFeeInvoiceAsync(It.IsAny<Purchase>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task FinalFailure_IssuesNoInvoice()
+    {
+        var (_, purchaseId, _) = AcceptedOffer();
+        _f.ChargesDecline();
+        await _f.CreateCharger().ChargeAsync(purchaseId);
+        _f.Clock.Advance(TimeSpan.FromHours(2));
+
+        (await _f.CreateCharger().ChargeAsync(purchaseId)).Should().Be(ChargeOutcome.NoSale);
+
+        _f.TaxDocuments.Verify(t => t.IssueBuyerFeeInvoiceAsync(It.IsAny<Purchase>()), Times.Never);
     }
 }
