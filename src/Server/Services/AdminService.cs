@@ -95,37 +95,6 @@ public class AdminService : IAdminService
         return ServiceResult<IReadOnlyList<TransactionDto>>.Ok(dtos);
     }
 
-    public async Task<ServiceResult<IReadOnlyList<InvoiceDto>>> GetInvoicesAsync()
-    {
-        var purchases = await _purchaseRepo.GetAllAsync();
-        var completed = purchases
-            .Where(p => p.Status == PurchaseStatus.Completed && p.PaidAt.HasValue)
-            .ToList();
-
-        var invoices = completed
-            .GroupBy(p => p.Listing?.StudFarmId ?? Guid.Empty)
-            .Select(g => new InvoiceDto
-            {
-                StudFarmId = g.Key,
-                StudFarmName = g.First().Listing?.StudFarm?.Name ?? string.Empty,
-                Lines = g.Select(p => new InvoiceLineDto
-                {
-                    PurchaseId = p.Id,
-                    StallionName = p.Listing?.Stallion?.Name ?? string.Empty,
-                    SalePriceIncGst = p.TotalPriceIncGst,
-                    BuyerFeeIncGst = p.BuyerFeeIncGst,
-                    BalancePayableToStudIncGst = p.BalancePayableToStudIncGst,
-                    PaidAt = p.PaidAt!.Value
-                }).ToList(),
-                TotalSalesIncGst = g.Sum(p => p.TotalPriceIncGst),
-                TotalBuyerFeesIncGst = g.Sum(p => p.BuyerFeeIncGst),
-                TotalBalancePayableToStudIncGst = g.Sum(p => p.BalancePayableToStudIncGst)
-            }).ToList();
-
-        return ServiceResult<IReadOnlyList<InvoiceDto>>.Ok(invoices);
-    }
-
-
     public async Task<ServiceResult<IReadOnlyList<StudFarmSummaryDto>>> GetAllStudFarmsAsync()
     {
         var farms = await _studFarmRepo.GetAllAsync();

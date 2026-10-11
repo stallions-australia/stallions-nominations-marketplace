@@ -412,25 +412,6 @@ public class AdminServiceTests
     }
 
     [Fact]
-    public async Task GetInvoices_ShowsBuyerFeesAndBalancePayableToStud()
-    {
-        var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };
-        _purchaseRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<Purchase>
-        {
-            CompletedSale(farm, 10000m, 150m),
-            CompletedSale(farm, 20000m, 150m)
-        });
-
-        var result = await CreateSut().GetInvoicesAsync();
-
-        var invoice = result.Value!.Should().ContainSingle().Subject;
-        invoice.TotalSalesIncGst.Should().Be(30000m);
-        invoice.TotalBuyerFeesIncGst.Should().Be(300m);
-        invoice.TotalBalancePayableToStudIncGst.Should().Be(29700m);
-        invoice.Lines.Should().Contain(l => l.BuyerFeeIncGst == 150m && l.BalancePayableToStudIncGst == 9850m);
-    }
-
-    [Fact]
     public async Task GetTransactions_MapsBuyerFeeGstSplitAndBalance()
     {
         var farm = new StudFarm { Id = Guid.NewGuid(), Name = "Arrowfield" };

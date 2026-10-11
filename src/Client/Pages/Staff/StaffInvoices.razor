@@ -1,89 +1,187 @@
 @page "/staff/invoices"
 @layout StaffLayout
 @attribute [Authorize]
-@inject StaffApiService StaffApi
+@inject TaxDocumentApiService TaxDocumentApi
 @inject UserStateService UserState
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Invoices — Staff Admin</PageTitle>
 
 <div class="admin-page-header">
-    <h1 class="admin-page-title">Sales by Stud Farm</h1>
+    <h1 class="admin-page-title">Invoices</h1>
+    <button class="btn btn-outline" @onclick="ExportAsync" disabled="@(_busy || _register is null)">Export CSV</button>
+</div>
+
+<p class="text-secondary text-sm">
+    Every tax invoice and adjustment note issued. Totals cover the documents shown: adjustment notes are
+    subtracted, and unpaid invoices are shown separately. Dates are Sydney dates.
+</p>
+
+@if (_register is { PendingCount: > 0 } pending)
+{
+    <div class="alert alert-warning invoice-pending">
+        @* Kept on one line: the sentence is matched as one piece of text. *@
+        @pending.PendingCount @(pending.PendingCount == 1 ? "fee has" : "fees have") no tax invoice because business details are incomplete — complete them in <a href="/staff/settings">Settings</a>, then click
+        <button class="btn btn-sm btn-gold" @onclick="IssueMissingAsync" disabled="@_busy">Issue missing tax invoices</button>
+    </div>
+}
+@if (_notice is not null) { <div class="alert alert-success">@_notice</div> }
+
+<div class="invoice-filters">
+    <label class="form-label" for="filter-kind">Type</label>
+    <select id="filter-kind" class="form-select" @bind="_kind">
+        <option value="">All</option>
+        <option value="ListingFeeInvoice">Listing fee invoices</option>
+        <option value="BuyerFeeInvoice">Buyer fee invoices</option>
+        <option value="AdjustmentNote">Adjustment notes</option>
+    </select>
+    <label class="form-label" for="filter-status">Status</label>
+    <select id="filter-status" class="form-select" @bind="_status">
+        <option value="">All</option>
+        <option value="Unpaid">Unpaid</option>
+        <option value="Paid">Paid</option>
+    </select>
+    <label class="form-label" for="filter-from">From</label>
+    <input id="filter-from" type="date" class="form-input" @bind="_from" />
+    <label class="form-label" for="filter-to">To</label>
+    <input id="filter-to" type="date" class="form-input" @bind="_to" />
+    <button class="btn btn-sm btn-gold" @onclick="LoadAsync" disabled="@_busy">Apply</button>
 </div>
 
 @if (_loading)
 {
     <p>Loading…</p>
 }
-else if (_error != null)
+else if (_error is not null)
 {
     <div class="alert alert-danger">@_error</div>
 }
-else if (!_invoices.Any())
+else if (_register is not null)
 {
-    <div class="admin-empty-state">
-        <p>No completed sales to invoice yet.</p>
+    var t = _register.Totals;
+    <div class="invoice-totals-grid">
+        <div class="invoice-total">
+            <span class="invoice-total-label">Invoices (@t.InvoiceCount)</span>
+            <strong>@Money(t.InvoicesIncGst)</strong>
+            <small>ex GST @Money(t.InvoicesExGst) · GST @Money(t.InvoicesGst)</small>
+        </div>
+        <div class="invoice-total">
+            <span class="invoice-total-label">Adjustment notes (@t.AdjustmentCount)</span>
+            <strong>−@Money(t.AdjustmentsIncGst)</strong>
+            <small>ex GST −@Money(t.AdjustmentsExGst) · GST −@Money(t.AdjustmentsGst)</small>
+        </div>
+        <div class="invoice-total invoice-total-net">
+            <span class="invoice-total-label">Net</span>
+            <strong>@Money(t.NetIncGst)</strong>
+            <small>ex GST @Money(t.NetExGst) · GST @Money(t.NetGst)</small>
+        </div>
+        <div class="invoice-total invoice-total-unpaid">
+            <span class="invoice-total-label">Unpaid (@t.UnpaidCount)</span>
+            <strong>@Money(t.UnpaidIncGst)</strong>
+            <small>issued, not yet received</small>
+        </div>
     </div>
-}
-else
-{
-    @foreach (var inv in _invoices)
+
+    @if (_register.Documents.Count == 0)
     {
-        <details class="invoice-section">
-            <summary class="invoice-summary">
-                <div class="invoice-farm-name">@inv.StudFarmName</div>
-                <div class="invoice-totals">
-                    <span>Sales: <strong>@inv.TotalSalesIncGst.ToString("C")</strong></span>
-                    <span>Buyer Fees: <strong>@inv.TotalBuyerFeesIncGst.ToString("C")</strong></span>
-                    <span>Balance Payable to Stud: <strong class="remittance-amount">@inv.TotalBalancePayableToStudIncGst.ToString("C")</strong></span>
-                </div>
-            </summary>
-            <div class="invoice-lines">
-                <table class="admin-table">
-                    <thead>
-                        <tr>
-                            <th>Stallion</th>
-                            <th>Sale Price (inc. GST)</th>
-                            <th>Buyer Fee (inc. GST)</th>
-                            <th>Balance Payable to Stud</th>
-                            <th>Sale Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var line in inv.Lines)
-                        {
-                            <tr>
-                                <td>@line.StallionName</td>
-                                <td>@line.SalePriceIncGst.ToString("C")</td>
-                                <td>@line.BuyerFeeIncGst.ToString("C")</td>
-                                <td>@line.BalancePayableToStudIncGst.ToString("C")</td>
-                                <td>@line.PaidAt.ToString("d MMM yyyy")</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </details>
+        <div class="admin-empty-state"><p>No tax documents match these filters.</p></div>
+    }
+    else
+    {
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Number</th>
+                    <th>Issued</th>
+                    <th>Type</th>
+                    <th>Recipient</th>
+                    <th>Description</th>
+                    <th class="num">Total (incl. GST)</th>
+                    <th class="num">GST</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in _register.Documents)
+                {
+                    <tr>
+                        <td><a href="/tax-documents/@d.Id">@d.Number</a></td>
+                        <td>@d.IssuedOn.ToString("d MMM yyyy", AuCulture)</td>
+                        <td>@TaxDocumentList.KindText(d.Kind)</td>
+                        <td>@d.RecipientName<div class="text-muted text-xs">@d.RecipientEmail</div></td>
+                        <td>@d.Description</td>
+                        <td class="num">@TaxDocumentList.SignedTotal(d)</td>
+                        <td class="num">@(d.Kind == "AdjustmentNote" ? "−" : "")@Money(d.GstAmount)</td>
+                        <td>@TaxDocumentList.StatusText(d)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
     }
 }
 
 @code {
-    private List<InvoiceDto> _invoices = [];
+    private TaxDocumentRegisterDto? _register;
     private bool _loading = true;
+    private bool _busy;
     private string? _error;
+    private string? _notice;
+
+    private string _kind = string.Empty;
+    private string _status = string.Empty;
+    private DateOnly? _from;
+    private DateOnly? _to;
+
+    private static readonly System.Globalization.CultureInfo AuCulture =
+        System.Globalization.CultureInfo.GetCultureInfo("en-AU");
+    private static string Money(decimal amount) => amount.ToString("C2", AuCulture);
 
     protected override async Task OnInitializedAsync()
     {
         await UserState.LoadAsync();
         if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
-        await Load();
+        await LoadAsync();
     }
 
-    private async Task Load()
+    private TaxDocumentFilter Filter() => new()
+    {
+        Kind = string.IsNullOrEmpty(_kind) ? null : _kind,
+        Status = string.IsNullOrEmpty(_status) ? null : _status,
+        From = _from,
+        To = _to
+    };
+
+    private async Task LoadAsync()
     {
         _loading = true; _error = null;
-        try { _invoices = await StaffApi.GetInvoicesAsync(); }
-        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load invoices."; }
+        try { _register = await TaxDocumentApi.GetRegisterAsync(Filter()); }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load the tax documents."; }
         finally { _loading = false; }
+    }
+
+    private async Task IssueMissingAsync()
+    {
+        _busy = true; _error = null; _notice = null;
+        try
+        {
+            var result = await TaxDocumentApi.IssueMissingAsync();
+            _notice = $"{result.Issued} tax document(s) issued." + (result.Remaining > 0 ? $" {result.Remaining} still waiting." : "");
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to issue the missing tax invoices."; }
+        finally { _busy = false; }
+    }
+
+    private async Task ExportAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var csv = await TaxDocumentApi.ExportCsvAsync(Filter());
+            await JS.InvokeVoidAsync("stallionsDownload.text", $"tax-documents-{DateTime.Now:yyyy-MM-dd}.csv", "text/csv", csv);
+        }
+        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to export the tax documents."; }
+        finally { _busy = false; }
     }
 }

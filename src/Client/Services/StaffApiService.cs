@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Stallions.Shared.DTOs.Admin;
+using Stallions.Shared.DTOs.Checkout;
 using Stallions.Shared.DTOs.Seasons;
 using Stallions.Shared.DTOs.Stallions;
 using Stallions.Shared.DTOs.Users;
@@ -201,14 +202,16 @@ public class StaffApiService
         return await r.Content.ReadFromJsonAsync<List<TransactionDto>>() ?? [];
     }
 
-    // ── Invoices ───────────────────────────────────────────────────────────
+    // ── Refunds ────────────────────────────────────────────────────────────
 
-    public virtual async Task<List<InvoiceDto>> GetInvoicesAsync()
+    /// <summary>Records a buyer fee refund already made in Stripe; the buyer is emailed an adjustment note.</summary>
+    public virtual async Task<RefundResultDto> RefundPurchaseAsync(Guid purchaseId, RefundBuyerFeeRequest request)
     {
-        var r = await _http.GetAsync("api/admin/invoices");
+        var r = await _http.PostAsJsonAsync($"api/purchases/{purchaseId}/refund", request);
         if (!r.IsSuccessStatusCode)
-            throw new ApiException((int)r.StatusCode, "Failed to load invoices.");
-        return await r.Content.ReadFromJsonAsync<List<InvoiceDto>>() ?? [];
+            throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
+        return await r.Content.ReadFromJsonAsync<RefundResultDto>()
+               ?? throw new ApiException(500, "Empty response.");
     }
 
     // ── Users for stud farm onboarding dropdown ────────────────────────────

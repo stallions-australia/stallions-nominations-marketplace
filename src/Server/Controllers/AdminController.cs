@@ -27,14 +27,6 @@ public class AdminController : ControllerBase
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 
-    [HttpGet("invoices")]
-    public async Task<IActionResult> GetInvoices()
-    {
-        var r = await _admin.GetInvoicesAsync();
-        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
-    }
-
-
     [HttpGet("studfarms")]
     public async Task<IActionResult> GetStudFarms()
     {

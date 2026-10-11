@@ -7,7 +7,6 @@ public interface IAdminService
 {
     Task<ServiceResult<DashboardDto>> GetDashboardAsync();
     Task<ServiceResult<IReadOnlyList<TransactionDto>>> GetTransactionsAsync();
-    Task<ServiceResult<IReadOnlyList<InvoiceDto>>> GetInvoicesAsync();
 
     Task<ServiceResult<IReadOnlyList<StudFarmSummaryDto>>> GetAllStudFarmsAsync();
     Task<ServiceResult<StudFarmSummaryDto>> GetStudFarmByIdAsync(Guid id);
