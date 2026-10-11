@@ -12,6 +12,7 @@ using Stallions.Server.Email;
 using Stallions.Server.Options;
 using Stallions.Server.Payments;
 using Stallions.Server.Services;
+using Stallions.Server.TaxDocuments;
 using Stallions.Shared.Enums;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -121,6 +122,8 @@ builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<ISavedCardRepository, SavedCardRepository>();
 builder.Services.AddScoped<IProcessedPaymentEventRepository, ProcessedPaymentEventRepository>();
 builder.Services.AddScoped<IIntroOfferRepository, IntroOfferRepository>();
+builder.Services.AddScoped<ITaxDocumentRepository, TaxDocumentRepository>();
+builder.Services.AddScoped<ITaxDocumentNumberSource, SqlTaxDocumentNumberSource>();
 
 // Blob Storage (uses DefaultAzureCredential; requires AZURE_STORAGE_ACCOUNT_NAME in appsettings.Development.json)
 builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
@@ -142,6 +145,8 @@ builder.Services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
 builder.Services.AddScoped<IAuctionEmails, AuctionEmails>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IIntroOfferService, IntroOfferService>();
+builder.Services.AddScoped<ITaxDocumentEmails, TaxDocumentEmails>();
+builder.Services.AddScoped<ITaxDocumentService, TaxDocumentService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>
