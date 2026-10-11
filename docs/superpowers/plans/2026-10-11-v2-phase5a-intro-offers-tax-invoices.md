@@ -50,6 +50,21 @@
 > - **The v1 `InvoiceDto` / `GetInvoicesAsync` removal happens in Task 11**, together with the new register
 >   page, so the client compiles after every task. `NominationBinding` goes in Task 1.
 > - **The buyer's name on a tax invoice is `User.DisplayName`** (there is no separate full-name field).
+>
+> **Changes made during the build (after reviews, 2026-10-12):**
+> - Callers of `ITaxDocumentService` must have no unsaved tracked changes when they call it (its insert saves the
+>   whole context); documented on the interface and respected at every call site.
+> - The tax document page shows an Unpaid invoice that an adjustment note reversed as "Reversed by SA-…" with no
+>   due date, bank details or payment reference; adjustment notes show an "Issued" badge.
+> - `PlatformSettings.InvoicePaymentTermsDays` has no code default — only the `HasData` seed. The CSV BOM is written
+>   as `String.fromCharCode(0xFEFF)`.
+> - Final review: if a Staff "Issue tax invoice" beats the card webhook to the insert, the webhook now marks that
+>   invoice Paid (receipt sent); Staff mark paid returns 409 if the fee was just paid by card, and waive returns 409
+>   if the invoice is already Paid; "Issue missing tax invoices" carries on past an item that fails (logged, left
+>   pending); a refund that races another refund returns 409; Staff Intro offers / Invoices keep their tables visible
+>   when an action or lookup fails.
+> - Task 12's local smoke was a direct localdb check of the sequence and indexes (local sign-in needs Entra); the
+>   numbering runs end to end in the dev click-through.
 
 ## Global Constraints
 

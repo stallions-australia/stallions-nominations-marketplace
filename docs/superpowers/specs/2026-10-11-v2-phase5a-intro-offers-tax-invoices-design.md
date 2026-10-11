@@ -1,7 +1,7 @@
 # v2 Phase 5a — Intro Offers, Tax Invoices and Refunds — Design
 
 **Date:** 2026-10-11
-**Status:** Design agreed with David (2026-10-11); awaiting written-spec review
+**Status:** Approved (2026-10-11). Built on `feature/v2-phase5a-intro-offers-tax-invoices` (2026-10-12); not merged. See the plan's "Plan decisions" and "Changes made during the build" for refinements (business details on Staff-only endpoints; a reversed unpaid invoice is shown as reversed, not owed).
 **Branch:** `feature/v2-phase5a-intro-offers-tax-invoices` (from master after Phase 4 merged as PR #6)
 **Builds on:** `2026-10-09-business-model-v2-design.md` (D2 listing fee and intro offers, "Still open" GST
 question, "Staff Invoices" rework), `2026-10-09-v2-phase2-payments-design.md` (subscriptions, card
