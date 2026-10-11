@@ -14,8 +14,7 @@ public class BidService : IBidService
     private readonly IListingRepository _listingRepo;
     private readonly IUserService _users;
     private readonly AppDbContext _db;
-    private readonly ITermsRepository _termsRepo;
-    private readonly ICardService _cards;
+    private readonly BuyerEligibility _eligibility;
     private readonly IAuctionEmails _emails;
 
     public BidService(IBidRepository bidRepo, IListingRepository listingRepo,
@@ -26,8 +25,7 @@ public class BidService : IBidService
         _listingRepo = listingRepo;
         _users = users;
         _db = db;
-        _termsRepo = termsRepo;
-        _cards = cards;
+        _eligibility = new BuyerEligibility(termsRepo, cards);
         _emails = emails;
     }
 
@@ -48,18 +46,10 @@ public class BidService : IBidService
         if (caller == null)
             return ServiceResult<BidDto>.Forbidden();
 
-        if (caller.Status != UserStatus.Active)
-            return ServiceResult<BidDto>.Forbidden("Your account must be verified before you can bid.");
-
-        // Buyer must have accepted the current T&C. If none is published, the gate is skipped.
-        var currentTerms = await _termsRepo.GetCurrentAsync();
-        if (currentTerms != null && caller.AcceptedTermsVersion != currentTerms.Version)
-            return ServiceResult<BidDto>.BadRequest(
-                "You must accept the current Terms & Conditions before placing a bid.");
-
-        // A valid saved card is required so the buyer fee can be charged automatically on a win.
-        if (!await _cards.HasValidCardAsync(caller.Id))
-            return ServiceResult<BidDto>.BadRequest("Save a card before bidding.");
+        if (await _eligibility.CheckAsync(caller, BuyerAction.Bid) is { } notEligible)
+            return notEligible.Forbidden
+                ? ServiceResult<BidDto>.Forbidden(notEligible.Message)
+                : ServiceResult<BidDto>.BadRequest(notEligible.Message);
 
         var listing = await _listingRepo.GetAuctionByIdAsync(auctionListingId);
         if (listing == null)
