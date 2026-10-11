@@ -121,4 +121,46 @@ public class AuctionEmailsTests
 
         _queued.Single().HtmlBody.Should().Contain("&lt;b&gt;Snitzel&lt;/b&gt;").And.NotContain("<b>Snitzel");
     }
+
+    private static MakeAnOfferListing OfferListing() => new()
+    {
+        Id = Guid.NewGuid(),
+        Stallion = new Stallion { Name = "Snitzel" },
+        Season = new Season { Name = "2026 Season" },
+        StudFarm = new StudFarm { Name = "Arrowfield", ContactEmail = "sales@arrowfield.example" }
+    };
+
+    private static Purchase OfferSale() => new()
+    {
+        OfferId = Guid.NewGuid(), TotalPriceIncGst = 9000m, BuyerFeeIncGst = 150m, BuyerFeeExGst = 136.36m,
+        BuyerFeeGst = 13.64m, BalancePayableToStudIncGst = 8850m
+    };
+
+    [Fact]
+    public async Task AnAcceptedOfferCharged_UsesOfferWording_AndShowsTheSplit()
+    {
+        await CreateSut().WonAndChargedAsync(OfferListing(), OfferSale(), new User { Email = "buyer@example.com" });
+
+        var email = _queued.Single();
+        email.Template.Should().Be("OfferAcceptedAndCharged");
+        email.Subject.Should().Contain("offer").And.Contain("accepted");
+        email.TextBody.Should().Contain("Price (your accepted offer): $9,000.00").And.Contain("$8,850.00")
+            .And.Contain("CONFIGURED fee wording.").And.NotContain("winning bid");
+    }
+
+    [Fact]
+    public async Task StudNoSale_ForAnOfferListing_SaysTheListingStaysOpen()
+    {
+        await CreateSut().StudNoSaleAsync(OfferListing(), ListingCloseReason.ChargeFailed);
+
+        _queued.Single().TextBody.Should().Contain("stays open").And.NotContain("auction");
+    }
+
+    [Fact]
+    public async Task StudNoSale_ForAnAuction_LinksToMakeAnOffer()
+    {
+        await CreateSut().StudNoSaleAsync(Listing(), ListingCloseReason.ReserveNotMet);
+
+        _queued.Single().TextBody.Should().Contain("Offer it as Make an Offer");
+    }
 }

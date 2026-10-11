@@ -7,6 +7,7 @@ using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Email;
 using Stallions.Server.Payments;
+using Stallions.Server.Sales;
 using Stallions.Server.Tests.Helpers;
 
 namespace Stallions.Server.Tests.Auctions;
@@ -49,15 +50,26 @@ public class AuctionCloserFixture
         return seed(db);
     }
 
-    /// <summary>A closer on its own context, as a separate run (or app instance) would have.</summary>
-    public AuctionCloser CreateSut(AppDbContext? db = null, IListingRepository? listings = null)
+    /// <summary>A charger on its own context, as the Accept action or a separate run would have.</summary>
+    public BuyerFeeCharger CreateCharger(AppDbContext? db = null, IListingRepository? listings = null)
     {
         db ??= DbContextFactory.Create(DbName);
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(s => s.GetAsync()).ReturnsAsync(Settings);
-        return new AuctionCloser(
-            listings ?? new ListingRepository(db), new BidRepository(db), new PurchaseRepository(db), new SavedCardRepository(db),
+        return new BuyerFeeCharger(
+            new PurchaseRepository(db), listings ?? new ListingRepository(db), new BidRepository(db), new SavedCardRepository(db),
             settings.Object, Audit.Object, Emails.Object, Provider.Object, new ClearingTransactionRunner(db), Clock,
+            NullLogger<BuyerFeeCharger>.Instance);
+    }
+
+    /// <summary>A closer on its own context, as a separate run (or app instance) would have.</summary>
+    public AuctionCloser CreateSut(AppDbContext? db = null, IListingRepository? listings = null)
+    {
+        db ??= DbContextFactory.Create(DbName);
+        var listingRepo = listings ?? new ListingRepository(db);
+        return new AuctionCloser(
+            listingRepo, new BidRepository(db), new PurchaseRepository(db), Audit.Object, Emails.Object,
+            CreateCharger(db, listingRepo), new ClearingTransactionRunner(db), Clock,
             Microsoft.Extensions.Options.Options.Create(new AuctionCloseOptions()), NullLogger<AuctionCloser>.Instance);
     }
 

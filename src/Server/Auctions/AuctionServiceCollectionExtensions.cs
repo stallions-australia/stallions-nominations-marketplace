@@ -1,3 +1,5 @@
+using Stallions.Server.Sales;
+
 namespace Stallions.Server.Auctions;
 
 public static class AuctionServiceCollectionExtensions
@@ -6,6 +8,7 @@ public static class AuctionServiceCollectionExtensions
     public static IServiceCollection AddAuctionClosing(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AuctionCloseOptions>(configuration.GetSection(AuctionCloseOptions.Section));
+        services.AddScoped<IBuyerFeeCharger, BuyerFeeCharger>();
         services.AddScoped<IAuctionCloser, AuctionCloser>();
         services.AddHostedService<AuctionCloseService>();
         return services;
