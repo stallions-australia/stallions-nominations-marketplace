@@ -1,7 +1,7 @@
 # v2 Phase 4 — Make an Offer — Design
 
 **Date:** 2026-10-11
-**Status:** Design agreed with David (2026-10-11); awaiting written-spec review
+**Status:** Approved (2026-10-11). Built on `feature/v2-phase4-make-an-offer` (2026-10-11); not merged. See the plan's "Changes made during the build" for refinements; `Offer.PurchaseId` was replaced by a lookup through `Purchase.OfferId` (unique).
 **Branch:** `feature/v2-phase4-make-an-offer` (from master after Phase 3 merged as PR #5)
 **Builds on:** `2026-10-09-business-model-v2-design.md` (D1, D4, D7) and
 `2026-10-10-v2-phase3-auction-close-design.md` (charge pipeline, sale records, emails).

@@ -30,6 +30,22 @@
 > - Charge outcomes are reported as `ChargeOutcome { Skipped, Paid, PaymentFailed, NoSale }`.
 > - Pending offers whose listing is no longer Active are also expired by the background step (a
 >   safety net if expiring them right after a stud close fails).
+>
+> **Changes made during the build (after task reviews, 2026-10-11):**
+> - The client read path for `MakeAnOfferListingDto` is tested in Client.Tests (Server.Tests pulls
+>   System.Text.Json 10, which rejects the `listingType` property/discriminator overlap that the
+>   client's STJ 9 accepts).
+> - `ExpirePendingOffersAsync` only expires offers that are past expiry or on a listing that is no
+>   longer open; its test seeds a Cancelled listing.
+> - An accepted offer keeps `Status = Accepted` if its sale is later voided; buyer views show
+>   "Accepted — no sale".
+> - `AdminListingDetail` reloads when its listing id changes (after Convert, or via the link to the
+>   Make an Offer listing).
+> - Final review: a duplicate pending offer is detected by the unique-index error only (other save
+>   failures are logged and rethrown); Decline and Withdraw run in a transaction; an offer never
+>   expires after its listing; a stud close/cancel that races the expirer returns 409; the offer
+>   confirmation shows cents; offer and bid confirmations stay disabled until the disclosure has
+>   loaded; network and sign-in errors on offer actions show a message (the stud panel reloads).
 > - The first line of each code block (`// src/...`, `@* src/... *@`) only names the file — don't copy it.
 
 ## Review Focus
