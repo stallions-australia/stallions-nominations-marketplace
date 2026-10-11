@@ -189,4 +189,23 @@ public class AdminListingDetailTests : TestContext
         cut.FindAll("button").Any(b => b.TextContent.Contains("Close Listing")).Should().BeTrue();
         cut.FindAll("button").Any(b => b.TextContent.Contains("Unpublish")).Should().BeFalse();
     }
+
+    [Fact]
+    public void NavigatingToAnotherListing_ReloadsThePage()
+    {
+        var auction = UnsoldAuction();
+        var admin = RenderWith(auction, out var cut);
+        cut.WaitForAssertion(() => cut.FindAll("button").Single(b => b.TextContent.Contains("Offer as Make an Offer")));
+        var mao = new MakeAnOfferListingDto
+        {
+            Id = Guid.NewGuid(), StallionName = "Dundeel (NZ)", SeasonName = "2026 Season", Status = "Active",
+            ExpiresAt = DateTime.UtcNow.AddDays(30), BuyerFeeIncGst = 150m, PublishedAt = DateTime.UtcNow
+        };
+        admin.Setup(a => a.GetListingAsync(mao.Id)).ReturnsAsync(mao);
+
+        cut.SetParametersAndRender(p => p.Add(c => c.Id, mao.Id));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Offers close"));
+        cut.FindAll("button").Any(b => b.TextContent.Contains("Offer as Make an Offer")).Should().BeFalse();
+    }
 }
