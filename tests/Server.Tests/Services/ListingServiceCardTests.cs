@@ -2,6 +2,7 @@ using FluentAssertions;
 using Moq;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Sales;
 using Stallions.Server.Services;
 using Stallions.Shared.DTOs.Listings;
 using Stallions.Shared.Enums;
@@ -24,7 +25,8 @@ public class ListingServiceCardTests
         _mockUsers.Object,
         new Mock<IPlatformSettingsRepository>().Object,
         new Mock<ISubscriptionService>().Object,
-        new Mock<IAuditLogRepository>().Object);
+        new Mock<IAuditLogRepository>().Object,
+        new Mock<IOfferExpirer>().Object);
 
     [Fact]
     public async Task GetListingCardsAsync_Auction_IncludesBidCountAndHighestBid()

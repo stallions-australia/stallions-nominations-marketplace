@@ -119,6 +119,13 @@ public class AuctionEmails : IAuctionEmails
             Para($"The stud has declined your offer of {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)})."),
             Link($"/listings/{listing.Id}", "View the listing"));
 
+    public Task OfferExpiredAsync(MakeAnOfferListing listing, Offer offer, User buyer, bool listingClosed) =>
+        QueueAsync(buyer.Email, "OfferExpired", $"Offer closed: {Name(listing)}", listing,
+            Para(listingClosed
+                ? $"The {Name(listing)} nomination ({Season(listing)}) is no longer taking offers, so your offer of {Money(offer.AmountIncGst)} has closed without a response."
+                : $"Your offer of {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)}) has expired without a response from the stud."),
+            Link($"/listings/{listing.Id}", "View the listing"));
+
     // ── Building blocks ────────────────────────────────────────────────────────
 
     private sealed record Block(string Html, string Text);

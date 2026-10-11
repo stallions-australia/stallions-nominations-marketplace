@@ -185,4 +185,14 @@ public class AuctionEmailsTests
         email.ToAddress.Should().Be("jane@example.com");
         email.TextBody.Should().Contain("declined").And.Contain("$9,000.00");
     }
+
+    [Fact]
+    public async Task OfferExpired_SaysWhetherTheListingClosed()
+    {
+        await CreateSut().OfferExpiredAsync(OfferListing(), new Offer { AmountIncGst = 9000m }, new User { Email = "jane@example.com" }, listingClosed: true);
+        await CreateSut().OfferExpiredAsync(OfferListing(), new Offer { AmountIncGst = 9000m }, new User { Email = "jane@example.com" }, listingClosed: false);
+
+        _queued[0].TextBody.Should().Contain("no longer taking offers");
+        _queued[1].TextBody.Should().Contain("expired");
+    }
 }

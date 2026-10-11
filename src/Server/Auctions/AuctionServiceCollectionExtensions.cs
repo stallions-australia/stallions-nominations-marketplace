@@ -10,6 +10,7 @@ public static class AuctionServiceCollectionExtensions
         services.Configure<AuctionCloseOptions>(configuration.GetSection(AuctionCloseOptions.Section));
         services.AddScoped<IBuyerFeeCharger, BuyerFeeCharger>();
         services.AddScoped<IAuctionCloser, AuctionCloser>();
+        services.AddScoped<IOfferExpirer, OfferExpirer>();
         services.AddHostedService<AuctionCloseService>();
         return services;
     }

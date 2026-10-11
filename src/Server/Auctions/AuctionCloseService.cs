@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Stallions.Server.Infrastructure;
+using Stallions.Server.Sales;
 
 namespace Stallions.Server.Auctions;
 
@@ -37,5 +38,7 @@ public class AuctionCloseService : PeriodicScopedService
         if (run.AuctionsClosed > 0 || run.ChargesAttempted > 0)
             _log.LogInformation("Auction close run: {Closed} auctions closed, {Charged} buyer-fee charges made",
                 run.AuctionsClosed, run.ChargesAttempted);
+        var expired = await services.GetRequiredService<IOfferExpirer>().RunAsync(ct);
+        if (expired > 0) _log.LogInformation("Offer expiry run: {Expired} offers or listings expired", expired);
     }
 }

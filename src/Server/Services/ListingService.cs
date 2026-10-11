@@ -2,6 +2,7 @@ using System.Text.Json;
 using Stallions.Server.Infrastructure;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Sales;
 using Stallions.Shared.DTOs.Listings;
 using Stallions.Shared.Enums;
 
@@ -17,6 +18,7 @@ public class ListingService : IListingService
     private readonly IPlatformSettingsRepository _settingsRepo;
     private readonly ISubscriptionService _subscriptions;
     private readonly IAuditLogRepository _audit;
+    private readonly IOfferExpirer _offerExpirer;
 
     public ListingService(
         IListingRepository listingRepo,
@@ -26,7 +28,8 @@ public class ListingService : IListingService
         IUserService users,
         IPlatformSettingsRepository settingsRepo,
         ISubscriptionService subscriptions,
-        IAuditLogRepository audit)
+        IAuditLogRepository audit,
+        IOfferExpirer offerExpirer)
     {
         _listingRepo = listingRepo;
         _seasonRepo = seasonRepo;
@@ -36,6 +39,7 @@ public class ListingService : IListingService
         _settingsRepo = settingsRepo;
         _subscriptions = subscriptions;
         _audit = audit;
+        _offerExpirer = offerExpirer;
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff)
@@ -306,6 +310,7 @@ public class ListingService : IListingService
         listing.Status = ListingStatus.Cancelled;
         listing.ClosedAt = DateTime.UtcNow;
         await _listingRepo.UpdateAsync(listing);
+        if (listing is MakeAnOfferListing) await _offerExpirer.ExpirePendingOffersAsync(listing.Id);
         return ServiceResult.Ok();
     }
 
@@ -338,6 +343,7 @@ public class ListingService : IListingService
         listing.Status = ListingStatus.Cancelled;
         listing.ClosedAt = DateTime.UtcNow;
         await _listingRepo.UpdateAsync(listing);
+        if (listing is MakeAnOfferListing) await _offerExpirer.ExpirePendingOffersAsync(listing.Id);
         return ServiceResult.Ok();
     }
 

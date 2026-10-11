@@ -3,6 +3,7 @@ using Moq;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Infrastructure;
+using Stallions.Server.Sales;
 using Stallions.Server.Services;
 using Stallions.Shared.DTOs.Listings;
 using Stallions.Shared.Enums;
@@ -19,6 +20,7 @@ public class ListingServiceTests
     private readonly Mock<IPlatformSettingsRepository> _settingsRepoMock = new();
     private readonly Mock<ISubscriptionService> _subscriptionsMock = new();
     private readonly Mock<IAuditLogRepository> _auditMock = new();
+    private readonly Mock<IOfferExpirer> _offerExpirerMock = new();
 
     public ListingServiceTests()
     {
@@ -38,7 +40,7 @@ public class ListingServiceTests
     private ListingService CreateSut() => new(
         _listingRepoMock.Object, _seasonRepoMock.Object,
         _stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object,
-        _settingsRepoMock.Object, _subscriptionsMock.Object, _auditMock.Object);
+        _settingsRepoMock.Object, _subscriptionsMock.Object, _auditMock.Object, _offerExpirerMock.Object);
 
     private void SetBuyerFeeSetting(decimal fee) =>
         _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
@@ -662,5 +664,32 @@ public class ListingServiceTests
         cards.Single().ListingType.Should().Be("MakeAnOffer");
         cards.Single().OffersUntil.Should().Be(mao.ExpiresAt);
         cards.Single().CurrentHighestBidIncGst.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ClosingAMakeAnOfferListing_ExpiresItsPendingOffers()
+    {
+        var (_, farm) = SignedInFarm();
+        var mao = new MakeAnOfferListing { Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            ExpiresAt = DateTime.UtcNow.AddDays(10) };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(mao.Id)).ReturnsAsync(mao);
+
+        (await CreateSut().CloseByStudFarmAsync(mao.Id)).Succeeded.Should().BeTrue();
+
+        mao.Status.Should().Be(ListingStatus.Cancelled);
+        _offerExpirerMock.Verify(x => x.ExpirePendingOffersAsync(mao.Id), Times.Once);
+    }
+
+    [Fact]
+    public async Task ClosingAnAuction_DoesNotTouchOffers()
+    {
+        var (_, farm) = SignedInFarm();
+        var auction = DraftAuction(farm.Id);
+        auction.Status = ListingStatus.Active;
+        _listingRepoMock.Setup(r => r.GetByIdAsync(auction.Id)).ReturnsAsync(auction);
+
+        await CreateSut().CloseByStudFarmAsync(auction.Id);
+
+        _offerExpirerMock.Verify(x => x.ExpirePendingOffersAsync(It.IsAny<Guid>()), Times.Never);
     }
 }

@@ -23,4 +23,6 @@ public interface IAuctionEmails
     Task OfferReceivedAsync(MakeAnOfferListing listing, Offer offer, User buyer);
     /// <summary>To the buyer: the stud declined their offer.</summary>
     Task OfferDeclinedAsync(MakeAnOfferListing listing, Offer offer, User buyer);
+    /// <summary>To the buyer: their offer expired, or the listing closed, without a response.</summary>
+    Task OfferExpiredAsync(MakeAnOfferListing listing, Offer offer, User buyer, bool listingClosed);
 }
