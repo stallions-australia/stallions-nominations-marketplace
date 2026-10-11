@@ -90,7 +90,7 @@ BEGIN
         'Coolmore Australia (Dev)',
         '12 345 678 901',
         '02 4998 6700',
-        'info@coolmoreaustralia.com.au',
+        'coolmore-contact@dev.local',
         'Jerrys Plains NSW 2330',
         1, GETUTCDATE()
     );
@@ -105,7 +105,7 @@ BEGIN
         'Arrowfield Stud (Dev)',
         '98 765 432 109',
         '02 6545 3000',
-        'info@arrowfield.com.au',
+        'arrowfield-contact@dev.local',
         'Scone NSW 2337',
         1, GETUTCDATE()
     );
