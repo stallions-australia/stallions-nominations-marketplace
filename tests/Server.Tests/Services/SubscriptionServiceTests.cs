@@ -23,6 +23,7 @@ public class SubscriptionServiceTests : IDisposable
     private readonly AppDbContext _db;
     private readonly Mock<IUserService> _users = new();
     private readonly Mock<IPaymentProvider> _provider = new();
+    private readonly TestClock _clock = new() { Now = DateTimeOffset.UtcNow };
 
     private readonly User _staff = new() { Id = Guid.NewGuid(), Role = UserRole.Staff, Status = UserStatus.Active, ObjectId = "staff", Email = "staff@x", DisplayName = "Staff" };
     private readonly User _studUserA = new() { Id = Guid.NewGuid(), Role = UserRole.StudFarmAdmin, Status = UserStatus.Active, ObjectId = "a", Email = "a@x", DisplayName = "A" };
@@ -61,7 +62,21 @@ public class SubscriptionServiceTests : IDisposable
         new AuditLogRepository(_db),
         _users.Object,
         _provider.Object,
+        new IntroOfferRepository(_db),
+        _clock,
         NullLogger<SubscriptionService>.Instance);
+
+    private IntroOffer AddOffer(string name, IntroOfferType type, decimal? off = null, Guid? farmId = null, int endsInDays = 30)
+    {
+        var offer = new IntroOffer
+        {
+            Name = name, Type = type, AmountOffIncGst = off, StudFarmId = farmId,
+            EndsAt = _clock.UtcNow.AddDays(endsInDays), CreatedAt = _clock.UtcNow, CreatedByUserId = _staff.Id
+        };
+        _db.IntroOffers.Add(offer);
+        _db.SaveChanges();
+        return offer;
+    }
 
     private void SignInAs(User user) =>
         _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
@@ -534,5 +549,114 @@ public class SubscriptionServiceTests : IDisposable
         var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
         sub.PendingCheckoutUrl.Should().BeNull();
         sub.PendingCheckoutExpiresAt.Should().BeNull();
+    }
+
+    // ── Intro offers ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Create_WithNoOverride_AppliesTheBestIntroOffer()
+    {
+        AddOffer("Everyone $100 off", IntroOfferType.AmountOff, 100m);
+        var launch = AddOffer("Launch 2026", IntroOfferType.AmountOff, 495m, _farmA.Id);
+
+        var dto = await CreatePendingAsync(_stallionA);
+
+        (dto.FeeIncGst, dto.FeeExGst, dto.GstAmount).Should().Be((495m, 450m, 45m));
+        dto.StandardFeeIncGst.Should().Be(990m);
+        dto.IntroOfferName.Should().Be("Launch 2026");
+        dto.Status.Should().Be("Pending");
+        (await _db.StallionSeasonSubscriptions.SingleAsync()).IntroOfferId.Should().Be(launch.Id);
+    }
+
+    [Fact]
+    public async Task Create_WithAnOverride_IgnoresOffers()
+    {
+        AddOffer("Launch 2026", IntroOfferType.AmountOff, 495m);
+
+        var dto = await CreatePendingAsync(_stallionA, feeOverride: 700m);
+
+        dto.FeeIncGst.Should().Be(700m);
+        dto.StandardFeeIncGst.Should().Be(990m);
+        dto.IntroOfferName.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Create_WhenTheOfferWaivesTheFee_IsWaivedAtOnce()
+    {
+        AddOffer("Founding studs", IntroOfferType.Waiver);
+
+        var dto = await CreatePendingAsync(_stallionA);
+
+        dto.Status.Should().Be("Waived");
+        dto.PaymentMethod.Should().Be("Waived");
+        dto.WaiverReason.Should().Be("Intro offer: Founding studs");
+        dto.FeeIncGst.Should().Be(0m);
+        dto.PaidAt.Should().Be(_clock.UtcNow);
+    }
+
+    [Fact]
+    public async Task Create_Audit_RecordsTheIntroOffer()
+    {
+        var offer = AddOffer("Launch 2026", IntroOfferType.AmountOff, 495m);
+
+        var dto = await CreatePendingAsync(_stallionA);
+
+        (await _db.AuditLogs.SingleAsync(a => a.EntityId == dto.Id)).Details.Should().Contain(offer.Id.ToString());
+    }
+
+    [Fact]
+    public async Task Activate_AppliesTheOffer_ToTheNewSubscription()
+    {
+        AddOffer("Launch 2026", IntroOfferType.AmountOff, 495m);
+        PaymentPageReturns("https://pay/fee");
+
+        await ActivateAs(_studUserA, _stallionA);
+
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
+        (sub.FeeIncGst, sub.StandardFeeIncGst).Should().Be((495m, 990m));
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(sub.Id, 495m,
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activate_WhenTheOfferWaivesTheFee_ActivatesWithoutAPaymentPage()
+    {
+        AddOffer("Founding studs", IntroOfferType.AmountOff, 2000m, _farmA.Id);
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        result.Value!.ActivatedWithoutPayment.Should().BeTrue();
+        result.Value.Url.Should().BeEmpty();
+        var sub = await _db.StallionSeasonSubscriptions.SingleAsync();
+        sub.Status.Should().Be(SubscriptionStatus.Waived);
+        sub.WaiverReason.Should().Be("Intro offer: Founding studs");
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), It.IsAny<decimal>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activate_ReusesAStaffPendingSubscription_EvenIfABetterOfferExistsNow()
+    {
+        await CreatePendingAsync(_stallionA);                  // $990, no offer yet
+        AddOffer("Founding studs", IntroOfferType.Waiver);     // created afterwards
+        PaymentPageReturns("https://pay/fee");
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.Value!.ActivatedWithoutPayment.Should().BeFalse();
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), 990m,
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Activate_IgnoresAnEndedOffer()
+    {
+        AddOffer("Old offer", IntroOfferType.Waiver, endsInDays: -1);
+        PaymentPageReturns("https://pay/fee");
+
+        await ActivateAs(_studUserA, _stallionA);
+
+        (await _db.StallionSeasonSubscriptions.SingleAsync()).FeeIncGst.Should().Be(990m);
     }
 }

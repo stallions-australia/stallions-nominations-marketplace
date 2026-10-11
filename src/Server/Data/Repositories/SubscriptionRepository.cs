@@ -13,7 +13,8 @@ public class SubscriptionRepository : ISubscriptionRepository
         _db.StallionSeasonSubscriptions
             .Include(s => s.Stallion)
             .Include(s => s.Season)
-            .Include(s => s.StudFarm);
+            .Include(s => s.StudFarm)
+            .Include(s => s.IntroOffer);
 
     public async Task<StallionSeasonSubscription?> GetByIdAsync(Guid id) =>
         await WithDetails().FirstOrDefaultAsync(s => s.Id == id);

@@ -23,6 +23,8 @@ public class SubscriptionService : ISubscriptionService
     private readonly IAuditLogRepository _auditRepo;
     private readonly IUserService _users;
     private readonly IPaymentProvider _provider;
+    private readonly IIntroOfferRepository _introOffers;
+    private readonly TimeProvider _clock;
     private readonly ILogger<SubscriptionService> _log;
 
     public SubscriptionService(
@@ -34,6 +36,8 @@ public class SubscriptionService : ISubscriptionService
         IAuditLogRepository auditRepo,
         IUserService users,
         IPaymentProvider provider,
+        IIntroOfferRepository introOffers,
+        TimeProvider clock,
         ILogger<SubscriptionService> log)
     {
         _repo = repo;
@@ -44,7 +48,49 @@ public class SubscriptionService : ISubscriptionService
         _auditRepo = auditRepo;
         _users = users;
         _provider = provider;
+        _introOffers = introOffers;
+        _clock = clock;
         _log = log;
+    }
+
+    private DateTime Now => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>The standard fee with the best intro offer for this stud and season, as of now.</summary>
+    private async Task<IntroOfferMatch> ResolveFeeAsync(Guid studFarmId, Guid seasonId)
+    {
+        var now = Now;
+        var standard = (await _settingsRepo.GetAsync()).StandardListingFeeIncGst;
+        return IntroOfferResolver.Resolve(studFarmId, seasonId, standard, now,
+            await _introOffers.GetCandidatesAsync(studFarmId, seasonId, now));
+    }
+
+    /// <summary>A new subscription at the resolved fee; a $0 intro offer waives it immediately.</summary>
+    private StallionSeasonSubscription NewSubscription(Guid stallionId, Guid seasonId, Guid studFarmId,
+        IntroOfferMatch match, Guid createdByUserId, string? notes)
+    {
+        var fee = GstBreakdown.FromIncGst(match.FeeIncGst);
+        var subscription = new StallionSeasonSubscription
+        {
+            StallionId = stallionId,
+            SeasonId = seasonId,
+            StudFarmId = studFarmId,
+            FeeIncGst = fee.IncGst,
+            FeeExGst = fee.ExGst,
+            GstAmount = fee.Gst,
+            StandardFeeIncGst = match.StandardFeeIncGst,
+            IntroOfferId = match.Offer?.Id,
+            Status = SubscriptionStatus.Pending,
+            Notes = notes,
+            CreatedByUserId = createdByUserId
+        };
+        if (match.Offer != null && match.FeeIncGst == 0m)
+        {
+            subscription.Status = SubscriptionStatus.Waived;
+            subscription.PaymentMethod = SubscriptionPaymentMethod.Waived;
+            subscription.WaiverReason = $"Intro offer: {match.Offer.Name}";
+            subscription.PaidAt = Now;
+        }
+        return subscription;
     }
 
     public async Task<ServiceResult<SubscriptionDto>> CreateAsync(CreateSubscriptionRequest request)
@@ -69,21 +115,14 @@ public class SubscriptionService : ISubscriptionService
             return ServiceResult<SubscriptionDto>.Conflict(
                 $"{stallion.Name} already has a subscription for {season.Name}.");
 
-        var feeIncGst = request.FeeIncGstOverride ?? (await _settingsRepo.GetAsync()).StandardListingFeeIncGst;
-        var fee = GstBreakdown.FromIncGst(feeIncGst);
+        // An override is used as-is (no intro offer recorded); otherwise the best intro offer applies.
+        var standardFee = (await _settingsRepo.GetAsync()).StandardListingFeeIncGst;
+        var match = request.FeeIncGstOverride is { } overrideFee
+            ? new IntroOfferMatch(null, standardFee, overrideFee)
+            : await ResolveFeeAsync(stallion.StudFarmId, season.Id);
 
-        var subscription = new StallionSeasonSubscription
-        {
-            StallionId = stallion.Id,
-            SeasonId = season.Id,
-            StudFarmId = stallion.StudFarmId,
-            FeeIncGst = fee.IncGst,
-            FeeExGst = fee.ExGst,
-            GstAmount = fee.Gst,
-            Status = SubscriptionStatus.Pending,
-            Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
-            CreatedByUserId = staff.Id
-        };
+        var subscription = NewSubscription(stallion.Id, season.Id, stallion.StudFarmId, match, staff.Id,
+            string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim());
 
         try
         {
@@ -102,6 +141,9 @@ public class SubscriptionService : ISubscriptionService
                 subscription.StallionId,
                 subscription.SeasonId,
                 subscription.FeeIncGst,
+                subscription.StandardFeeIncGst,
+                subscription.IntroOfferId,
+                Status = subscription.Status.ToString(),
                 FeeOverridden = request.FeeIncGstOverride.HasValue
             }));
 
@@ -209,20 +251,10 @@ public class SubscriptionService : ISubscriptionService
 
         if (subscription == null)
         {
-            // Self-serve: the standard fee. A Pending subscription Staff created (e.g. with an
-            // intro-offer discount) is reused instead, so its amount and notes are kept.
-            var fee = GstBreakdown.FromIncGst((await _settingsRepo.GetAsync()).StandardListingFeeIncGst);
-            subscription = new StallionSeasonSubscription
-            {
-                StallionId = stallion.Id,
-                SeasonId = season.Id,
-                StudFarmId = farm.Id,
-                FeeIncGst = fee.IncGst,
-                FeeExGst = fee.ExGst,
-                GstAmount = fee.Gst,
-                Status = SubscriptionStatus.Pending,
-                CreatedByUserId = caller.Id
-            };
+            // Self-serve: the standard fee with the best intro offer. A Pending subscription Staff created
+            // is reused instead (below), so its amount and notes are kept even if an offer started since.
+            var match = await ResolveFeeAsync(farm.Id, season.Id);
+            subscription = NewSubscription(stallion.Id, season.Id, farm.Id, match, caller.Id, notes: null);
             var created = true;
             try
             {
@@ -238,8 +270,17 @@ public class SubscriptionService : ISubscriptionService
             }
 
             if (created)
+            {
                 await _auditRepo.LogAsync(AuditEntity, subscription.Id, "CreateSubscription", caller.Id,
-                    JsonSerializer.Serialize(new { subscription.StallionId, subscription.SeasonId, subscription.FeeIncGst, SelfServe = true }));
+                    JsonSerializer.Serialize(new
+                    {
+                        subscription.StallionId, subscription.SeasonId, subscription.FeeIncGst,
+                        subscription.StandardFeeIncGst, subscription.IntroOfferId,
+                        Status = subscription.Status.ToString(), SelfServe = true
+                    }));
+                if (subscription.Status == SubscriptionStatus.Waived)
+                    return ServiceResult<PaymentRedirectDto>.Ok(new PaymentRedirectDto { ActivatedWithoutPayment = true });
+            }
         }
 
         if (subscription.Status is SubscriptionStatus.Paid or SubscriptionStatus.Waived)
@@ -339,6 +380,8 @@ public class SubscriptionService : ISubscriptionService
         FeeIncGst = s.FeeIncGst,
         FeeExGst = s.FeeExGst,
         GstAmount = s.GstAmount,
+        StandardFeeIncGst = s.StandardFeeIncGst,
+        IntroOfferName = s.IntroOffer?.Name,
         Status = s.Status.ToString(),
         PaymentMethod = s.PaymentMethod?.ToString(),
         PaymentReference = s.PaymentReference,

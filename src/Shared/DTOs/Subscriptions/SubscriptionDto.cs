@@ -12,6 +12,8 @@ public class SubscriptionDto
     public decimal FeeIncGst { get; set; }
     public decimal FeeExGst { get; set; }
     public decimal GstAmount { get; set; }
+    public decimal StandardFeeIncGst { get; set; }               // the standard fee when created
+    public string? IntroOfferName { get; set; }                  // the intro offer applied, if any
     public string Status { get; set; } = string.Empty;          // Pending | Paid | Waived
     public string? PaymentMethod { get; set; }                   // Card | Invoice | BankTransfer | Waived
     public string? PaymentReference { get; set; }
