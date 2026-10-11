@@ -15,6 +15,18 @@ public class PlatformSettings
     public decimal MinimumBidIncrement { get; set; }
     public int ChargeGracePeriodHours { get; set; }
     public int OfferExpiryDays { get; set; }
+
+    // Stallions Australia's business details, printed on every tax document. Issuing a document needs
+    // legal name, ABN and address; an unpaid invoice also needs the bank details. ABN and BSB are digits only.
+    public string? BusinessLegalName { get; set; }
+    public string? BusinessAbn { get; set; }
+    public string? BusinessAddress { get; set; }
+    public string? BusinessEmail { get; set; }
+    public string? BankAccountName { get; set; }
+    public string? BankBsb { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public int InvoicePaymentTermsDays { get; set; }
+
     public DateTime UpdatedAt { get; set; }
     public Guid? UpdatedByUserId { get; set; }
 

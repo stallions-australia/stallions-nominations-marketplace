@@ -50,5 +50,4 @@ public class Purchase : IHasConcurrencyStamp
     public User Buyer { get; set; } = null!;
     public Bid? Bid { get; set; }
     public Offer? Offer { get; set; }
-    public NominationBinding? NominationBinding { get; set; }
 }

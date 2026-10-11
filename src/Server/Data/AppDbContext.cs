@@ -18,7 +18,6 @@ public class AppDbContext : DbContext
     public DbSet<MakeAnOfferListing> MakeAnOfferListings => Set<MakeAnOfferListing>();
     public DbSet<Bid> Bids => Set<Bid>();
     public DbSet<Purchase> Purchases => Set<Purchase>();
-    public DbSet<NominationBinding> NominationBindings => Set<NominationBinding>();
     public DbSet<Enquiry> Enquiries => Set<Enquiry>();
     public DbSet<EnquiryMessage> EnquiryMessages => Set<EnquiryMessage>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -31,6 +30,8 @@ public class AppDbContext : DbContext
     public DbSet<ProcessedPaymentEvent> ProcessedPaymentEvents => Set<ProcessedPaymentEvent>();
     public DbSet<OutboundEmail> OutboundEmails => Set<OutboundEmail>();
     public DbSet<Offer> Offers => Set<Offer>();
+    public DbSet<IntroOffer> IntroOffers => Set<IntroOffer>();
+    public DbSet<TaxDocument> TaxDocuments => Set<TaxDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -259,25 +260,6 @@ public class AppDbContext : DbContext
             e.HasIndex(p => p.OfferId).IsUnique().HasFilter("[OfferId] IS NOT NULL AND [Status] <> 'Voided'");
         });
 
-        // ── NominationBindings ───────────────────────────────────────────────
-        modelBuilder.Entity<NominationBinding>(e =>
-        {
-            e.HasKey(n => n.Id);
-            e.HasIndex(n => n.PurchaseId).IsUnique();
-            e.Property(n => n.Status).HasConversion<string>().HasMaxLength(30);
-            e.Property(n => n.PdfBlobPath).HasMaxLength(500);
-
-            e.HasOne(n => n.Purchase)
-                .WithOne(p => p.NominationBinding)
-                .HasForeignKey<NominationBinding>(n => n.PurchaseId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            e.HasOne(n => n.AcknowledgedBy)
-                .WithMany()
-                .HasForeignKey(n => n.AcknowledgedByUserId)
-                .OnDelete(DeleteBehavior.NoAction);
-        });
-
         // ── Enquiries ────────────────────────────────────────────────────────
         modelBuilder.Entity<Enquiry>(e =>
         {
@@ -386,6 +368,13 @@ public class AppDbContext : DbContext
             e.Property(s => s.BuyerFeeIncGst).HasPrecision(12, 2);
             e.Property(s => s.StandardListingFeeIncGst).HasPrecision(12, 2);
             e.Property(s => s.MinimumBidIncrement).HasPrecision(12, 2);
+            e.Property(s => s.BusinessLegalName).HasMaxLength(200);
+            e.Property(s => s.BusinessAbn).HasMaxLength(11);
+            e.Property(s => s.BusinessAddress).HasMaxLength(500);
+            e.Property(s => s.BusinessEmail).HasMaxLength(256);
+            e.Property(s => s.BankAccountName).HasMaxLength(200);
+            e.Property(s => s.BankBsb).HasMaxLength(6);
+            e.Property(s => s.BankAccountNumber).HasMaxLength(10);
 
             e.HasOne(s => s.UpdatedBy)
                 .WithMany()
@@ -401,6 +390,7 @@ public class AppDbContext : DbContext
                 MinimumBidIncrement = 25m,
                 ChargeGracePeriodHours = 2,
                 OfferExpiryDays = 7,
+                InvoicePaymentTermsDays = 14,
                 UpdatedAt = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc)
             });
         });
@@ -414,6 +404,7 @@ public class AppDbContext : DbContext
             e.Property(s => s.FeeIncGst).HasPrecision(12, 2);
             e.Property(s => s.FeeExGst).HasPrecision(12, 2);
             e.Property(s => s.GstAmount).HasPrecision(12, 2);
+            e.Property(s => s.StandardFeeIncGst).HasPrecision(12, 2);
             e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(s => s.PaymentMethod).HasConversion<string>().HasMaxLength(20);
             e.Property(s => s.PaymentReference).HasMaxLength(200);
@@ -440,6 +431,11 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(s => s.CreatedByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasOne(s => s.IntroOffer)
+                .WithMany()
+                .HasForeignKey(s => s.IntroOfferId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── SavedCards (one per buyer) ────────────────────────────────────────
@@ -479,6 +475,65 @@ public class AppDbContext : DbContext
             e.Property(m => m.LastError).HasMaxLength(1000);
             e.Property(m => m.ConcurrencyStamp).IsConcurrencyToken();
             e.HasIndex(m => new { m.SentAt, m.FailedAt, m.NextAttemptAt });
+        });
+
+        // ── Intro offers ─────────────────────────────────────────────────────
+        modelBuilder.Entity<IntroOffer>(e =>
+        {
+            e.HasKey(o => o.Id);
+            e.Property(o => o.Name).HasMaxLength(100).IsRequired();
+            e.Property(o => o.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(o => o.AmountOffIncGst).HasPrecision(12, 2);
+            e.HasIndex(o => new { o.IsRetired, o.EndsAt });
+            e.HasOne(o => o.StudFarm).WithMany().HasForeignKey(o => o.StudFarmId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(o => o.Season).WithMany().HasForeignKey(o => o.SeasonId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne<User>().WithMany().HasForeignKey(o => o.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne<User>().WithMany().HasForeignKey(o => o.UpdatedByUserId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ── Tax documents (numbered from a sequence; never edited except Unpaid → Paid) ──
+        modelBuilder.HasSequence<long>("TaxDocumentNumbers").StartsAt(1).IncrementsBy(1);
+        modelBuilder.Entity<TaxDocument>(e =>
+        {
+            e.HasKey(d => d.Id);
+            e.Property(d => d.Number).HasMaxLength(20).IsRequired();
+            e.HasIndex(d => d.Number).IsUnique();
+            e.Property(d => d.Kind).HasConversion<string>().HasMaxLength(30);
+            e.Property(d => d.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(d => d.Description).HasMaxLength(300).IsRequired();
+            e.Property(d => d.StandardAmountIncGst).HasPrecision(12, 2);
+            e.Property(d => d.IntroOfferName).HasMaxLength(100);
+            e.Property(d => d.DiscountIncGst).HasPrecision(12, 2);
+            e.Property(d => d.AmountIncGst).HasPrecision(12, 2);
+            e.Property(d => d.AmountExGst).HasPrecision(12, 2);
+            e.Property(d => d.GstAmount).HasPrecision(12, 2);
+            e.Property(d => d.SupplierName).HasMaxLength(200).IsRequired();
+            e.Property(d => d.SupplierAbn).HasMaxLength(11).IsRequired();
+            e.Property(d => d.SupplierAddress).HasMaxLength(500).IsRequired();
+            e.Property(d => d.SupplierEmail).HasMaxLength(256);
+            e.Property(d => d.RecipientName).HasMaxLength(200).IsRequired();
+            e.Property(d => d.RecipientEmail).HasMaxLength(320).IsRequired();
+            e.Property(d => d.RecipientAbn).HasMaxLength(14);
+            e.Property(d => d.RecipientAddress).HasMaxLength(500);
+            e.Property(d => d.BankAccountName).HasMaxLength(200);
+            e.Property(d => d.BankBsb).HasMaxLength(6);
+            e.Property(d => d.BankAccountNumber).HasMaxLength(10);
+            e.Property(d => d.Reason).HasMaxLength(600);
+            e.Property(d => d.ConcurrencyStamp).IsConcurrencyToken();
+
+            // One invoice per fee and one adjustment note per invoice — a second issue (race, retry) hits these.
+            e.HasIndex(d => d.SubscriptionId).IsUnique().HasFilter("[Kind] = 'ListingFeeInvoice'");
+            e.HasIndex(d => d.PurchaseId).IsUnique().HasFilter("[Kind] = 'BuyerFeeInvoice'");
+            e.HasIndex(d => d.OriginalDocumentId).IsUnique().HasFilter("[Kind] = 'AdjustmentNote'");
+            e.HasIndex(d => new { d.Kind, d.IssuedAt });
+            e.HasIndex(d => d.StudFarmId);
+            e.HasIndex(d => d.BuyerUserId);
+
+            e.HasOne<StallionSeasonSubscription>().WithMany().HasForeignKey(d => d.SubscriptionId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne<Purchase>().WithMany().HasForeignKey(d => d.PurchaseId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(d => d.OriginalDocument).WithMany().HasForeignKey(d => d.OriginalDocumentId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne<StudFarm>().WithMany().HasForeignKey(d => d.StudFarmId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne<User>().WithMany().HasForeignKey(d => d.BuyerUserId).OnDelete(DeleteBehavior.NoAction);
         });
     }
 
