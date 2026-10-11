@@ -21,6 +21,11 @@
     last day can change.
 </p>
 
+@if (_lookupError is not null)
+{
+    <div class="alert alert-danger">@_lookupError</div>
+}
+
 @if (_loading)
 {
     <p>Loading…</p>
@@ -149,6 +154,7 @@ else
     private bool _busy;
     private bool _formOpen;
     private string? _error;
+    private string? _lookupError; // stud farms / seasons for the form: a failure there still shows the offers
     private string? _modalError;
 
     private IntroOfferDto? _editing;
@@ -175,13 +181,14 @@ else
             _farms = await StaffApi.GetStudFarmsAsync();
             _seasons = await StaffApi.GetSeasonsAsync();
         }
-        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load page data."; }
+        catch (Exception ex) { _lookupError = ex is ApiException ae ? ae.Message : "Failed to load the stud farms and seasons."; }
         await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
         _loading = true;
+        _error = null;
         try { _offers = await IntroOfferApi.GetAllAsync(); }
         catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load intro offers."; }
         finally { _loading = false; }

@@ -34,6 +34,10 @@
                 {
                     <span class="badge badge-lost">Reversed by @_doc.ReversedByNumber</span>
                 }
+                else if (_doc.Kind == "AdjustmentNote")
+                {
+                    <span class="badge badge-sold">Issued</span>
+                }
                 else
                 {
                     <span class="badge @(_doc.Status == "Paid" ? "badge-won" : "badge-ending")">@_doc.Status</span>

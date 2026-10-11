@@ -23,7 +23,9 @@ public class StaffIntroOffersTests : TestContext
         EndsOn = new DateOnly(2026, 12, 31), State = "Active", TimesApplied = timesApplied
     };
 
-    private IRenderedComponent<StaffIntroOffers> Render(params IntroOfferDto[] offers)
+    private IRenderedComponent<StaffIntroOffers> Render(params IntroOfferDto[] offers) => RenderWith(false, offers);
+
+    private IRenderedComponent<StaffIntroOffers> RenderWith(bool lookupsFail, params IntroOfferDto[] offers)
     {
         this.AddTestAuthorization().SetAuthorized("staff@example.com");
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -32,7 +34,10 @@ public class StaffIntroOffersTests : TestContext
         Services.AddSingleton(_api.Object);
 
         var staffApi = new Mock<StaffApiService>(MockBehavior.Loose, Http());
-        staffApi.Setup(s => s.GetStudFarmsAsync()).ReturnsAsync([new StudFarmSummaryDto { Id = Guid.NewGuid(), Name = "Arrowfield" }]);
+        if (lookupsFail)
+            staffApi.Setup(s => s.GetStudFarmsAsync()).ThrowsAsync(new ApiException(500, "Couldn't load the stud farms."));
+        else
+            staffApi.Setup(s => s.GetStudFarmsAsync()).ReturnsAsync([new StudFarmSummaryDto { Id = Guid.NewGuid(), Name = "Arrowfield" }]);
         staffApi.Setup(s => s.GetSeasonsAsync()).ReturnsAsync([new SeasonDto { Id = Guid.NewGuid(), Name = "2026 Season", IsOpen = true }]);
         Services.AddSingleton(staffApi.Object);
 
@@ -126,5 +131,43 @@ public class StaffIntroOffersTests : TestContext
         Click(cut, "Retire offer");
 
         _api.Verify(a => a.RetireAsync(offer.Id), Times.Once);
+    }
+
+    [Fact]
+    public void AFailedStudOrSeasonLoad_StillShowsTheOffers_WithAnError()
+    {
+        var cut = RenderWith(lookupsFail: true, Launch());
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Launch 2026"));
+        cut.Markup.Should().Contain("Couldn't load the stud farms.");
+        cut.FindAll("table.admin-table").Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void ASuccessfulReload_AfterAFailedOne_ShowsTheTableAgain()
+    {
+        var cut = Render(Launch());
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Launch 2026"));
+
+        void CreateWaiver()
+        {
+            Click(cut, "+ New intro offer");
+            cut.Find("#offer-name").Change("Founding studs");
+            cut.Find("#offer-type").Change("Waiver");
+            Click(cut, "Save intro offer");
+        }
+
+        _api.Setup(a => a.GetAllAsync()).ThrowsAsync(new ApiException(500, "Couldn't load the intro offers."));
+        CreateWaiver();
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Couldn't load the intro offers."));
+
+        _api.Setup(a => a.GetAllAsync()).ReturnsAsync([Launch(), new IntroOfferDto
+        {
+            Id = Guid.NewGuid(), Name = "Founding studs", Type = "Waiver", EndsOn = new DateOnly(2026, 12, 31), State = "Active"
+        }]);
+        CreateWaiver();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Founding studs").And.NotContain("Couldn't load the intro offers."));
+        cut.FindAll("table.admin-table").Should().HaveCount(1);
     }
 }

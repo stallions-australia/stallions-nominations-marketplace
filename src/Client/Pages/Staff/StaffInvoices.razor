@@ -49,6 +49,9 @@
     <button class="btn btn-sm btn-gold" @onclick="LoadAsync" disabled="@_busy">Apply</button>
 </div>
 
+@* An export or issue failure sits beside the register; the totals and table stay visible. *@
+@if (_actionError is not null) { <div class="alert alert-danger">@_actionError</div> }
+
 @if (_loading)
 {
     <p>Loading…</p>
@@ -126,6 +129,7 @@ else if (_register is not null)
     private bool _loading = true;
     private bool _busy;
     private string? _error;
+    private string? _actionError;
     private string? _notice;
 
     private string _kind = string.Empty;
@@ -162,26 +166,26 @@ else if (_register is not null)
 
     private async Task IssueMissingAsync()
     {
-        _busy = true; _error = null; _notice = null;
+        _busy = true; _actionError = null; _notice = null;
         try
         {
             var result = await TaxDocumentApi.IssueMissingAsync();
             _notice = $"{result.Issued} tax document(s) issued." + (result.Remaining > 0 ? $" {result.Remaining} still waiting." : "");
             await LoadAsync();
         }
-        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to issue the missing tax invoices."; }
+        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to issue the missing tax invoices."; }
         finally { _busy = false; }
     }
 
     private async Task ExportAsync()
     {
-        _busy = true; _error = null;
+        _busy = true; _actionError = null;
         try
         {
             var csv = await TaxDocumentApi.ExportCsvAsync(Filter());
             await JS.InvokeVoidAsync("stallionsDownload.text", $"tax-documents-{DateTime.Now:yyyy-MM-dd}.csv", "text/csv", csv);
         }
-        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to export the tax documents."; }
+        catch (Exception ex) { _actionError = ex is ApiException ae ? ae.Message : "Failed to export the tax documents."; }
         finally { _busy = false; }
     }
 }

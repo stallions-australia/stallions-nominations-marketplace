@@ -109,6 +109,26 @@ public class TaxDocumentPageTests : TestContext
     }
 
     [Fact]
+    public void AnAdjustmentNote_IsBadgedIssued_NotPaid()
+    {
+        var doc = ListingFeeInvoice();
+        doc.Kind = "AdjustmentNote";
+        doc.Number = "SA-000130";
+        doc.StandardAmountIncGst = null;
+        doc.DiscountIncGst = null;
+        doc.OriginalDocumentId = Guid.NewGuid();
+        doc.OriginalNumber = "SA-000123";
+        doc.OriginalIssuedOn = new DateOnly(2026, 10, 11);
+        doc.Reason = "Buyer fee refunded";
+
+        var cut = Render(doc);
+
+        cut.WaitForAssertion(() => cut.Find("h1").TextContent.Should().Be("Adjustment note"));
+        cut.Find(".tax-doc-header .badge").TextContent.Trim().Should().Be("Issued");
+        cut.Markup.Should().NotContain("Paid").And.NotContain("Unpaid");
+    }
+
+    [Fact]
     public void ABuyerFeeInvoice_ShowsTheConfiguredFeeNote()
     {
         var doc = ListingFeeInvoice();

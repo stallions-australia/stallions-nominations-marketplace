@@ -11,6 +11,7 @@ window.stallionsDownload = {
         document.body.appendChild(link);
         link.click();
         link.remove();
-        URL.revokeObjectURL(url);
+        // Revoked after the click has been handled, so the browser has started the download first.
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     }
 };

@@ -106,4 +106,34 @@ public class StaffInvoicesTests : TestContext
         call.Arguments[1].Should().Be("text/csv");
         call.Arguments[2].Should().Be("Number\r\n");
     }
+
+    [Fact]
+    public void AFailedExport_ShowsAnError_AndKeepsTheTotalsAndTable()
+    {
+        _api.Setup(a => a.ExportCsvAsync(It.IsAny<TaxDocumentFilter>()))
+            .ThrowsAsync(new ApiException(500, "Couldn't export the tax documents."));
+        var cut = Render(Register());
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("SA-000002"));
+
+        Click(cut, "Export CSV");
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Couldn't export the tax documents."));
+        cut.FindAll(".invoice-totals-grid").Should().HaveCount(1);
+        cut.FindAll("table.admin-table").Should().HaveCount(1);
+        cut.Markup.Should().Contain("SA-000002");
+    }
+
+    [Fact]
+    public void AFailedIssueMissing_ShowsAnError_AndKeepsTheTotalsAndTable()
+    {
+        _api.Setup(a => a.IssueMissingAsync()).ThrowsAsync(new ApiException(400, "Complete the business details in Settings first."));
+        var cut = Render(Register(pending: 2));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("SA-000002"));
+
+        Click(cut, "Issue missing tax invoices");
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Complete the business details in Settings first."));
+        cut.FindAll(".invoice-totals-grid").Should().HaveCount(1);
+        cut.FindAll("table.admin-table").Should().HaveCount(1);
+    }
 }
