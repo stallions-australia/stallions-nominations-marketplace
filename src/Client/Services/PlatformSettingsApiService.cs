@@ -26,4 +26,22 @@ public class PlatformSettingsApiService
         return await r.Content.ReadFromJsonAsync<PlatformSettingsDto>()
                ?? throw new ApiException(500, "Empty response.");
     }
+
+    public virtual async Task<BusinessDetailsDto> GetBusinessDetailsAsync()
+    {
+        var r = await _http.GetAsync("api/settings/business-details");
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
+        return await r.Content.ReadFromJsonAsync<BusinessDetailsDto>()
+               ?? throw new ApiException(500, "Empty response.");
+    }
+
+    public virtual async Task<BusinessDetailsDto> UpdateBusinessDetailsAsync(UpdateBusinessDetailsRequest request)
+    {
+        var r = await _http.PutAsJsonAsync("api/settings/business-details", request);
+        if (!r.IsSuccessStatusCode)
+            throw new ApiException((int)r.StatusCode, await ServiceHelpers.ExtractErrorMessageAsync(r));
+        return await r.Content.ReadFromJsonAsync<BusinessDetailsDto>()
+               ?? throw new ApiException(500, "Empty response.");
+    }
 }

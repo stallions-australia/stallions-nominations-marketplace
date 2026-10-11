@@ -27,6 +27,16 @@ public class PlatformSettings
     public string? BankAccountNumber { get; set; }
     public int InvoicePaymentTermsDays { get; set; }
 
+    /// <summary>A tax document can be issued (get-only: not a column).</summary>
+    public bool HasBusinessDetails => !string.IsNullOrWhiteSpace(BusinessLegalName)
+                                      && !string.IsNullOrWhiteSpace(BusinessAbn)
+                                      && !string.IsNullOrWhiteSpace(BusinessAddress);
+
+    /// <summary>An unpaid invoice can show where to pay.</summary>
+    public bool HasBankDetails => !string.IsNullOrWhiteSpace(BankAccountName)
+                                  && !string.IsNullOrWhiteSpace(BankBsb)
+                                  && !string.IsNullOrWhiteSpace(BankAccountNumber);
+
     public DateTime UpdatedAt { get; set; }
     public Guid? UpdatedByUserId { get; set; }
 

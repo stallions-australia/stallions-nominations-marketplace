@@ -28,4 +28,21 @@ public class PlatformSettingsController : ControllerBase
         var r = await _settings.UpdateAsync(request);
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
+
+    // Staff only: includes bank details, which GET api/settings (any signed-in user) must not expose.
+    [HttpGet("business-details")]
+    [Authorize(Policy = "StaffOnly")]
+    public async Task<IActionResult> GetBusinessDetails()
+    {
+        var r = await _settings.GetBusinessDetailsAsync();
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPut("business-details")]
+    [Authorize(Policy = "StaffOnly")]
+    public async Task<IActionResult> UpdateBusinessDetails([FromBody] UpdateBusinessDetailsRequest request)
+    {
+        var r = await _settings.UpdateBusinessDetailsAsync(request);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
 }

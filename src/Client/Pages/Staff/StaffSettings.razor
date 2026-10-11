@@ -1,6 +1,7 @@
 @page "/staff/settings"
 @layout StaffLayout
 @attribute [Authorize]
+@using Stallions.Shared
 @inject PlatformSettingsApiService SettingsApi
 @inject UserStateService UserState
 @inject NavigationManager Nav
@@ -83,6 +84,69 @@ else
             <button class="btn btn-gold" @onclick="ReviewChanges" disabled="@_busy">Save settings</button>
         </div>
     </div>
+
+    <div class="admin-form settings-form">
+        <div class="form-section">
+            <div class="form-section-title">Business details (tax invoices)</div>
+            <p class="form-hint">
+                Printed on every tax invoice and adjustment note. Changes apply to documents issued after you save.
+            </p>
+            @if (_businessStatus is { CanIssueTaxDocuments: false })
+            {
+                <div class="alert alert-warning">Tax invoices can't be issued until the legal name, ABN and address are set.</div>
+            }
+            else if (_businessStatus is { CanIssueUnpaidInvoices: false })
+            {
+                <div class="alert alert-warning">Add the bank details to issue unpaid tax invoices for listing fees.</div>
+            }
+            <div class="form-group">
+                <label class="form-label" for="biz-legal-name">Legal name</label>
+                <input id="biz-legal-name" class="form-input" maxlength="200" @bind="_business.LegalName" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="biz-abn">ABN</label>
+                <input id="biz-abn" class="form-input" inputmode="numeric" placeholder="12 345 678 901" @bind="_business.Abn" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="biz-address">Address</label>
+                <textarea id="biz-address" class="form-control" rows="3" maxlength="500" @bind="_business.Address"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="biz-email">Accounts email</label>
+                <input id="biz-email" type="email" class="form-input" maxlength="256" @bind="_business.Email" />
+            </div>
+        </div>
+        <div class="form-section">
+            <div class="form-section-title">Bank details for unpaid invoices</div>
+            <div class="form-group">
+                <label class="form-label" for="bank-account-name">Account name</label>
+                <input id="bank-account-name" class="form-input" maxlength="200" @bind="_business.BankAccountName" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="bank-bsb">BSB</label>
+                <input id="bank-bsb" class="form-input" inputmode="numeric" placeholder="062-000" @bind="_business.BankBsb" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="bank-account-number">Account number</label>
+                <input id="bank-account-number" class="form-input" inputmode="numeric" @bind="_business.BankAccountNumber" />
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="invoice-terms">Payment terms (days)</label>
+                <input id="invoice-terms" type="number" class="form-input" min="1" max="90" step="1"
+                       @bind="_business.InvoicePaymentTermsDays" />
+                <p class="form-hint">An unpaid listing fee invoice is due this many days after it is issued.</p>
+            </div>
+        </div>
+
+        @if (_businessError is not null) { <div class="alert alert-danger">@_businessError</div> }
+        @if (_businessSaved) { <div class="alert alert-success">Business details saved.</div> }
+
+        <div class="form-actions">
+            <button class="btn btn-gold" @onclick="SaveBusinessAsync" disabled="@_businessBusy">
+                @(_businessBusy ? "Saving…" : "Save business details")
+            </button>
+        </div>
+    </div>
 }
 
 <Modal IsOpen="@_confirmOpen" Title="Confirm settings change" OnClose="() => _confirmOpen = false">
@@ -115,6 +179,11 @@ else
     private bool _confirmOpen;
     private string? _loadError;
     private string? _error;
+    private BusinessDetailsDto? _businessStatus;
+    private UpdateBusinessDetailsRequest _business = new();
+    private bool _businessBusy;
+    private bool _businessSaved;
+    private string? _businessError;
 
     private static readonly System.Globalization.CultureInfo AuCulture =
         System.Globalization.CultureInfo.GetCultureInfo("en-AU");
@@ -128,6 +197,7 @@ else
         {
             _current = await SettingsApi.GetAsync();
             ResetForm();
+            ResetBusiness(await SettingsApi.GetBusinessDetailsAsync());
         }
         catch (Exception ex) { _loadError = ex is ApiException ae ? ae.Message : "Failed to load settings."; }
         finally { _loading = false; }
@@ -141,6 +211,48 @@ else
         ChargeGracePeriodHours = _current.ChargeGracePeriodHours,
         OfferExpiryDays = _current.OfferExpiryDays
     };
+
+    private void ResetBusiness(BusinessDetailsDto? d)
+    {
+        _businessStatus = d;
+        _business = new UpdateBusinessDetailsRequest
+        {
+            LegalName = d?.LegalName,
+            Abn = BusinessNumbers.FormatAbn(d?.Abn),
+            Address = d?.Address,
+            Email = d?.Email,
+            BankAccountName = d?.BankAccountName,
+            BankBsb = BusinessNumbers.FormatBsb(d?.BankBsb),
+            BankAccountNumber = d?.BankAccountNumber,
+            InvoicePaymentTermsDays = d?.InvoicePaymentTermsDays ?? 0
+        };
+    }
+
+    // Mirrors the server's checks (which remain the authority).
+    private string? ValidateBusiness()
+    {
+        var abn = BusinessNumbers.Compact(_business.Abn);
+        if (abn.Length > 0 && !BusinessNumbers.IsAbn(abn)) return "ABN must be 11 digits.";
+        var bsb = BusinessNumbers.Compact(_business.BankBsb);
+        if (bsb.Length > 0 && !BusinessNumbers.IsBsb(bsb)) return "BSB must be 6 digits.";
+        if (_business.InvoicePaymentTermsDays is < 1 or > 90) return "Payment terms must be between 1 and 90 days.";
+        return null;
+    }
+
+    private async Task SaveBusinessAsync()
+    {
+        _businessSaved = false;
+        _businessError = ValidateBusiness();
+        if (_businessError is not null) return;
+        _businessBusy = true;
+        try
+        {
+            ResetBusiness(await SettingsApi.UpdateBusinessDetailsAsync(_business));
+            _businessSaved = true;
+        }
+        catch (Exception ex) { _businessError = ex is ApiException ae ? ae.Message : "Failed to save the business details."; }
+        finally { _businessBusy = false; }
+    }
 
     // Client-side checks mirror the server's (which remains the authority).
     private string? Validate()
