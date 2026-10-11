@@ -147,6 +147,7 @@ builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IIntroOfferService, IntroOfferService>();
 builder.Services.AddScoped<ITaxDocumentEmails, TaxDocumentEmails>();
 builder.Services.AddScoped<ITaxDocumentService, TaxDocumentService>();
+builder.Services.AddScoped<ITaxDocumentQueryService, TaxDocumentQueryService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>

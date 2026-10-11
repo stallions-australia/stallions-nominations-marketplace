@@ -27,4 +27,11 @@ public class AuditLogRepository : IAuditLogRepository
             .Where(a => a.EntityType == entityType && a.EntityId == entityId)
             .OrderByDescending(a => a.OccurredAt)
             .ToListAsync();
+
+    public async Task<IReadOnlyList<Guid>> GetEntityIdsWithActionAsync(string entityType, string action) =>
+        await _db.AuditLogs
+            .Where(a => a.EntityType == entityType && a.Action == action)
+            .Select(a => a.EntityId)
+            .Distinct()
+            .ToListAsync();
 }
