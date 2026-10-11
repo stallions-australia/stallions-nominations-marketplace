@@ -69,7 +69,7 @@ else
                                         <text>@(al.CurrentHighestBidIncGst is decimal high ? $"High bid ${high:N0}" : "No bids")</text>
                                     }
                                 </td>
-                                <td><span class="badge @BadgeClass(listing.Status)">@listing.Status</span></td>
+                                <td><span class="badge @ListingStatusText.BadgeClass(listing.Status)">@ListingStatusText.Label(listing.Status, listing.CloseReason)</span></td>
                                 <td>
                                     @if (listing is AuctionListingDto al2)
                                     {
@@ -126,13 +126,4 @@ else
         }
     }
 
-    private static string BadgeClass(string status) => status switch
-    {
-        "Active"    => "badge-active",
-        "Draft"     => "badge-draft",
-        "Cancelled" => "badge-cancelled",
-        "Expired"   => "badge-expired",
-        "Sold"      => "badge-sold",
-        _           => ""
-    };
 }

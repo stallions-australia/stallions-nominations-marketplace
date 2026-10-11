@@ -4,9 +4,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
+using Stallions.Server.Auctions;
 using Stallions.Server.Auth;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
+using Stallions.Server.Email;
 using Stallions.Server.Options;
 using Stallions.Server.Payments;
 using Stallions.Server.Services;
@@ -74,10 +76,17 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddScoped<IAuthorizationHandler, DbRoleHandler>();
 
 // Config options
-builder.Services.Configure<CheckoutOptions>(builder.Configuration.GetSection("Checkout"));
+builder.Services.Configure<DisclosureOptions>(builder.Configuration.GetSection(DisclosureOptions.Section));
 
 // Payments — Stripe or the dev-only fake (refused in Production)
 builder.Services.AddPayments(builder.Configuration, builder.Environment);
+
+// Clock for background jobs and new services (tests substitute their own)
+builder.Services.AddSingleton(TimeProvider.System);
+
+// Email — outbox + Azure Communication Services (or the log sender locally)
+builder.Services.AddEmail(builder.Configuration, builder.Environment);
+builder.Services.AddAuctionClosing(builder.Configuration);
 
 // Infrastructure
 builder.Services.AddHttpContextAccessor();
@@ -121,7 +130,7 @@ builder.Services.AddScoped<ISeasonService, SeasonService>();
 builder.Services.AddScoped<IStallionService, StallionService>();
 builder.Services.AddScoped<IListingService, ListingService>();
 builder.Services.AddScoped<IBidService, BidService>();
-builder.Services.AddScoped<ICheckoutService, CheckoutService>();
+builder.Services.AddScoped<IPurchaseService, PurchaseService>();
 builder.Services.AddScoped<ICardService, CardService>();
 builder.Services.AddScoped<INominationBindingService, NominationBindingService>();
 builder.Services.AddScoped<IEnquiryService, EnquiryService>();
@@ -129,6 +138,7 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IDirectoryService, DirectoryService>();
 builder.Services.AddScoped<ITermsService, TermsService>();
 builder.Services.AddScoped<IPlatformSettingsService, PlatformSettingsService>();
+builder.Services.AddScoped<IAuctionEmails, AuctionEmails>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 
 // Rate limiting

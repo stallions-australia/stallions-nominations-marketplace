@@ -2,12 +2,15 @@ param keyVaultName string
 param storageAccountName string
 param appServicePrincipalId string
 param functionAppPrincipalId string
+param communicationServiceName string
 
 // Role definition IDs (built-in, immutable across all Azure tenants)
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
 var storageBlobDataContributorRoleId = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributorRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
+// Built-in "Communication and Email Service Owner" - lets the App Service identity send email.
+var communicationEmailOwnerRoleId = '09976791-48a7-449e-bb21-39d1a415f350'
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
@@ -79,6 +82,21 @@ resource functionAppStorageTableRole 'Microsoft.Authorization/roleAssignments@20
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageTableDataContributorRoleId)
     principalId: functionAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource communicationService 'Microsoft.Communication/communicationServices@2023-04-01' existing = {
+  name: communicationServiceName
+}
+
+// App Service — send email through Communication Services (scoped to that resource only)
+resource appServiceEmailRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(communicationService.id, appServicePrincipalId, communicationEmailOwnerRoleId)
+  scope: communicationService
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', communicationEmailOwnerRoleId)
+    principalId: appServicePrincipalId
     principalType: 'ServicePrincipal'
   }
 }

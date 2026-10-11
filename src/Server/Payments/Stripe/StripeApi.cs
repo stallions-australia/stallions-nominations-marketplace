@@ -23,4 +23,10 @@ public class StripeApi : IStripeApi
 
     public async Task DetachPaymentMethodAsync(string paymentMethodId) =>
         await new PaymentMethodService(_client).DetachAsync(paymentMethodId);
+
+    public Task<PaymentIntent> CreatePaymentIntentAsync(PaymentIntentCreateOptions options, string idempotencyKey) =>
+        new PaymentIntentService(_client).CreateAsync(options, new RequestOptions { IdempotencyKey = idempotencyKey });
+
+    public Task<PaymentIntent> GetPaymentIntentAsync(string paymentIntentId) =>
+        new PaymentIntentService(_client).GetAsync(paymentIntentId);
 }

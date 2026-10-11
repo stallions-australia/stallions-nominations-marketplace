@@ -49,7 +49,7 @@ else
                     <td>@l.StudFarmName</td>
                     <td><span class="badge badge-type-@l.ListingType.ToLowerInvariant()">@l.ListingType</span></td>
                     <td>
-                        <span class="badge badge-status-@l.Status.ToLowerInvariant()">@l.Status</span>
+                        <span class="badge @ListingStatusText.BadgeClass(l.Status)">@ListingStatusText.Label(l.Status, l.CloseReason)</span>
                     </td>
                     <td>@(l.HighestBidIncGst.HasValue ? l.HighestBidIncGst.Value.ToString("C") : "—")</td>
                     <td>@(l.ReservePrice.HasValue ? l.ReservePrice.Value.ToString("C") : "No reserve")</td>
@@ -82,7 +82,6 @@ else
                 <select class="form-select" @bind="_modalStatus">
                     <option value="Draft">Draft</option>
                     <option value="Active">Active</option>
-                    <option value="Sold">Sold</option>
                     <option value="Expired">Expired</option>
                     <option value="Cancelled">Cancelled</option>
                 </select>

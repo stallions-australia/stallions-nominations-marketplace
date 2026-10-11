@@ -55,6 +55,20 @@ public class AdminListingDetailTests : TestContext
     private static AngleSharp.Dom.IElement PublishButton(IRenderedComponent<AdminListingDetail> cut) =>
         cut.FindAll("button").Single(b => b.TextContent.Contains("Publish"));
 
+    [Theory]
+    [InlineData(7, true)]
+    [InlineData(-1, false)]
+    public void CloseAndUnpublish_AreOfferedOnlyBeforeTheAuctionEnds(int endsInDays, bool expected)
+    {
+        _draft.Status = "Active";
+        _draft.EndDateTime = DateTime.UtcNow.AddDays(endsInDays);
+        Render([Subscription("Paid")], out var cut);
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Snitzel"));
+        cut.FindAll("button").Any(b => b.TextContent.Contains("Close Listing")).Should().Be(expected);
+        cut.FindAll("button").Any(b => b.TextContent.Contains("Unpublish")).Should().Be(expected);
+    }
+
     [Fact]
     public void PublishIsDisabled_WhenStallionHasNoSubscription()
     {

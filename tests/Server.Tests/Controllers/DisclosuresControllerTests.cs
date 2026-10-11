@@ -11,7 +11,7 @@ public class DisclosuresControllerTests
     [Fact]
     public void GetBuyerFee_ReturnsTheConfiguredWording()
     {
-        var controller = new DisclosuresController(Microsoft.Extensions.Options.Options.Create(new CheckoutOptions
+        var controller = new DisclosuresController(Microsoft.Extensions.Options.Options.Create(new DisclosureOptions
         {
             BuyerFeeExplanation = "CONFIGURED fee",
             StudFarmBalanceArrangement = "CONFIGURED balance",

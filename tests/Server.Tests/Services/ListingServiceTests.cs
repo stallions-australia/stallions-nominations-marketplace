@@ -168,7 +168,7 @@ public class ListingServiceTests
         var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
-            PublishedAt = publishedAt,
+            PublishedAt = publishedAt, EndDateTime = DateTime.UtcNow.AddDays(1),
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 
@@ -179,6 +179,74 @@ public class ListingServiceTests
             l.Status == ListingStatus.Draft && l.PublishedAt == publishedAt)), Times.Once);
     }
 
+    [Theory]
+    [InlineData(ListingStatus.AwaitingPayment)]
+    [InlineData(ListingStatus.Unsold)]
+    public async Task CloseByStudFarmAsync_AfterTheAuctionClosed_IsRejected(ListingStatus status)
+    {
+        var caller = FarmUser(); var farm = FarmFor(caller);
+        _usersMock.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(caller);
+        _farmRepoMock.Setup(r => r.GetByUserIdAsync(caller.Id)).ReturnsAsync(farm);
+        var listing = new AuctionListing { Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = status };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().CloseByStudFarmAsync(listing.Id);
+
+        result.Succeeded.Should().BeFalse();
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CloseByStudFarmAsync_AfterTheEndTime_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var listing = new AuctionListing
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            EndDateTime = DateTime.UtcNow.AddMinutes(-1)
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().CloseByStudFarmAsync(listing.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("This auction has ended and is being closed.");
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UnpublishListingAsync_AfterTheEndTime_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var listing = new AuctionListing
+        {
+            Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            EndDateTime = DateTime.UtcNow.AddMinutes(-1)
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().UnpublishListingAsync(listing.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("This auction has ended and is being closed.");
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelListingAsync_AfterTheEndTime_IsRejected()
+    {
+        var listing = new AuctionListing
+        {
+            Id = Guid.NewGuid(), Status = ListingStatus.Active,
+            EndDateTime = DateTime.UtcNow.AddMinutes(-1)
+        };
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+
+        var result = await CreateSut().CancelListingAsync(listing.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
     [Fact]
     public async Task CloseByStudFarmAsync_SetsCancelledAndClosedAt()
     {
@@ -188,6 +256,7 @@ public class ListingServiceTests
         var listing = new AuctionListing
         {
             Id = Guid.NewGuid(), StudFarmId = farm.Id, Status = ListingStatus.Active,
+            EndDateTime = DateTime.UtcNow.AddDays(1),
         };
         _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
 

@@ -68,4 +68,43 @@ public class FakePaymentControllerTests
 
         retry.Should().BeOfType<RedirectResult>().Which.Url.Should().Be("https://ok");
     }
+
+    private async Task<string> NewCardSession() =>
+        (await _fake.CreateCardSetupSessionAsync(Guid.NewGuid(), "cus_fake_1", "https://ok", "https://no"))
+            .Split('/').Last();
+
+    [Fact]
+    public async Task Show_ForACardSetup_OffersADecliningCard()
+    {
+        var id = await NewCardSession();
+
+        var result = Controller().Show(id).Should().BeOfType<ContentResult>().Subject;
+
+        result.Content.Should().Contain($"/payments/fake/{id}/approve?declining=true")
+            .And.Contain("Approve with a declining card");
+    }
+
+    [Fact]
+    public async Task Show_ForAListingFee_HasNoDecliningCardButton()
+    {
+        var id = await NewFeeSession();
+
+        var result = Controller().Show(id).Should().BeOfType<ContentResult>().Subject;
+
+        result.Content.Should().NotContain("declining");
+    }
+
+    [Fact]
+    public async Task Approve_WithDeclining_SavesTheDecliningCard()
+    {
+        var id = await NewCardSession();
+        PaymentEvent? processed = null;
+        _processor.Setup(p => p.ProcessAsync(It.IsAny<PaymentEvent>()))
+            .Callback<PaymentEvent>(e => processed = e)
+            .ReturnsAsync(PaymentEventOutcome.Processed);
+
+        await Controller().Approve(id, declining: true);
+
+        processed.Should().BeOfType<CardSavedEvent>().Which.Last4.Should().Be(FakePaymentProvider.DecliningLast4);
+    }
 }

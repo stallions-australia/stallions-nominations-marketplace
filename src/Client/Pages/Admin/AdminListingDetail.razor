@@ -27,8 +27,8 @@ else
 
         @* ── Status bar ──────────────────────────────────────────────────── *@
         <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-6);flex-wrap:wrap">
-            <span class="badge @BadgeClass(_listing.Status)" style="font-size:14px;padding:5px 14px">
-                @_listing.Status
+            <span class="badge @ListingStatusText.BadgeClass(_listing.Status)" style="font-size:14px;padding:5px 14px">
+                @ListingStatusText.Label(_listing.Status, _listing.CloseReason)
             </span>
             @if (_listing.Status == "Draft")
             {
@@ -43,7 +43,7 @@ else
                     </span>
                 }
             }
-            @if (_listing.Status == "Active")
+            @if (_listing.Status == "Active" && !AuctionHasEnded)
             {
                 <button class="btn btn-secondary" @onclick="HandleUnpublish" disabled="@_busy">
                     @(_busy ? "Unpublishing…" : "Unpublish")
@@ -120,7 +120,7 @@ else
         </div>
 
         @* ── Description — always editable unless terminal status ────────── *@
-        @if (_listing.Status != "Cancelled" && _listing.Status != "Sold")
+        @if (!ListingStatusText.IsFinished(_listing.Status))
         {
             <div class="form-section">
                 <div class="form-section-title">
@@ -171,6 +171,17 @@ else
     private string? _editDescription;
 
     private bool _neverPublished => _listing?.PublishedAt == null;
+
+    // Past the end time the auction closer owns the listing; the server rejects close/unpublish too.
+    private bool AuctionHasEnded =>
+        _listing is AuctionListingDto al && AsUtc(al.EndDateTime) <= DateTime.UtcNow;
+
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value
+    };
 
     // Null = unknown (lookup failed); the server enforces the listing-fee rule regardless.
     private bool? _hasActiveSubscription;
@@ -291,13 +302,4 @@ else
         finally { _busy = false; }
     }
 
-    private static string BadgeClass(string status) => status switch
-    {
-        "Active"    => "badge-active",
-        "Draft"     => "badge-draft",
-        "Cancelled" => "badge-cancelled",
-        "Expired"   => "badge-expired",
-        "Sold"      => "badge-sold",
-        _           => ""
-    };
 }

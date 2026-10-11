@@ -34,8 +34,16 @@ public class BidRepository : IBidRepository
 
     public async Task<IReadOnlyList<Bid>> GetByBuyerIdAsync(Guid buyerUserId) =>
         await _db.Bids
+            .Include(b => b.AuctionListing).ThenInclude(a => a.Stallion)
             .Where(b => b.BuyerUserId == buyerUserId)
             .OrderByDescending(b => b.PlacedAt)
+            .ToListAsync();
+
+    public async Task<IReadOnlyList<Bid>> GetByAuctionWithBuyersAsync(Guid auctionListingId) =>
+        await _db.Bids
+            .Include(b => b.Buyer)
+            .Where(b => b.AuctionListingId == auctionListingId)
+            .OrderByDescending(b => b.AmountIncGst)
             .ToListAsync();
 
     public async Task<Bid> AddAsync(Bid bid)

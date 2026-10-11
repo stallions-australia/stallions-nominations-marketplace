@@ -6,6 +6,8 @@ param keyVaultUri string
 param entraTenantId string
 param entraApiClientId string
 param storageAccountName string
+param emailEndpoint string
+param emailSenderAddress string
 
 var isProduction = environmentName == 'prod'
 
@@ -35,7 +37,8 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
     httpsOnly: true
     clientAffinityEnabled: false
     siteConfig: {
-      alwaysOn: isProduction
+      // The auction close and email jobs run inside the app, so it must never idle.
+      alwaysOn: true
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       netFrameworkVersion: 'v9.0'
@@ -93,6 +96,23 @@ resource appService 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'Payments__Stripe__WebhookSigningSecret'
           value: '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/StripeWebhookSigningSecret/)'
+        }
+        {
+          name: 'Email__Provider'
+          value: 'Acs'
+        }
+        {
+          name: 'Email__AcsEndpoint'
+          value: emailEndpoint
+        }
+        {
+          name: 'Email__SenderAddress'
+          value: emailSenderAddress
+        }
+        {
+          // Links in emails. Change when a custom domain is added.
+          name: 'Email__PublicBaseUrl'
+          value: 'https://app-stallions-noms-${environmentName}.azurewebsites.net'
         }
       ]
     }

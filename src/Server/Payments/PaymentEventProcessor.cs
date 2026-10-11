@@ -7,10 +7,10 @@ using Stallions.Shared.Enums;
 namespace Stallions.Server.Payments;
 
 /// <summary>
-/// The only code that changes data because of a payment. Provider-neutral and idempotent:
-/// each provider event id is processed once. Claim, changes and completion happen in one
-/// transaction, so any exception rolls everything back and the provider's retry processes the
-/// event again.
+/// The only code that changes data because of a provider callback (the auction closer handles buyer-fee
+/// charges). Provider-neutral and idempotent: each provider event id is processed once. Claim,
+/// changes and completion happen in one transaction, so any exception rolls everything back and the
+/// provider's retry processes the event again.
 /// </summary>
 public class PaymentEventProcessor : IPaymentEventProcessor
 {
@@ -18,6 +18,7 @@ public class PaymentEventProcessor : IPaymentEventProcessor
     private readonly ISavedCardRepository _cards;
     private readonly IUserRepository _users;
     private readonly ISubscriptionRepository _subscriptions;
+    private readonly IPurchaseRepository _purchases;
     private readonly IPaymentProvider _provider;
     private readonly IAuditLogRepository _audit;
     private readonly ITransactionRunner _transactions;
@@ -25,11 +26,11 @@ public class PaymentEventProcessor : IPaymentEventProcessor
 
     public PaymentEventProcessor(
         IProcessedPaymentEventRepository processed, ISavedCardRepository cards, IUserRepository users,
-        ISubscriptionRepository subscriptions, IPaymentProvider provider, IAuditLogRepository audit,
-        ITransactionRunner transactions, ILogger<PaymentEventProcessor> log)
+        ISubscriptionRepository subscriptions, IPurchaseRepository purchases, IPaymentProvider provider,
+        IAuditLogRepository audit, ITransactionRunner transactions, ILogger<PaymentEventProcessor> log)
     {
         _processed = processed; _cards = cards; _users = users; _subscriptions = subscriptions;
-        _provider = provider; _audit = audit; _transactions = transactions; _log = log;
+        _purchases = purchases; _provider = provider; _audit = audit; _transactions = transactions; _log = log;
     }
 
     /// <summary>A handler's outcome, plus a replaced payment method to detach once committed.</summary>
@@ -131,6 +132,13 @@ public class PaymentEventProcessor : IPaymentEventProcessor
             user.PaymentCustomerId = e.CustomerId;
             user.PaymentCustomerProvider = _provider.Name;
             await _users.UpdateAsync(user);
+        }
+
+        // A winner whose buyer-fee charge failed: the auction closer retries with the new card on its next run.
+        foreach (var purchase in await _purchases.GetAwaitingCardRetryAsync(e.UserId))
+        {
+            purchase.RetryRequested = true;
+            await _purchases.UpdateAsync(purchase);
         }
 
         await _audit.LogAsync("SavedCard", card.Id, existing == null ? "SaveCard" : "ReplaceCard", e.UserId,

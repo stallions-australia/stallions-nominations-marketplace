@@ -1,10 +1,12 @@
 @page "/listings/{Id:guid}"
+@using Stallions.Shared
 @inject ListingApiService ListingApi
 @inject BidApiService BidApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
 @inject UserApiService UserApi
 @inject PaymentsApiService PaymentsApi
+@inject PurchaseApiService PurchaseApi
 @inject AuthenticationStateProvider AuthProvider
 
 <PageTitle>@(_listing?.StallionName ?? "Listing") — Stallions Australia</PageTitle>
@@ -84,51 +86,76 @@ else
                         </div>
                     }
 
-                    <AuthorizeView>
-                        <Authorized>
-                            @* A buyer must have a valid saved card before bidding (the buyer fee is charged to it on a win). *@
-                            @if (UserState.IsBuyer && UserState.IsVerified && !_cardChecked)
-                            {
-                                <p class="text-muted text-sm" role="status" aria-live="polite">Checking your payment card…</p>
-                            }
-                            else if (UserState.IsBuyer && UserState.IsVerified && _cardCheckFailed)
-                            {
-                                <p class="text-muted text-sm" role="status" aria-live="polite">We couldn't check your payment card — refresh to try again.</p>
-                            }
-                            else if (UserState.IsBuyer && UserState.IsVerified && _card is not { IsValid: true })
-                            {
-                                <a href="/account/card" class="btn btn-gold btn-full">Save a card to bid</a>
-                            }
-                            else if (UserState.IsBuyer && UserState.IsVerified)
-                            {
-                                <div class="bid-form">
-                                    <p class="bid-form-hint">
-                                        Min next bid: <strong>@FormatPrice(GetMinimumNextBid(auction))</strong>
-                                    </p>
-                                    <div class="bid-form-row">
-                                        <input class="form-input" type="number" step="25"
-                                               min="@GetMinimumNextBid(auction)"
-                                               @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
-                                        <button class="btn btn-gold" @onclick="StartBid" disabled="@_bidBusy">
-                                            @(_bidBusy ? "Placing…" : "Place bid")
-                                        </button>
+                    @if (IsOpen(auction))
+                    {
+                        <AuthorizeView>
+                            <Authorized>
+                                @* A buyer must have a valid saved card before bidding (the buyer fee is charged to it on a win). *@
+                                @if (UserState.IsBuyer && UserState.IsVerified && !_cardChecked)
+                                {
+                                    <p class="text-muted text-sm" role="status" aria-live="polite">Checking your payment card…</p>
+                                }
+                                else if (UserState.IsBuyer && UserState.IsVerified && _cardCheckFailed)
+                                {
+                                    <p class="text-muted text-sm" role="status" aria-live="polite">We couldn't check your payment card — refresh to try again.</p>
+                                }
+                                else if (UserState.IsBuyer && UserState.IsVerified && _card is not { IsValid: true })
+                                {
+                                    <a href="/account/card" class="btn btn-gold btn-full">Save a card to bid</a>
+                                }
+                                else if (UserState.IsBuyer && UserState.IsVerified)
+                                {
+                                    <div class="bid-form">
+                                        <p class="bid-form-hint">
+                                            Min next bid: <strong>@FormatPrice(GetMinimumNextBid(auction))</strong>
+                                        </p>
+                                        <div class="bid-form-row">
+                                            <input class="form-input" type="number" step="25"
+                                                   min="@GetMinimumNextBid(auction)"
+                                                   @bind="_bidAmount" placeholder="Your bid (inc. GST)" />
+                                            <button class="btn btn-gold" @onclick="StartBid" disabled="@_bidBusy">
+                                                @(_bidBusy ? "Placing…" : "Place bid")
+                                            </button>
+                                        </div>
+                                        @if (_bidError is not null) { <ErrorMessage Message="@_bidError" /> }
+                                        @if (_bidSuccess)           { <p class="text-success">&#10003; Bid placed!</p> }
                                     </div>
-                                    @if (_bidError is not null) { <ErrorMessage Message="@_bidError" /> }
-                                    @if (_bidSuccess)           { <p class="text-success">&#10003; Bid placed!</p> }
-                                </div>
-                            }
-                            else if (UserState.IsBuyer && UserState.IsPendingVerification)
+                                }
+                                else if (UserState.IsBuyer && UserState.IsPendingVerification)
+                                {
+                                    <div class="pending-verification-notice">
+                                        <p><strong>Account verification pending</strong></p>
+                                        <p>Your registration is awaiting approval from Stallions Australia. You'll be able to bid once your account has been verified. Please contact <a href="mailto:info@stallionsaustralia.com.au">info@stallionsaustralia.com.au</a> if you have any questions.</p>
+                                    </div>
+                                }
+                            </Authorized>
+                            <NotAuthorized>
+                                <a href="authentication/login" class="btn btn-gold btn-full">Sign in to bid</a>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    }
+                    else
+                    {
+                        <div class="auction-closed" role="status">
+                            <p class="auction-closed-title">Auction closed</p>
+                            @switch (_myResult?.Outcome)
                             {
-                                <div class="pending-verification-notice">
-                                    <p><strong>Account verification pending</strong></p>
-                                    <p>Your registration is awaiting approval from Stallions Australia. You'll be able to bid once your account has been verified. Please contact <a href="mailto:info@stallionsaustralia.com.au">info@stallionsaustralia.com.au</a> if you have any questions.</p>
-                                </div>
+                                case AuctionOutcomes.Won:
+                                    <p>You won this auction. <a href="/my-purchases">View your sale record</a></p>
+                                    break;
+                                case AuctionOutcomes.PaymentPending:
+                                    <p>You won this auction. We're charging the buyer fee to your saved card.</p>
+                                    break;
+                                case AuctionOutcomes.PaymentFailed:
+                                    <p class="text-danger">You won this auction, but the buyer fee payment failed. Update your card by @FormatLocal(_myResult.ChargeDueBy) to keep the nomination.</p>
+                                    <a href="/account/card" class="btn btn-gold btn-full">Update your card</a>
+                                    break;
+                                case AuctionOutcomes.NoSale:
+                                    <p>No sale — the buyer fee payment wasn't completed in time.</p>
+                                    break;
                             }
-                        </Authorized>
-                        <NotAuthorized>
-                            <a href="authentication/login" class="btn btn-gold btn-full">Sign in to bid</a>
-                        </NotAuthorized>
-                    </AuthorizeView>
+                        </div>
+                    }
 
                     <div class="bid-history">
                         <h3 class="bid-history-title">Bid history</h3>
@@ -198,6 +225,7 @@ else
     private SavedCardDto? _card;
     private bool _cardChecked;
     private bool _cardCheckFailed;
+    private MyAuctionResultDto? _myResult;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -213,6 +241,7 @@ else
                 await LoadBidHistoryAsync();
                 await LoadDisclosureAsync();
                 await LoadCardAsync();
+                if (_listing is AuctionListingDto a && !IsOpen(a)) await LoadMyResultAsync();
             }
         }
         catch (ApiException ex) when (ex.StatusCode == 404)
@@ -225,6 +254,29 @@ else
                 ? $"Failed to load listing: {ex.Message}"
                 : "Failed to load listing. Please try again.";
         }
+    }
+
+    // Closed once the server closes it, or as soon as the end time passes (the closer runs every minute).
+    private static bool IsOpen(AuctionListingDto auction) =>
+        auction.Status == "Active" && AsUtc(auction.EndDateTime) > DateTime.UtcNow;
+
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value
+    };
+
+    private static string FormatLocal(DateTime? utc) =>
+        utc is { } v ? AsUtc(v).ToLocalTime().ToString("d MMM, h:mm tt") : "the deadline";
+
+    // A signed-in buyer's own result on a closed auction. Secondary content: failures are ignored.
+    private async Task LoadMyResultAsync()
+    {
+        _myResult = null;
+        if (!UserState.IsBuyer) return;
+        try { _myResult = await PurchaseApi.GetMyResultAsync(Id); }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or AccessTokenNotAvailableException) { }
     }
 
     // Secondary content: a failure here must not hide the listing itself.

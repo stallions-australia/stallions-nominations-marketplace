@@ -41,7 +41,7 @@ builder.Services.AddHttpClient<StudFarmApiService>(c => c.BaseAddress = apiBase)
 // Authenticated services — always require a Bearer token.
 builder.Services.AddHttpClient<BidApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
-builder.Services.AddHttpClient<CheckoutApiService>(c => c.BaseAddress = apiBase)
+builder.Services.AddHttpClient<PurchaseApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 builder.Services.AddHttpClient<EnquiryApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();

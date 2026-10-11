@@ -164,4 +164,50 @@ public class StripePaymentProvider : IPaymentProvider
     }
 
     public Task DetachCardAsync(string paymentMethodId) => _api.DetachPaymentMethodAsync(paymentMethodId);
+
+    public async Task<ChargeResult> ChargeSavedCardAsync(ChargeRequest request)
+    {
+        var options = new PaymentIntentCreateOptions
+        {
+            Amount = PaymentAmounts.ToCents(request.AmountIncGst),
+            Currency = "aud",
+            Customer = request.CustomerId,
+            PaymentMethod = request.PaymentMethodId,
+            // The buyer isn't present: charge now, and fail rather than ask for 3-D Secure.
+            OffSession = true,
+            Confirm = true,
+            Description = request.Description,
+            Metadata = request.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value)
+        };
+        try
+        {
+            var intent = await _api.CreatePaymentIntentAsync(options, request.IdempotencyKey);
+            if (intent.Status == "succeeded") return ChargeResult.Success(intent.Id);
+
+            // A "processing" intent may still succeed, and a retry with the same idempotency key only
+            // replays this snapshot, so look at the intent's current state. Still processing: throw, so
+            // the caller treats the attempt as interrupted and repeats it later with the same key.
+            var current = await _api.GetPaymentIntentAsync(intent.Id);
+            if (current.Status == "succeeded") return ChargeResult.Success(intent.Id);
+            if (current.Status == "processing")
+                throw new InvalidOperationException($"Buyer-fee PaymentIntent {intent.Id} is still processing");
+
+            _logger.LogWarning("Buyer-fee PaymentIntent {PaymentIntentId} ended in status {Status}", intent.Id, current.Status);
+            return ChargeResult.Declined("payment_incomplete", "The payment could not be completed.");
+        }
+        catch (StripeException ex) when (ex.StripeError?.Type == "card_error")
+        {
+            // Includes authentication_required: the bank wants the cardholder to approve it.
+            return ChargeResult.Declined(
+                ex.StripeError.DeclineCode ?? ex.StripeError.Code ?? "card_error",
+                ex.StripeError.Message ?? "Your card was declined.");
+        }
+        catch (StripeException ex) when (ex.StripeError?.Type == "invalid_request_error"
+            && (ex.StripeError.Code == "resource_missing" || ex.StripeError.Param == "payment_method"))
+        {
+            // The saved card was detached or deleted. Other invalid requests (e.g. idempotency_error) propagate.
+            return ChargeResult.Declined("payment_method_unavailable",
+                "Your saved card can no longer be used. Please save a new card.");
+        }
+    }
 }

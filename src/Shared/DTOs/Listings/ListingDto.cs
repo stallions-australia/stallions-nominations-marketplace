@@ -31,6 +31,8 @@ public class ListingDto
     public DateTime CreatedAt { get; set; }
     public DateTime? PublishedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
+    /// <summary>Why the auction closed without a sale (NoBids, ReserveNotMet, ChargeFailed); null otherwise.</summary>
+    public string? CloseReason { get; set; }
     public string? Description { get; set; }
     public string? TermsAndConditions { get; set; }
 }

@@ -12,4 +12,6 @@ public interface IStripeApi
     Task<SetupIntent> GetSetupIntentAsync(string setupIntentId);
     Task<PaymentMethod> GetPaymentMethodAsync(string paymentMethodId);
     Task DetachPaymentMethodAsync(string paymentMethodId);
+    Task<PaymentIntent> CreatePaymentIntentAsync(PaymentIntentCreateOptions options, string idempotencyKey);
+    Task<PaymentIntent> GetPaymentIntentAsync(string paymentIntentId);
 }

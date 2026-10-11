@@ -174,8 +174,16 @@ namespace Stallions.Server.Data.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<string>("CloseReason")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime?>("ClosedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -264,6 +272,72 @@ namespace Stallions.Server.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("NominationBindings");
+                });
+
+            modelBuilder.Entity("Stallions.Server.Data.Entities.OutboundEmail", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FailedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HtmlBody")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RelatedEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RelatedEntityType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Template")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TextBody")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ToAddress")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SentAt", "FailedAt", "NextAttemptAt");
+
+                    b.ToTable("OutboundEmails");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.PlatformSettings", b =>
@@ -370,8 +444,43 @@ namespace Stallions.Server.Data.Migrations
                     b.Property<Guid>("BuyerUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ChargeAttemptLastSentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ChargeAttemptStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ChargeAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ChargeCustomerId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("ChargeDescription")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime?>("ChargeDueBy")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("ChargeNeedsAttention")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ChargePaymentMethodId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LastChargeFailure")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<Guid>("ListingId")
                         .HasColumnType("uniqueidentifier");
@@ -394,6 +503,9 @@ namespace Stallions.Server.Data.Migrations
                     b.Property<DateTime?>("RefundedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("RetryRequested")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -405,11 +517,15 @@ namespace Stallions.Server.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BidId");
+                    b.HasIndex("BidId")
+                        .IsUnique()
+                        .HasFilter("[BidId] IS NOT NULL AND [Status] <> 'Voided'");
 
                     b.HasIndex("BuyerUserId");
 
                     b.HasIndex("ListingId");
+
+                    b.HasIndex("Status", "ChargeDueBy");
 
                     b.ToTable("Purchases");
                 });

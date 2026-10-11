@@ -28,15 +28,21 @@
             {
                 <div class="bid-row">
                     <div class="bid-info">
-                        <a href="/listings/@bid.AuctionListingId" class="bid-listing-link">View listing</a>
+                        <a href="/listings/@bid.AuctionListingId" class="bid-listing-link">
+                            @(string.IsNullOrEmpty(bid.StallionName) ? "View listing" : bid.StallionName)
+                        </a>
                         <div class="bid-date text-muted text-sm">@bid.PlacedAt.ToString("d MMM yyyy, h:mm tt")</div>
                     </div>
                     <div class="bid-amount">@bid.AmountIncGst.ToString("C0", AuCulture)</div>
                     <div class="bid-status">
                         <span class="badge @GetStatusBadge(bid.Status)">@GetStatusLabel(bid.Status)</span>
-                        @if (bid.Status == "Outbid")
+                        @if (bid.Status == "Outbid" && bid.AuctionOpen)
                         {
                             <a href="/listings/@bid.AuctionListingId" class="btn btn-sm btn-outline" style="margin-top: var(--space-2)">Bid again</a>
+                        }
+                        @if (bid.Status == "Won")
+                        {
+                            <a href="/my-purchases" class="btn btn-sm btn-outline" style="margin-top: var(--space-2)">Sale record</a>
                         }
                     </div>
                 </div>
@@ -63,16 +69,17 @@
 
     private static string GetStatusBadge(string status) => status switch
     {
-        "Leading"       => "badge-leading",
-        "Outbid"        => "badge-outbid",
-        "Won"           => "badge-leading",
-        "AuctionClosed" => "",
-        _               => ""
+        "Active" => "badge-leading",
+        "Outbid" => "badge-outbid",
+        "Won"    => "badge-won",
+        "Lost"   => "badge-lost",
+        _        => ""
     };
 
+    // Only one bid per auction is Active: the current high bid.
     private static string GetStatusLabel(string status) => status switch
     {
-        "AuctionClosed" => "Auction closed",
-        _               => status
+        "Active" => "Leading",
+        _        => status
     };
 }

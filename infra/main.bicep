@@ -81,6 +81,15 @@ module keyvault './modules/keyvault.bicep' = {
   }
 }
 
+module communication './modules/communication.bicep' = {
+  name: 'communication'
+  scope: rg
+  params: {
+    environmentName: environmentName
+    tags: tags
+  }
+}
+
 module appservice './modules/appservice.bicep' = {
   name: 'appservice'
   scope: rg
@@ -93,6 +102,8 @@ module appservice './modules/appservice.bicep' = {
     entraTenantId: entraTenantId
     entraApiClientId: entraApiClientId
     storageAccountName: storage.outputs.storageAccountName
+    emailEndpoint: communication.outputs.endpoint
+    emailSenderAddress: communication.outputs.senderAddress
   }
 }
 
@@ -117,6 +128,7 @@ module rbac './modules/keyvault-rbac.bicep' = {
     storageAccountName: storage.outputs.storageAccountName
     appServicePrincipalId: appservice.outputs.principalId
     functionAppPrincipalId: functions.outputs.principalId
+    communicationServiceName: communication.outputs.communicationServiceName
   }
 }
 
@@ -129,3 +141,4 @@ output AZURE_SQL_SERVER_FQDN string = sql.outputs.sqlServerFqdn
 output AZURE_SQL_DATABASE_NAME string = sql.outputs.sqlDatabaseName
 output AZURE_STORAGE_ACCOUNT_NAME string = storage.outputs.storageAccountName
 output AZURE_APP_INSIGHTS_CONNECTION_STRING string = monitoring.outputs.appInsightsConnectionString
+output AZURE_COMMUNICATION_SERVICE_NAME string = communication.outputs.communicationServiceName
