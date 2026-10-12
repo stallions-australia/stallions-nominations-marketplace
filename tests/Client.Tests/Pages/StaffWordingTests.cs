@@ -194,7 +194,67 @@ public class StaffWordingTests : TestContext
     {
         var cut = Render(role: "Buyer");
 
-        cut.WaitForAssertion(() => _api.Verify(a => a.GetAllAsync(), Times.Never));
+        cut.WaitForAssertion(() => new Uri(Services.GetRequiredService<NavigationManager>().Uri).AbsolutePath.Should().Be("/"));
+        _api.Verify(a => a.GetAllAsync(), Times.Never);
         cut.Markup.Should().NotContain("wording-group");
+    }
+
+    [Fact]
+    public void ASlowEarlierPreview_DoesNotOverwriteALaterOne()
+    {
+        var cut = Render("key=Email.Outbid");
+        cut.WaitForAssertion(() => cut.Find(".wording-preview").TextContent.Should().Contain("Snitzel"));
+        var slow = new TaskCompletionSource<ContentPreviewDto>();
+        _api.Setup(a => a.PreviewAsync("Email.Outbid", It.Is<SaveContentRequest>(r => r.Body == "first {HighBid} {StallionName}")))
+            .Returns(slow.Task);
+        _api.Setup(a => a.PreviewAsync("Email.Outbid", It.Is<SaveContentRequest>(r => r.Body == "second {HighBid} {StallionName}")))
+            .ReturnsAsync(new ContentPreviewDto { Subject = "S", Paragraphs = ["Second result"] });
+
+        cut.Find("#wording-body").Input("first {HighBid} {StallionName}");
+        cut.Find("#wording-body").Input("second {HighBid} {StallionName}");
+        cut.WaitForAssertion(() => cut.Find(".wording-preview").TextContent.Should().Contain("Second result"));
+
+        slow.SetResult(new ContentPreviewDto { Subject = "S", Paragraphs = ["First result"] });
+
+        cut.WaitForAssertion(() => cut.Find(".wording-preview").TextContent.Should().Contain("Second result").And.NotContain("First result"));
+    }
+
+    [Fact]
+    public void ANetworkFailure_OnSave_ShowsAFriendlyError()
+    {
+        var cut = Render("key=Email.Outbid");
+        cut.WaitForAssertion(() => cut.Find("#wording-body"));
+        _api.Setup(a => a.SaveAsync("Email.Outbid", It.IsAny<SaveContentRequest>())).ThrowsAsync(new HttpRequestException("down"));
+
+        Click(cut, "Save as new version");
+
+        cut.WaitForAssertion(() => cut.FindAll(".wording-errors li").Select(li => li.TextContent).Should()
+            .Equal("Couldn't save. Check your connection and try again."));
+    }
+
+    [Fact]
+    public void ANetworkFailure_OnPreview_ShowsAFriendlyError()
+    {
+        var cut = Render("key=Email.Outbid");
+        cut.WaitForAssertion(() => cut.Find("#wording-body"));
+        _api.Setup(a => a.PreviewAsync("Email.Outbid", It.Is<SaveContentRequest>(r => r.Body == "x {HighBid} {StallionName}")))
+            .ThrowsAsync(new HttpRequestException("down"));
+
+        cut.Find("#wording-body").Input("x {HighBid} {StallionName}");
+
+        cut.WaitForAssertion(() => cut.FindAll(".wording-errors li").Select(li => li.TextContent).Should()
+            .Equal("Couldn't refresh the preview. Check your connection and try again."));
+    }
+
+    [Fact]
+    public void ChangingOnlyTheVersionQuery_OpensThatVersion()
+    {
+        var cut = Render("key=Email.Outbid", Outbid(2, "Edited {HighBid} {StallionName}."), Versions(2));
+        cut.WaitForAssertion(() => cut.FindAll(".wording-versions tbody tr").Should().HaveCount(2));
+        cut.FindAll(".wording-version-text").Should().BeEmpty();
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/staff/wording?key=Email.Outbid&version=1");
+
+        cut.WaitForAssertion(() => cut.Find(".wording-version-text").TextContent.Should().Contain("Default body"));
     }
 }

@@ -254,7 +254,11 @@ else
     private ContentVersionDto? _viewing;
     private ContentVersionDto? _restoring;
     private string? _loadedKey;
+    private int? _loadedVersion;
     private CancellationTokenSource? _previewCts;
+    // Bumped whenever a newer preview, save or page load supersedes older in-flight work.
+    private int _previewSeq;
+    private int _loadSeq;
 
     protected override async Task OnInitializedAsync()
     {
@@ -268,40 +272,69 @@ else
     {
         if (!_authorised) return;
         var key = Key ?? string.Empty;
-        if (_loadedKey == key) return;
+        if (_loadedKey == key)
+        {
+            // Same item, different ?version= : just open that version.
+            if (_loadedVersion != Version && _detail is not null)
+            {
+                _loadedVersion = Version;
+                _viewing = Version is int v ? _versions.FirstOrDefault(x => x.Version == v) : null;
+            }
+            return;
+        }
         _loadedKey = key;
+        _loadedVersion = Version;
+        CancelPreview();
+        _loadSeq++;
         _error = null; _notice = null; _errors = []; _detail = null; _preview = null; _versions = [];
         _viewing = null; _restoring = null; _confirmReset = false;
         if (Key is null) await LoadListAsync();
         else await LoadItemAsync(Key);
     }
 
+    private static string ErrorText(Exception ex, string fallback) => ex is ApiException ae ? ae.Message : fallback;
+
     private async Task LoadListAsync()
     {
+        var load = _loadSeq;
         _loading = true;
-        try { _items = await ContentApi.GetAllAsync(); }
-        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load the wording."; }
-        finally { _loading = false; }
+        try
+        {
+            var items = await ContentApi.GetAllAsync();
+            if (load != _loadSeq) return;
+            _items = items;
+        }
+        catch (Exception ex)
+        {
+            if (load != _loadSeq) return;
+            _error = ErrorText(ex, "Failed to load the wording.");
+        }
+        _loading = false;
     }
 
     private async Task LoadItemAsync(string key)
     {
+        var load = _loadSeq;
         _loading = true;
         try
         {
-            _detail = await ContentApi.GetAsync(key);
-            _subject = _detail.Subject ?? string.Empty;
-            _body = _detail.Body;
-            _versions = await ContentApi.GetHistoryAsync(key);
+            var detail = await ContentApi.GetAsync(key);
+            var versions = await ContentApi.GetHistoryAsync(key);
+            if (load != _loadSeq) return; // the page moved to another item while this loaded
+            _detail = detail;
+            _subject = detail.Subject ?? string.Empty;
+            _body = detail.Body;
+            _versions = versions;
             if (Version is int version) _viewing = _versions.FirstOrDefault(v => v.Version == version);
         }
         catch (Exception ex)
         {
+            if (load != _loadSeq) return;
             _detail = null;
-            _error = ex is ApiException ae ? ae.Message : "Failed to load this wording item.";
+            _error = ErrorText(ex, "Failed to load this wording item.");
         }
-        finally { _loading = false; }
-        if (_detail is not null) await RefreshPreviewAsync();
+        _loading = false;
+        if (_detail is not null) await RefreshPreviewAsync(++_previewSeq);
     }
 
     private Task OnSubjectInput(ChangeEventArgs e)
@@ -316,34 +349,52 @@ else
         return SchedulePreviewAsync();
     }
 
+    /// <summary>Drops the pending debounce and makes any in-flight preview stale.</summary>
+    private void CancelPreview()
+    {
+        _previewSeq++;
+        var cts = _previewCts;
+        _previewCts = null;
+        if (cts is null) return;
+        cts.Cancel();
+        cts.Dispose();
+    }
+
     // Debounced: only the last keystroke in a pause asks the server for a preview.
     private async Task SchedulePreviewAsync()
     {
         _notice = null;
-        _previewCts?.Cancel();
+        CancelPreview();
+        var seq = _previewSeq;
         var cts = _previewCts = new CancellationTokenSource();
         if (PreviewDelay > TimeSpan.Zero)
         {
             try { await Task.Delay(PreviewDelay, cts.Token); }
             catch (TaskCanceledException) { return; }
         }
-        if (cts.IsCancellationRequested) return;
-        await RefreshPreviewAsync();
+        if (seq != _previewSeq) return;
+        await RefreshPreviewAsync(seq);
     }
 
-    private async Task RefreshPreviewAsync()
+    // Only the latest request may update the screen; older responses are dropped.
+    private async Task RefreshPreviewAsync(int seq)
     {
         if (_detail is null) return;
+        ContentPreviewDto? preview = null;
+        List<string> errors;
         try
         {
-            _preview = await ContentApi.PreviewAsync(_detail.Key, Request());
-            _errors = _preview.Errors;
+            preview = await ContentApi.PreviewAsync(_detail.Key, Request());
+            errors = preview.Errors;
         }
-        catch (ApiException ex)
+        catch (Exception ex)
         {
-            _preview = null;
-            _errors = [ex.Message];
+            errors = [ErrorText(ex, "Couldn't refresh the preview. Check your connection and try again.")];
         }
+        if (seq != _previewSeq) return;
+        _preview = preview;
+        _errors = errors;
+        StateHasChanged();
     }
 
     private SaveContentRequest Request() => new() { Subject = _detail!.HasSubject ? _subject : null, Body = _body };
@@ -351,20 +402,14 @@ else
     private async Task SaveAsync()
     {
         if (_detail is null) return;
-        _busy = true; _notice = null;
-        try { await ApplySavedAsync(await ContentApi.SaveAsync(_detail.Key, Request()), "Saved as version"); }
-        catch (ApiException ex) { _errors = SplitErrors(ex.Message); }
-        finally { _busy = false; }
+        await RunAsync(() => ContentApi.SaveAsync(_detail.Key, Request()), "Saved as version", "Couldn't save. Check your connection and try again.");
     }
 
     private async Task ResetAsync()
     {
         _confirmReset = false;
         if (_detail is null) return;
-        _busy = true; _notice = null;
-        try { await ApplySavedAsync(await ContentApi.ResetAsync(_detail.Key), "Reset to the default wording as version"); }
-        catch (ApiException ex) { _errors = SplitErrors(ex.Message); }
-        finally { _busy = false; }
+        await RunAsync(() => ContentApi.ResetAsync(_detail.Key), "Reset to the default wording as version", "Couldn't reset. Check your connection and try again.");
     }
 
     private async Task RestoreAsync()
@@ -372,9 +417,16 @@ else
         var version = _restoring;
         _restoring = null;
         if (_detail is null || version is null) return;
+        await RunAsync(() => ContentApi.RestoreAsync(_detail.Key, version.Version), $"Version {version.Version} restored as version",
+            "Couldn't restore. Check your connection and try again.");
+    }
+
+    private async Task RunAsync(Func<Task<ContentItemDetailDto>> action, string message, string failure)
+    {
         _busy = true; _notice = null;
-        try { await ApplySavedAsync(await ContentApi.RestoreAsync(_detail.Key, version.Version), $"Version {version.Version} restored as version"); }
-        catch (ApiException ex) { _errors = SplitErrors(ex.Message); }
+        CancelPreview(); // a late preview must not overwrite the outcome
+        try { await ApplySavedAsync(await action(), message); }
+        catch (Exception ex) { _errors = ex is ApiException ae ? SplitErrors(ae.Message) : [failure]; }
         finally { _busy = false; }
     }
 
@@ -385,8 +437,8 @@ else
         _body = detail.Body;
         _errors = [];
         try { _versions = await ContentApi.GetHistoryAsync(detail.Key); }
-        catch (ApiException) { /* keep the list we have; the save itself succeeded */ }
-        await RefreshPreviewAsync();
+        catch (Exception) { /* keep the list we have; the save itself succeeded */ }
+        await RefreshPreviewAsync(++_previewSeq);
         _notice = $"{message} {detail.Version}.";
     }
 
@@ -400,5 +452,12 @@ else
     private static string Changed(DateTime? at, string? by) =>
         at is null ? "Default wording" : $"{at.Value.ToLocalTime():d MMM yyyy} by {by ?? "System default"}";
 
-    public void Dispose() => _previewCts?.Cancel();
+    public void Dispose()
+    {
+        _previewSeq++;
+        _loadSeq++;
+        _previewCts?.Cancel();
+        _previewCts?.Dispose();
+        _previewCts = null;
+    }
 }
