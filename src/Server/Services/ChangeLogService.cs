@@ -18,6 +18,7 @@ public interface IChangeLogService
 public class ChangeLogService : IChangeLogService
 {
     public const int PageSize = 50;
+    private const int MaxPage = 1_000_000; // keeps skip well inside int range
     private const string Changed = "changed";
     private static readonly CultureInfo Au = CultureInfo.GetCultureInfo("en-AU");
 
@@ -81,10 +82,10 @@ public class ChangeLogService : IChangeLogService
         if (filter.From is { } fromDate && filter.To is { } toDate && fromDate > toDate)
             return ServiceResult<ChangeLogPageDto>.BadRequest("The From date must be on or before the To date.");
 
-        var page = Math.Max(1, filter.Page);
+        var page = Math.Clamp(filter.Page, 1, MaxPage);
         var actions = AreaByAction.Where(a => filter.Area == null || a.Value == filter.Area).Select(a => a.Key).ToList();
-        DateTime? fromUtc = filter.From is { } f ? SydneyTime.StartOfDayUtc(f) : null;
-        DateTime? toUtc = filter.To is { } t ? SydneyTime.StartOfDayUtc(t.AddDays(1)) : null;
+        DateTime? fromUtc = filter.From is { } f && f > DateOnly.MinValue ? SydneyTime.StartOfDayUtc(f) : null;
+        DateTime? toUtc = filter.To is { } t && t < DateOnly.MaxValue ? SydneyTime.StartOfDayUtc(t.AddDays(1)) : null;
         var (rows, total) = await _audit.GetPageAsync(actions, fromUtc, toUtc, (page - 1) * PageSize, PageSize);
 
         var names = await ResolveNamesAsync(rows);
@@ -262,6 +263,7 @@ public class ChangeLogService : IChangeLogService
         JsonValueKind.String => value.GetString() ?? string.Empty,
         JsonValueKind.True => "Yes",
         JsonValueKind.False => "No",
+        JsonValueKind.Number when value.TryGetDecimal(out var number) => number.ToString("0.############################", CultureInfo.InvariantCulture),
         _ => value.GetRawText()
     };
 }

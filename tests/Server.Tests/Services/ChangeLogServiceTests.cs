@@ -286,4 +286,86 @@ public class ChangeLogServiceTests : IDisposable
         (await CreateSut().GetAsync(new ChangeLogFilter { From = new DateOnly(2026, 10, 13), To = new DateOnly(2026, 10, 12) }))
             .HttpStatusCode.Should().Be(400);
     }
+
+    [Fact]
+    public async Task Numbers_AreComparedByValue_AndFormattedTheSameOnBothSides()
+    {
+        // Old comes from the database at scale 2 (25.00); New comes from the request at scale 0 (25).
+        Audit("PlatformSettings", "UpdatePlatformSettings", new
+        {
+            Old = new { BuyerFeeIncGst = 150.00m, MinimumBidIncrement = 25.00m, OfferExpiryDays = 7 },
+            New = new { BuyerFeeIncGst = 175m, MinimumBidIncrement = 25m, OfferExpiryDays = 7 }
+        });
+
+        var changes = (await GetAsync()).Entries.Single().Changes;
+
+        changes.Should().ContainSingle();
+        changes[0].Field.Should().Be("Buyer fee (inc. GST)");
+        changes[0].OldValue.Should().Be("150");
+        changes[0].NewValue.Should().Be("175");
+    }
+
+    [Fact]
+    public async Task Decimals_KeepTheirFraction_ButNotTrailingZeros()
+    {
+        Audit("PlatformSettings", "UpdatePlatformSettings", new
+        {
+            Old = new { MinimumBidIncrement = 25.50m }, New = new { MinimumBidIncrement = 26.00m }
+        });
+
+        var change = (await GetAsync()).Entries.Single().Changes.Single();
+
+        change.OldValue.Should().Be("25.5");
+        change.NewValue.Should().Be("26");
+    }
+
+    [Fact]
+    public async Task PageBeyondTheEnd_OrHuge_IsAnEmptyPage_NotAnError()
+    {
+        Audit("PlatformSettings", "UpdatePlatformSettings", new { Old = new { OfferExpiryDays = 7 }, New = new { OfferExpiryDays = 8 } });
+
+        var beyond = await GetAsync(new ChangeLogFilter { Page = 5 });
+        var huge = await GetAsync(new ChangeLogFilter { Page = int.MaxValue });
+        var zero = await GetAsync(new ChangeLogFilter { Page = -3 });
+
+        beyond.Entries.Should().BeEmpty();
+        beyond.Total.Should().Be(1);
+        huge.Entries.Should().BeEmpty();
+        zero.Page.Should().Be(1);
+        zero.Entries.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task ExtremeDates_DoNotThrow()
+    {
+        Audit("PlatformSettings", "UpdatePlatformSettings", new { Old = new { OfferExpiryDays = 7 }, New = new { OfferExpiryDays = 8 } });
+
+        var page = await GetAsync(new ChangeLogFilter { From = DateOnly.MinValue, To = DateOnly.MaxValue });
+
+        page.Entries.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not json {")]
+    [InlineData("[1,2]")]
+    [InlineData("42")]
+    [InlineData("\"text\"")]
+    [InlineData("{}")]
+    public async Task MalformedDetails_DoNotCrashThePage(string? details)
+    {
+        foreach (var action in new[] { "UpdatePlatformSettings", "UpdateBusinessDetails", "CreateIntroOffer",
+                     "UpdateWording", "PublishTerms", "AcceptStudTerms" })
+            _db.AuditLogs.Add(new AuditLog
+            {
+                EntityType = "X", EntityId = Guid.NewGuid(), Action = action, UserId = _staff.Id,
+                OccurredAt = Noon12Oct, Details = details
+            });
+        _db.SaveChanges();
+
+        var page = await GetAsync();
+
+        page.Entries.Should().HaveCount(6);
+    }
 }
