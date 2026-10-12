@@ -70,6 +70,19 @@
 >   `TaxDocumentService`) whose callers must have no stray tracked entities.
 > - **`Checkout` config sections are removed** from `appsettings.json` and `appsettings.Development.json` (the latter held
 >   only an unused `WebhookSecret`). No infra / app setting references them.
+>
+> **Changes made during the build (after reviews, 2026-10-13):**
+> - Content saves store the trimmed, normalised text that validation checked. Email subjects have line breaks replaced
+>   by spaces (one shared helper used by both email classes); the outbox caps every subject at 300 characters
+>   (`…`), so a long Staff subject plus placeholder values can never fail a charge's transaction.
+> - `TermsService` publishes and stud acceptances commit with their audit row in one transaction. Audience names
+>   must match exactly. The migration's Down deletes Stud terms before restoring the old index.
+> - `TermsMarkdown` also neutralises links and images whose scheme isn't http, https, mailto or relative.
+> - The stud-terms accept flow is one shared component (`StudTermsGate`); Activate / Publish / Convert set their busy
+>   flag before the status check, so a double click can't start two actions.
+> - The change log compares numbers by value (no "25.00 → 25"), shows intro-offer stud / season as names, and guards
+>   huge page numbers and extreme dates. The Wording editor ignores stale previews and shows network errors.
+> - Task 13's localdb smoke was skipped (LocalDB unavailable); Task 2 had verified the seed on localdb.
 
 ## Global Constraints
 

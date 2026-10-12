@@ -1,7 +1,7 @@
 # v2 Phase 5b — Editable Wording, Stud Listing Terms and History — Design
 
 **Date:** 2026-10-12
-**Status:** Design agreed with David (2026-10-12); awaiting written-spec review
+**Status:** Approved (2026-10-12). Built on `feature/v2-phase5b-editable-content` (2026-10-13); not merged. See the plan's "Plan decisions" and "Changes made during the build" (25 keys; Convert to Make an Offer is also gated; terms markdown filters unsafe links).
 **Branch:** `feature/v2-phase5b-editable-content` (from master after Phase 5a merged as PR #7)
 **Builds on:** `2026-10-09-business-model-v2-design.md` ("all policy and T&C wording is configurable content";
 GST option (a): the stud agrees under the listing-fee terms that the buyer fee comes out of its price),
