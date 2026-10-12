@@ -204,6 +204,24 @@ public class AuctionEmailsWordingTests : IDisposable
     }
 
     [Fact]
+    public async Task MaxLengthStaffSubject_WithAMaxLengthReason_QueuesASubjectThatFitsTheOutbox()
+    {
+        ContentTestData.SetWording(_db, ContentKeys.PaymentFailed, new string('S', 192) + "{Reason}", "Payment failed.");
+        var sale = Sale();
+        sale.LastChargeFailure = new string('R', 500);
+        var sut = new AuctionEmails(new EmailOutbox(new OutboundEmailRepository(_db), new TestClock(), NullLogger<EmailOutbox>.Instance),
+            _users.Object, _taxDocuments.Object, ContentTestData.Service(_db, log: _contentLog),
+            Microsoft.Extensions.Options.Options.Create(new EmailOptions { PublicBaseUrl = "https://app.example/" }),
+            NullLogger<AuctionEmails>.Instance);
+
+        await sut.PaymentFailedAsync(Listing(), sale, Winner);
+
+        var subject = _db.OutboundEmails.Single().Subject;
+        subject.Length.Should().BeLessThanOrEqualTo(300);
+        subject.Should().StartWith(new string('S', 192) + "RRR");
+    }
+
+    [Fact]
     public async Task EditedWording_ALineBreak_IsABrInHtml_AndStaysInText()
     {
         ContentTestData.SetWording(_db, ContentKeys.OfferDeclined, "Declined: {StallionName}",

@@ -28,7 +28,7 @@ public class EmailOutbox : IEmailOutbox
         await _repo.AddAsync(new OutboundEmail
         {
             ToAddress = email.ToAddress.Trim(),
-            Subject = email.Subject,
+            Subject = CapSubject(email.Subject),
             HtmlBody = email.HtmlBody,
             TextBody = email.TextBody,
             Template = email.Template,
@@ -36,5 +36,20 @@ public class EmailOutbox : IEmailOutbox
             RelatedEntityId = relatedEntityId,
             CreatedAt = _clock.GetUtcNow().UtcDateTime
         });
+    }
+
+    /// <summary>The OutboundEmails.Subject column length.</summary>
+    public const int MaxSubjectLength = 300;
+
+    /// <summary>
+    /// Every email passes through here, so the subject is capped centrally: a Staff subject with long placeholder values
+    /// must never fail the insert (it can share a transaction with a buyer-fee charge). Truncated rather than rejected.
+    /// </summary>
+    private static string CapSubject(string subject)
+    {
+        if (subject.Length <= MaxSubjectLength) return subject;
+        var keep = MaxSubjectLength - 1;
+        if (char.IsHighSurrogate(subject[keep - 1])) keep--; // don't split a surrogate pair
+        return subject[..keep] + "…";
     }
 }

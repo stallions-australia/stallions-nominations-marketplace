@@ -115,8 +115,8 @@ public class TaxDocumentEmails : ITaxDocumentEmails
                    + string.Concat(all.Select(b => b.Html))
                    + "<p style=\"color:#6b7280;font-size:13px\">Stallions Australia</p></div>";
         var text = string.Join("\n\n", all.Select(b => b.Text)) + "\n\nStallions Australia";
-        var subject = email.Subject.Length > 300 ? email.Subject[..300] : email.Subject;
-        await _outbox.EnqueueAsync(new OutgoingEmail(d.RecipientEmail, subject, html, text, template), "TaxDocument", d.Id);
+        // The outbox caps the subject to fit the OutboundEmails column.
+        await _outbox.EnqueueAsync(new OutgoingEmail(d.RecipientEmail, email.Subject, html, text, template), "TaxDocument", d.Id);
     }
 
     private static Block Para(string text) => new($"<p>{Enc(text)}</p>", text);
