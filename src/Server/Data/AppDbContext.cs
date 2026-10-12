@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Stallions.Server.Content;
 using Stallions.Server.Data.Entities;
 using Stallions.Shared.Enums;
 
@@ -32,6 +33,7 @@ public class AppDbContext : DbContext
     public DbSet<Offer> Offers => Set<Offer>();
     public DbSet<IntroOffer> IntroOffers => Set<IntroOffer>();
     public DbSet<TaxDocument> TaxDocuments => Set<TaxDocument>();
+    public DbSet<ContentItem> ContentItems => Set<ContentItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -77,6 +79,11 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(f => f.StudDirectoryId)
                 .IsRequired(false)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(f => f.AcceptedStudTermsByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
@@ -349,12 +356,13 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // ── TermsDocument ──────────────────────────────────────────────────────
+        // ── TermsDocument (buyer T&C and stud listing terms, versioned per audience) ──
         modelBuilder.Entity<TermsDocument>(e =>
         {
             e.HasKey(t => t.Id);
             e.Property(t => t.Body).IsRequired();
-            e.HasIndex(t => t.Version).IsUnique();
+            e.Property(t => t.Audience).HasConversion<string>().HasMaxLength(10).IsRequired();
+            e.HasIndex(t => new { t.Audience, t.Version }).IsUnique();
             e.HasOne(t => t.CreatedBy)
                 .WithMany()
                 .HasForeignKey(t => t.CreatedByUserId)
@@ -534,6 +542,29 @@ public class AppDbContext : DbContext
             e.HasOne(d => d.OriginalDocument).WithMany().HasForeignKey(d => d.OriginalDocumentId).OnDelete(DeleteBehavior.NoAction);
             e.HasOne<StudFarm>().WithMany().HasForeignKey(d => d.StudFarmId).OnDelete(DeleteBehavior.NoAction);
             e.HasOne<User>().WithMany().HasForeignKey(d => d.BuyerUserId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ── Editable wording (one row per version; the highest version of a key is current) ──
+        modelBuilder.Entity<ContentItem>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Key).HasMaxLength(ContentCatalog.MaxKeyLength).IsRequired();
+            e.Property(c => c.Subject).HasMaxLength(ContentCatalog.MaxSubjectLength);
+            e.Property(c => c.Body).HasMaxLength(ContentCatalog.MaxBodyLength).IsRequired();
+            e.HasIndex(c => new { c.Key, c.Version }).IsUnique();
+            e.HasOne(c => c.CreatedBy).WithMany().HasForeignKey(c => c.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+
+            // Version 1 of every catalog item is the wording the code used before Phase 5b.
+            e.HasData(ContentCatalog.Entries.Select(c => new ContentItem
+            {
+                Id = ContentCatalog.SeedId(c.Key),
+                Key = c.Key,
+                Version = 1,
+                Subject = c.DefaultSubject,
+                Body = c.DefaultBody,
+                CreatedAt = ContentCatalog.SeededAt,
+                CreatedByUserId = null
+            }));
         });
     }
 

@@ -98,6 +98,269 @@ namespace Stallions.Server.Data.Migrations
                     b.ToTable("Bids");
                 });
 
+            modelBuilder.Entity("Stallions.Server.Data.Entities.ContentItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("Key", "Version")
+                        .IsUnique();
+
+                    b.ToTable("ContentItems");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("df17b217-5fe9-c3b1-29a9-068cca19a269"),
+                            Body = "The buyer fee is paid to Stallions Australia and forms part of the price — it is not added on top. You pay the balance (the price less the buyer fee) directly to the stud, under the stud's own terms. The price arrangement is entirely between you and the stud.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Disclosure.BuyerFeeExplanation",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("9e64ce67-b881-5179-091b-390c5fc942a9"),
+                            Body = "The stud farm will contact you separately to arrange payment of the remaining balance. The balance amount, payment terms, and any foal guarantee conditions are a matter between you and the stud farm only. Stallions Australia is not party to that arrangement.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Disclosure.StudFarmBalanceArrangement",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("95660d2b-4c8b-d50d-fd39-cc131aa39c4c"),
+                            Body = "Your saved card is charged the buyer fee automatically when you win an auction or a stud accepts your offer. The nomination price is not charged to this card — you pay the balance directly to the stud, under the stud's own terms.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Disclosure.SavedCardExplanation",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("5922d4db-4231-3b59-0187-4497db7b2c1b"),
+                            Body = "Another buyer has bid {HighBid} on the {StallionName} nomination, so you are no longer the highest bidder.\n\nThe auction closes {ClosesAt}.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.Outbid",
+                            Subject = "You've been outbid on {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("ee67be59-c01a-3851-9318-237d3c84b3cd"),
+                            Body = "The auction for the {StallionName} nomination ({Season}) has closed and another bid won.\n\nThank you for bidding.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.AuctionLost",
+                            Subject = "Auction closed: {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("6b4c350a-0d24-3d90-bc83-0cfa8cc58cda"),
+                            Body = "The auction for the {StallionName} nomination ({Season}) has closed without a sale.\n\nThank you for bidding.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.AuctionEndedWithoutSale",
+                            Subject = "Auction closed: {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("a439d551-b432-1c4e-e8fb-0323d37d002b"),
+                            Body = "Your bid of {Amount} won the auction for the {StallionName} nomination ({Season}), offered by {StudName}.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.WonAndCharged",
+                            Subject = "You won the {StallionName} nomination",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("185f4f6e-dedd-66ab-103c-35569229d4bf"),
+                            Body = "Your offer of {Amount} for the {StallionName} nomination ({Season}) was accepted by {StudName}.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.OfferAcceptedAndCharged",
+                            Subject = "Your offer for the {StallionName} nomination was accepted",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("36917098-77a0-481c-a723-437834cc6d7d"),
+                            Body = "Your bid of {Amount} won the auction for the {StallionName} nomination, but we couldn't charge the buyer fee of {BuyerFee} to your saved card: {Reason}\n\nPlease update your card by {Deadline}. Saving a new card retries the payment straight away. If the payment can't be completed by then, the sale won't go ahead.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.PaymentFailed",
+                            Subject = "Action needed: payment for {StallionName} failed",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("a2405b69-c086-06f8-9609-ff40c626f360"),
+                            Body = "Your offer of {Amount} for the {StallionName} nomination was accepted, but we couldn't charge the buyer fee of {BuyerFee} to your saved card: {Reason}\n\nPlease update your card by {Deadline}. Saving a new card retries the payment straight away. If the payment can't be completed by then, the sale won't go ahead.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.PaymentFailedOffer",
+                            Subject = "Action needed: payment for {StallionName} failed",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("c08fc2c6-17f6-682c-3400-09ff00ee4f5d"),
+                            Body = "We couldn't charge the buyer fee for the {StallionName} nomination by the deadline, so the sale has not gone ahead and the nomination is no longer yours.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.PaymentAbandoned",
+                            Subject = "No sale: {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("81d4055b-e1c2-11f3-8220-62e462604bf1"),
+                            Body = "We couldn't charge the buyer fee for your accepted offer on the {StallionName} nomination by the deadline, so the sale has not gone ahead.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.PaymentAbandonedOffer",
+                            Subject = "No sale: {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("1e34b589-f308-fc05-1b5c-bd0dc0511888"),
+                            Body = "The stud has declined your offer of {Amount} for the {StallionName} nomination ({Season}).",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.OfferDeclined",
+                            Subject = "Offer declined: {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("1fc28302-c1ec-60ed-f21d-d90a8f660248"),
+                            Body = "Your offer of {Amount} for the {StallionName} nomination ({Season}) has expired without a response from the stud.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.OfferExpired",
+                            Subject = "Offer closed: {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("5ef4e676-d420-619c-59ec-67b7c8d16cd1"),
+                            Body = "The {StallionName} nomination ({Season}) is no longer taking offers, so your offer of {Amount} has closed without a response.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.OfferExpiredListingClosed",
+                            Subject = "Offer closed: {StallionName}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("be17784d-561f-38e4-0302-77c49fa18cb7"),
+                            Body = "The auction for the {StallionName} nomination ({Season}) has closed with a sale, and the buyer fee has been paid.\n\nBuyer: {BuyerName}, {BuyerEmail}",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.StudSaleConfirmation",
+                            Subject = "Sale confirmed: {StallionName} nomination",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("2a5b68b2-5346-fec9-cf3f-0d298de1019b"),
+                            Body = "You accepted an offer for the {StallionName} nomination ({Season}), and the buyer fee has been paid.\n\nBuyer: {BuyerName}, {BuyerEmail}",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.StudSaleConfirmationOffer",
+                            Subject = "Sale confirmed: {StallionName} nomination",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("2fab357a-bf2b-d7d0-df7c-5adc68c9b643"),
+                            Body = "The auction for the {StallionName} nomination ({Season}) has closed without a sale: {Reason}\n\nThe lot is marked Unsold in My Listings.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.StudNoSaleAuction",
+                            Subject = "No sale: {StallionName} nomination",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("ab018e34-6fa0-cae0-5c6c-9796a745a85c"),
+                            Body = "The sale from the offer you accepted for the {StallionName} nomination ({Season}) has not gone ahead: the buyer's payment couldn't be completed.\n\nYour Make an Offer listing stays open for other offers.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.StudNoSaleMakeAnOffer",
+                            Subject = "No sale: {StallionName} nomination",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("819eb1f9-280c-7ab3-f48c-a9433ca775a8"),
+                            Body = "{BuyerName} ({BuyerEmail}) has offered {Amount} for the {StallionName} nomination ({Season}).\n\nThe offer is open until {Deadline}. Accepting it charges the buyer the buyer fee straight away.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.OfferReceived",
+                            Subject = "New offer: {StallionName} nomination",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("697c9e86-64bb-9e1e-51e9-3b134690191e"),
+                            Body = "Thank you — your listing fee has been paid. Your tax invoice is below.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.ListingFeeTaxInvoice",
+                            Subject = "Tax invoice {InvoiceNumber}: {Description}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("30f5f610-2d9d-ebe6-e573-c71005b0ce5f"),
+                            Body = "Here is your tax invoice for the listing fee. Please pay {Amount} by {DueDate}.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.ListingFeeInvoiceDue",
+                            Subject = "Tax invoice {InvoiceNumber} — amount due {Amount} by {DueDate}",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("e3eeed14-4f52-563f-8786-64bf46fc5e8f"),
+                            Body = "We've received your payment of {Amount} for tax invoice {InvoiceNumber}. Thank you.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.ListingFeeReceipt",
+                            Subject = "Receipt: tax invoice {InvoiceNumber} paid",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("a8a4608b-f8d2-fb3e-e5a5-189916336ac7"),
+                            Body = "The buyer fee has been charged to your saved card. Your tax invoice is below.",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.BuyerFeeTaxInvoice",
+                            Subject = "Tax invoice {InvoiceNumber}: buyer fee",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("f104d7f7-98f4-d756-c1eb-7fd21fb8f628"),
+                            Body = "This adjustment note reverses tax invoice {OriginalNumber} dated {OriginalDate} in full.\n\nReason: {Reason}",
+                            CreatedAt = new DateTime(2026, 10, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Key = "Email.AdjustmentNote",
+                            Subject = "Adjustment note {InvoiceNumber} for tax invoice {OriginalNumber}",
+                            Version = 1
+                        });
+                });
+
             modelBuilder.Entity("Stallions.Server.Data.Entities.Enquiry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1026,6 +1289,15 @@ namespace Stallions.Server.Data.Migrations
                         .HasMaxLength(14)
                         .HasColumnType("nvarchar(14)");
 
+                    b.Property<DateTime?>("AcceptedStudTermsAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("AcceptedStudTermsByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("AcceptedStudTermsVersion")
+                        .HasColumnType("int");
+
                     b.Property<string>("Address")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -1056,6 +1328,8 @@ namespace Stallions.Server.Data.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AcceptedStudTermsByUserId");
 
                     b.HasIndex("StudDirectoryId");
 
@@ -1228,6 +1502,11 @@ namespace Stallions.Server.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1245,7 +1524,7 @@ namespace Stallions.Server.Data.Migrations
 
                     b.HasIndex("CreatedByUserId");
 
-                    b.HasIndex("Version")
+                    b.HasIndex("Audience", "Version")
                         .IsUnique();
 
                     b.ToTable("TermsDocuments");
@@ -1390,6 +1669,16 @@ namespace Stallions.Server.Data.Migrations
                     b.Navigation("AuctionListing");
 
                     b.Navigation("Buyer");
+                });
+
+            modelBuilder.Entity("Stallions.Server.Data.Entities.ContentItem", b =>
+                {
+                    b.HasOne("Stallions.Server.Data.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("CreatedBy");
                 });
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.Enquiry", b =>
@@ -1660,6 +1949,11 @@ namespace Stallions.Server.Data.Migrations
 
             modelBuilder.Entity("Stallions.Server.Data.Entities.StudFarm", b =>
                 {
+                    b.HasOne("Stallions.Server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("AcceptedStudTermsByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("Stallions.Server.Data.Entities.StudDirectory", "StudDirectory")
                         .WithMany()
                         .HasForeignKey("StudDirectoryId")
