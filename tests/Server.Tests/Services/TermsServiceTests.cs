@@ -148,6 +148,28 @@ public class TermsServiceTests : IDisposable
     public async Task Publish_AnUnknownAudience_IsBadRequest() =>
         (await CreateSut().PublishAsync(new PublishTermsRequest { Body = "x", Audience = "Vets" })).HttpStatusCode.Should().Be(400);
 
+    [Theory]
+    [InlineData("Buyer,Stud")]
+    [InlineData("Buyer, Stud")]
+    [InlineData("1")]
+    [InlineData("+1")]
+    [InlineData(" -0")]
+    public async Task Publish_AnAudienceThatIsntExactlyAName_IsBadRequest(string audience)
+    {
+        (await CreateSut().PublishAsync(new PublishTermsRequest { Body = "x", Audience = audience })).HttpStatusCode.Should().Be(400);
+        (await CreateSut().GetHistoryAsync(audience)).HttpStatusCode.Should().Be(400);
+        _db.TermsDocuments.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("BUYER", TermsAudience.Buyer)]
+    [InlineData(" stud ", TermsAudience.Stud)]
+    public async Task Publish_AnAudienceName_InAnyCase_IsAccepted(string audience, TermsAudience expected)
+    {
+        (await CreateSut().PublishAsync(new PublishTermsRequest { Body = "x", Audience = audience })).Succeeded.Should().BeTrue();
+        _db.TermsDocuments.Single().Audience.Should().Be(expected);
+    }
+
     [Fact]
     public async Task Publish_IsAudited()
     {

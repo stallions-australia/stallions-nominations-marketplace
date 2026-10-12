@@ -318,9 +318,20 @@ else
     private void ShowTermsError(string message) => _error = message;
 
     // Publishing (and opening a lot to offers) needs the current stud listing terms accepted; the server enforces it too.
-    private Task HandlePublish() { _error = null; return _termsGate!.RequireAsync(PublishAsync); }
+    private Task HandlePublish() => RequireStudTermsAsync(PublishAsync);
 
-    private Task HandleConvert() { _error = null; return _termsGate!.RequireAsync(ConvertAsync); }
+    private Task HandleConvert() => RequireStudTermsAsync(ConvertAsync);
+
+    // Busy from the click, so a second click while the terms status loads can't start the action twice. Cleared when the
+    // gate returns: on an error, when the terms modal opens (it covers the page; the action sets busy itself if accepted)
+    // and after the action.
+    private async Task RequireStudTermsAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true; _error = null;
+        try { await _termsGate!.RequireAsync(action); }
+        finally { _busy = false; }
+    }
 
     private async Task PublishAsync()
     {

@@ -146,14 +146,15 @@ public class TermsService : ITermsService
         NeedsAcceptance = farm != null && current != null && farm.AcceptedStudTermsVersion != current.Version
     };
 
-    /// <summary>Empty = Buyer; otherwise "Buyer" or "Stud", any case.</summary>
+    /// <summary>Empty = Buyer; otherwise exactly "Buyer" or "Stud", any case (no numbers or comma-joined names).</summary>
     private static bool TryAudience(string? value, out TermsAudience audience)
     {
         audience = TermsAudience.Buyer;
         if (string.IsNullOrWhiteSpace(value)) return true;
-        return Enum.TryParse(value.Trim(), ignoreCase: true, out audience)
-               && Enum.IsDefined(audience)
-               && !char.IsDigit(value.Trim()[0]);
+        var name = Enum.GetNames<TermsAudience>().FirstOrDefault(n => string.Equals(n, value.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (name == null) return false;
+        audience = Enum.Parse<TermsAudience>(name);
+        return true;
     }
 
     private static TermsDocumentDto MapToDto(TermsDocument t) => new()

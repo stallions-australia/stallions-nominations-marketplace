@@ -257,6 +257,10 @@ public class ContentService : IContentService
         ContentItem? added = null;
         await _transactions.RunAsync(async () =>
         {
+            // The runner may retry this lambda: only the last attempt's outcome counts.
+            unchanged = false;
+            conflict = false;
+            added = null;
             var current = await _repo.GetCurrentAsync(entry.Key);
             if (current != null && current.Subject == subject && current.Body == body)
             {

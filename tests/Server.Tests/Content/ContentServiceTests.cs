@@ -41,8 +41,20 @@ public class ContentServiceTests : IDisposable
 
     private void SignIn(User user) => _users.Setup(u => u.GetOrCreateCurrentUserAsync()).ReturnsAsync(user);
 
-    private ContentService CreateSut(IContentRepository? repo = null) => new(repo ?? new ContentRepository(_db), _cache,
-        new AuditLogRepository(_db), _users.Object, new InlineTransactionRunner(), _clock, _log);
+    private ContentService CreateSut(IContentRepository? repo = null, ITransactionRunner? transactions = null) =>
+        new(repo ?? new ContentRepository(_db), _cache,
+            new AuditLogRepository(_db), _users.Object, transactions ?? new InlineTransactionRunner(), _clock, _log);
+
+    /// <summary>Runs the work twice, like an execution strategy retrying after a transient failure.</summary>
+    private sealed class RetryingTransactionRunner(Action betweenAttempts) : ITransactionRunner
+    {
+        public async Task<T> RunAsync<T>(Func<Task<T>> work)
+        {
+            await work();
+            betweenAttempts();
+            return await work();
+        }
+    }
 
     private static SaveContentRequest Request(string? subject, string body) => new() { Subject = subject, Body = body };
 
@@ -292,6 +304,41 @@ public class ContentServiceTests : IDisposable
 
         result.HttpStatusCode.Should().Be(409);
         _db.AuditLogs.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Save_RetriedAfterAnUnchangedFirstAttempt_ReportsTheRetrysResult()
+    {
+        var entry = ContentCatalog.Find(ContentKeys.Outbid)!;
+        var runner = new RetryingTransactionRunner(() => ContentTestData.SetWording(_db, ContentKeys.Outbid, OutbidSubject, OutbidBody));
+
+        var result = await CreateSut(transactions: runner).SaveAsync(ContentKeys.Outbid, Request(entry.DefaultSubject, entry.DefaultBody));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        result.Value!.Version.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Save_RetriedAfterAConflictedFirstAttempt_ReportsTheRetrysResult()
+    {
+        var repo = new LosingOnceRepository(_db);
+        var runner = new RetryingTransactionRunner(() => { });
+
+        var result = await CreateSut(repo, runner).SaveAsync(ContentKeys.Outbid, Request(OutbidSubject, OutbidBody));
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        result.Value!.Version.Should().Be(2);
+    }
+
+    private sealed class LosingOnceRepository(AppDbContext db) : ContentRepository(db)
+    {
+        private bool _lost;
+        public override Task<bool> TryAddAsync(ContentItem item)
+        {
+            if (_lost) return base.TryAddAsync(item);
+            _lost = true;
+            return Task.FromResult(false);
+        }
     }
 
     [Fact]

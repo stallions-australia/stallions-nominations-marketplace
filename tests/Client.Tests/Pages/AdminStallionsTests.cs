@@ -264,4 +264,53 @@ public class AdminStallionsTests : TestContext
         _subs.Verify(s => s.ActivateAsync(It.IsAny<Guid>()), Times.Never);
         _terms.Verify(t => t.AcceptStudTermsAsync(It.IsAny<int>()), Times.Never);
     }
+
+    private static AngleSharp.Dom.IElement ActivateButton(IRenderedComponent<AdminStallions> cut) =>
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Activate for") || b.TextContent.Contains("Opening"));
+
+    [Fact]
+    public void Activate_ClickedTwiceWhileTheTermsStatusIsLoading_StartsOneCheckout()
+    {
+        var status = new TaskCompletionSource<StudTermsStatusDto>();
+        _terms.Setup(t => t.GetStudStatusAsync()).Returns(status.Task);
+        _subs.Setup(s => s.ActivateAsync(_snitzel.Id)).ReturnsAsync(new PaymentRedirectDto { Url = "https://checkout.example/pay" });
+        var cut = Render();
+
+        ActivateButton(cut).Click();
+        ActivateButton(cut).HasAttribute("disabled").Should().BeTrue();
+        ActivateButton(cut).Click();
+        cut.InvokeAsync(() => status.SetResult(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 }));
+
+        cut.WaitForAssertion(() =>
+            Services.GetRequiredService<NavigationManager>().Uri.Should().Be("https://checkout.example/pay"));
+        _terms.Verify(t => t.GetStudStatusAsync(), Times.Once);
+        _subs.Verify(s => s.ActivateAsync(It.IsAny<Guid>()), Times.Once);
+    }
+
+    [Fact]
+    public void Activate_AfterCancellingTheStudTerms_CanBeClickedAgain()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), NeedsAcceptance = true });
+        var cut = Render();
+
+        ActivateButton(cut).Click();
+        cut.WaitForAssertion(() => cut.FindAll(".stud-terms-body").Should().ContainSingle());
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Cancel").Click();
+
+        ActivateButton(cut).HasAttribute("disabled").Should().BeFalse();
+        ActivateButton(cut).TextContent.Should().Contain("Activate for");
+    }
+
+    [Fact]
+    public void Activate_WhenTheTermsStatusFails_ShowsTheError_AndCanBeClickedAgain()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ThrowsAsync(new ApiException(500, "Couldn't load the terms."));
+        var cut = Render();
+
+        ActivateButton(cut).Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Couldn't load the terms."));
+        ActivateButton(cut).HasAttribute("disabled").Should().BeFalse();
+        _subs.Verify(s => s.ActivateAsync(It.IsAny<Guid>()), Times.Never);
+    }
 }

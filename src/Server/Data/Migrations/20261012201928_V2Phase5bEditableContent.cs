@@ -137,6 +137,10 @@ namespace Stallions.Server.Data.Migrations
             migrationBuilder.DropTable(
                 name: "ContentItems");
 
+            // Stud listing terms have no place in the old schema: without this they would silently become Buyer T&C
+            // once the Audience column goes, and their version numbers would clash with the unique Version index below.
+            migrationBuilder.Sql("DELETE FROM [TermsDocuments] WHERE [Audience] = N'Stud';");
+
             migrationBuilder.DropIndex(
                 name: "IX_TermsDocuments_Audience_Version",
                 table: "TermsDocuments");

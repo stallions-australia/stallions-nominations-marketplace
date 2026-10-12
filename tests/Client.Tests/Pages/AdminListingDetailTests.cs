@@ -271,4 +271,58 @@ public class AdminListingDetailTests : TestContext
 
         cut.WaitForAssertion(() => admin.Verify(a => a.ConvertToMakeAnOfferAsync(auction.Id), Times.Once));
     }
+
+    [Fact]
+    public void Publish_ClickedTwiceWhileTheTermsStatusIsLoading_PublishesOnce()
+    {
+        var status = new TaskCompletionSource<StudTermsStatusDto>();
+        _terms.Setup(t => t.GetStudStatusAsync()).Returns(status.Task);
+        Render([Subscription("Paid")], out var cut);
+        cut.WaitForAssertion(() => PublishButton(cut).HasAttribute("disabled").Should().BeFalse());
+
+        PublishButton(cut).Click();
+        PublishButton(cut).HasAttribute("disabled").Should().BeTrue();
+        PublishButton(cut).Click();
+        cut.InvokeAsync(() => status.SetResult(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 }));
+
+        cut.WaitForAssertion(() => _admin!.Verify(a => a.PublishListingAsync(_draft.Id), Times.Once));
+        _terms.Verify(t => t.GetStudStatusAsync(), Times.Once);
+    }
+
+    [Fact]
+    public void Publish_AfterCancellingTheStudTerms_CanBeClickedAgain()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), NeedsAcceptance = true });
+        Render([Subscription("Paid")], out var cut);
+        cut.WaitForAssertion(() => PublishButton(cut).HasAttribute("disabled").Should().BeFalse());
+
+        PublishButton(cut).Click();
+        cut.WaitForAssertion(() => cut.FindAll(".stud-terms-body").Should().ContainSingle());
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Cancel").Click();
+
+        PublishButton(cut).HasAttribute("disabled").Should().BeFalse();
+        _admin!.Verify(a => a.PublishListingAsync(It.IsAny<Guid>()), Times.Never);
+    }
+
+    [Fact]
+    public void Convert_ClickedTwiceWhileTheTermsStatusIsLoading_CreatesOneMakeAnOfferListing()
+    {
+        var auction = UnsoldAuction();
+        var status = new TaskCompletionSource<StudTermsStatusDto>();
+        _terms.Setup(t => t.GetStudStatusAsync()).Returns(status.Task);
+        var admin = RenderWith(auction, out var cut);
+        admin.Setup(a => a.ConvertToMakeAnOfferAsync(auction.Id)).ReturnsAsync(new MakeAnOfferListingDto { Id = Guid.NewGuid() });
+        cut.WaitForAssertion(() => cut.FindAll("button").Single(b => b.TextContent.Contains("Offer as Make an Offer")));
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Offer as Make an Offer")).Click();
+        AngleSharp.Dom.IElement Confirm() =>
+            cut.FindAll("button").Single(b => b.TextContent.Contains("Yes, open to offers") || b.TextContent.Contains("Opening"));
+
+        Confirm().Click();
+        Confirm().HasAttribute("disabled").Should().BeTrue();
+        Confirm().Click();
+        cut.InvokeAsync(() => status.SetResult(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 }));
+
+        cut.WaitForAssertion(() => admin.Verify(a => a.ConvertToMakeAnOfferAsync(auction.Id), Times.Once));
+        _terms.Verify(t => t.GetStudStatusAsync(), Times.Once);
+    }
 }
