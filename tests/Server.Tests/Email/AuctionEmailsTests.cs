@@ -1,19 +1,31 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Stallions.Server.Content;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Email;
-using Stallions.Server.Options;
+using Stallions.Server.Tests.Helpers;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Tests.Email;
 
-public class AuctionEmailsTests
+public class AuctionEmailsTests : IDisposable
 {
+    private readonly AppDbContext _db = DbContextFactory.Create(Guid.NewGuid().ToString());
     private readonly List<OutgoingEmail> _queued = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<ITaxDocumentRepository> _taxDocuments = new();
+
+    public AuctionEmailsTests()
+    {
+        _db.Database.EnsureCreated();
+        ContentTestData.SetWording(_db, ContentKeys.BuyerFeeExplanation, null, "CONFIGURED fee wording.");
+        ContentTestData.SetWording(_db, ContentKeys.StudFarmBalanceArrangement, null, "CONFIGURED balance wording.");
+    }
+
+    public void Dispose() => _db.Dispose();
 
     private AuctionEmails CreateSut()
     {
@@ -21,12 +33,7 @@ public class AuctionEmailsTests
         outbox.Setup(o => o.EnqueueAsync(It.IsAny<OutgoingEmail>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .Callback<OutgoingEmail, string?, Guid?>((e, _, _) => _queued.Add(e))
             .Returns(Task.CompletedTask);
-        return new AuctionEmails(outbox.Object, _users.Object, _taxDocuments.Object,
-            Microsoft.Extensions.Options.Options.Create(new DisclosureOptions
-            {
-                BuyerFeeExplanation = "CONFIGURED fee wording.",
-                StudFarmBalanceArrangement = "CONFIGURED balance wording."
-            }),
+        return new AuctionEmails(outbox.Object, _users.Object, _taxDocuments.Object, ContentTestData.Service(_db),
             Microsoft.Extensions.Options.Options.Create(new EmailOptions { PublicBaseUrl = "https://app.example/" }),
             NullLogger<AuctionEmails>.Instance);
     }
