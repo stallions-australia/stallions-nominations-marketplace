@@ -145,7 +145,7 @@ public class AuctionEmails : IAuctionEmails
     private sealed record Block(string Html, string Text);
 
     /// <summary>The Staff wording for this email, with the listing's names plus these values.</summary>
-    private Task<RenderedEmail> RenderAsync(string key, Listing listing, params (string Name, string? Value)[] values)
+    private async Task<RenderedEmail> RenderAsync(string key, Listing listing, params (string Name, string? Value)[] values)
     {
         var all = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -154,14 +154,7 @@ public class AuctionEmails : IAuctionEmails
             ["StudName"] = Farm(listing)
         };
         foreach (var (name, value) in values) all[name] = value;
-        return RenderSingleLineSubjectAsync(key, all);
-    }
-
-    /// <summary>A substituted value (stallion name, reason...) must never add a header line to the subject.</summary>
-    private async Task<RenderedEmail> RenderSingleLineSubjectAsync(string key, Dictionary<string, string?> values)
-    {
-        var email = await _content.RenderEmailAsync(key, values);
-        return email with { Subject = email.Subject.Replace('\r', ' ').Replace('\n', ' ') };
+        return (await _content.RenderEmailAsync(key, all)).WithSingleLineSubject();
     }
 
     private async Task<IEnumerable<Block>> DisclosureAsync(string key) =>

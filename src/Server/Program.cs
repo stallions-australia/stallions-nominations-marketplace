@@ -10,7 +10,6 @@ using Stallions.Server.Content;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Email;
-using Stallions.Server.Options;
 using Stallions.Server.Payments;
 using Stallions.Server.Services;
 using Stallions.Server.TaxDocuments;
@@ -76,9 +75,6 @@ builder.Services.AddAuthorization(options =>
 
 // Register the handler that evaluates DbRoleRequirement
 builder.Services.AddScoped<IAuthorizationHandler, DbRoleHandler>();
-
-// Config options
-builder.Services.Configure<DisclosureOptions>(builder.Configuration.GetSection(DisclosureOptions.Section));
 
 // Payments — Stripe or the dev-only fake (refused in Production)
 builder.Services.AddPayments(builder.Configuration, builder.Environment);
