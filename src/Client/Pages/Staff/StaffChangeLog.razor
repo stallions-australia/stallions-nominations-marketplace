@@ -1,0 +1,135 @@
+@page "/staff/change-log"
+@layout StaffLayout
+@attribute [Authorize]
+@inject ChangeLogApiService ChangeLogApi
+@inject UserStateService UserState
+@inject NavigationManager Nav
+
+<PageTitle>Change log — Staff Admin</PageTitle>
+
+<div class="admin-page-header">
+    <h1 class="admin-page-title">Change log</h1>
+</div>
+<p class="text-secondary text-sm">
+    Staff changes to platform settings, business details, intro offers, wording and terms, and each stud's acceptance of
+    the stud listing terms. Times are Sydney time. Bank account numbers show only their last 3 digits.
+</p>
+
+<div class="change-log-filters">
+    <label class="form-label" for="cl-area">Area</label>
+    <select id="cl-area" class="form-select" @bind="_area">
+        <option value="">All areas</option>
+        @foreach (var (value, label) in ChangeLogAreas.All)
+        {
+            <option value="@value">@label</option>
+        }
+    </select>
+    <label class="form-label" for="cl-from">From</label>
+    <input id="cl-from" type="date" class="form-input" @bind="_from" />
+    <label class="form-label" for="cl-to">To</label>
+    <input id="cl-to" type="date" class="form-input" @bind="_to" />
+    <button class="btn btn-gold btn-sm" @onclick="ApplyAsync" disabled="@_loading">Apply</button>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_page is null || _page.Entries.Count == 0)
+{
+    <div class="admin-empty-state"><p>No changes match these filters.</p></div>
+}
+else
+{
+    <table class="admin-table change-log-table">
+        <thead>
+            <tr><th>When</th><th>Who</th><th>Area</th><th>Item</th><th>What changed</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var e in _page.Entries)
+            {
+                <tr>
+                    <td class="text-sm change-log-when">@e.When</td>
+                    <td>@e.Who</td>
+                    <td>@e.AreaLabel</td>
+                    <td>
+                        @e.Item
+                        @if (e.Note is not null)
+                        {
+                            <div class="text-muted text-sm">@e.Note</div>
+                        }
+                    </td>
+                    <td>
+                        <ul class="change-log-changes">
+                            @foreach (var c in e.Changes)
+                            {
+                                <li>
+                                    <span class="change-log-field">@c.Field:</span>
+                                    @if (c.IsLongText)
+                                    {
+                                        <span>changed</span>
+                                        @if (e.Link is not null)
+                                        {
+                                            <a href="@e.Link">View version</a>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span>@(c.OldValue ?? "—") → @(c.NewValue ?? "—")</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="change-log-pager">
+        <button class="btn btn-sm btn-outline" @onclick="() => LoadAsync(_page.Page - 1)" disabled="@(_page.Page <= 1)">Previous</button>
+        <span class="text-sm">Page @_page.Page of @_page.TotalPages · @_page.Total changes</span>
+        <button class="btn btn-sm btn-outline" @onclick="() => LoadAsync(_page.Page + 1)" disabled="@(_page.Page >= _page.TotalPages)">Next</button>
+    </div>
+}
+
+@code {
+    private string _area = string.Empty;
+    private DateOnly? _from;
+    private DateOnly? _to;
+    private ChangeLogPageDto? _page;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        await LoadAsync(1);
+    }
+
+    private Task ApplyAsync() => LoadAsync(1);
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true; _error = null;
+        try
+        {
+            _page = await ChangeLogApi.GetAsync(new ChangeLogFilter
+            {
+                Area = string.IsNullOrEmpty(_area) ? null : _area, From = _from, To = _to, Page = page
+            });
+        }
+        catch (Exception ex)
+        {
+            _page = null;
+            _error = ex is ApiException ae ? ae.Message : "Failed to load the change log.";
+        }
+        finally { _loading = false; }
+    }
+}
