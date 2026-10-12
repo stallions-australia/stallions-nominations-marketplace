@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using Stallions.Server.Auctions;
 using Stallions.Server.Auth;
+using Stallions.Server.Content;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Email;
@@ -148,6 +149,9 @@ builder.Services.AddScoped<IIntroOfferService, IntroOfferService>();
 builder.Services.AddScoped<ITaxDocumentEmails, TaxDocumentEmails>();
 builder.Services.AddScoped<ITaxDocumentService, TaxDocumentService>();
 builder.Services.AddScoped<ITaxDocumentQueryService, TaxDocumentQueryService>();
+builder.Services.AddScoped<IContentRepository, ContentRepository>();
+builder.Services.AddSingleton<ContentCache>();
+builder.Services.AddScoped<IContentService, ContentService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>
