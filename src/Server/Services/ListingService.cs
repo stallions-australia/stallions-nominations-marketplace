@@ -20,6 +20,7 @@ public class ListingService : IListingService
     private readonly ISubscriptionService _subscriptions;
     private readonly IAuditLogRepository _audit;
     private readonly IOfferExpirer _offerExpirer;
+    private readonly StudTermsGate _studTerms;
 
     public ListingService(
         IListingRepository listingRepo,
@@ -30,7 +31,8 @@ public class ListingService : IListingService
         IPlatformSettingsRepository settingsRepo,
         ISubscriptionService subscriptions,
         IAuditLogRepository audit,
-        IOfferExpirer offerExpirer)
+        IOfferExpirer offerExpirer,
+        ITermsRepository terms)
     {
         _listingRepo = listingRepo;
         _seasonRepo = seasonRepo;
@@ -41,6 +43,7 @@ public class ListingService : IListingService
         _subscriptions = subscriptions;
         _audit = audit;
         _offerExpirer = offerExpirer;
+        _studTerms = new StudTermsGate(terms);
     }
 
     public async Task<ServiceResult<IReadOnlyList<ListingDto>>> GetActiveAsync(Guid? seasonId, ListingType? type, bool isStaff)
@@ -235,6 +238,10 @@ public class ListingService : IListingService
         if (listing is AuctionListing al && al.EndDateTime <= DateTime.UtcNow)
             return ServiceResult.BadRequest("Auction end date must be in the future.");
 
+        // Publishing needs the current stud listing terms accepted (none published = no gate).
+        if (!await _studTerms.IsSatisfiedAsync(farm))
+            return ServiceResult.BadRequest(StudTermsGate.NotAcceptedMessage);
+
         // The stud must have paid (or been granted a waiver of) the listing fee for this stallion
         // and season. Applies to every publish — there is no Staff exemption.
         if (!await _subscriptions.HasActiveSubscriptionAsync(listing.StallionId, listing.SeasonId))
@@ -412,6 +419,10 @@ public class ListingService : IListingService
             return ServiceResult<ListingDto>.Forbidden("You do not have permission to change this listing.");
         if (listing is not AuctionListing auction || auction.Status != ListingStatus.Unsold)
             return ServiceResult<ListingDto>.BadRequest("Only an auction lot that closed unsold can be offered as Make an Offer.");
+
+        // Converting creates a live listing, so it is a publish: same stud terms rule.
+        if (!await _studTerms.IsSatisfiedAsync(farm))
+            return ServiceResult<ListingDto>.BadRequest(StudTermsGate.NotAcceptedMessage);
 
         var season = auction.Season;
         if (season == null || SydneyTime.Today(DateTime.UtcNow) > season.EndDate)

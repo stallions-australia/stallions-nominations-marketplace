@@ -467,4 +467,22 @@ public class AdminServiceTests
         (t.TaxInvoiceId, t.TaxInvoiceNumber, t.AdjustmentNoteNumber).Should().Be((invoiceId, "SA-000124", "SA-000130"));
         result.Single(x => x.PurchaseId == plain.Id).TaxInvoiceNumber.Should().BeNull();
     }
+
+    [Fact]
+    public async Task GetAllStudFarmsAsync_ShowsEachFarmsStudTermsAcceptance()
+    {
+        var at = new DateTime(2026, 10, 12, 2, 0, 0, DateTimeKind.Utc);
+        _studFarmRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(new List<StudFarm>
+        {
+            new() { Id = Guid.NewGuid(), Name = "Arrowfield", AcceptedStudTermsVersion = 2, AcceptedStudTermsAt = at },
+            new() { Id = Guid.NewGuid(), Name = "Coolmore" }
+        });
+
+        var farms = (await CreateSut().GetAllStudFarmsAsync()).Value!;
+
+        farms[0].AcceptedStudTermsVersion.Should().Be(2);
+        farms[0].AcceptedStudTermsAt.Should().Be(at);
+        farms[1].AcceptedStudTermsVersion.Should().BeNull();
+        farms[1].AcceptedStudTermsAt.Should().BeNull();
+    }
 }

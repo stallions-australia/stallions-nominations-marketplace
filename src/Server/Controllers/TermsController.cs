@@ -12,7 +12,7 @@ public class TermsController : ControllerBase
     private readonly ITermsService _terms;
     public TermsController(ITermsService terms) => _terms = terms;
 
-    // Any authenticated user can read the current T&C (buyers need it to accept).
+    // Any authenticated user can read the current buyer T&C (buyers need it to accept).
     [HttpGet("current")]
     [Authorize]
     public async Task<IActionResult> GetCurrent()
@@ -31,9 +31,26 @@ public class TermsController : ControllerBase
 
     [HttpGet("history")]
     [Authorize(Policy = "StaffOnly")]
-    public async Task<IActionResult> GetHistory()
+    public async Task<IActionResult> GetHistory([FromQuery] string? audience)
     {
-        var r = await _terms.GetHistoryAsync();
+        var r = await _terms.GetHistoryAsync(audience);
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    // The stud's own acceptance status (Staff see the current terms only).
+    [HttpGet("stud/current")]
+    [Authorize(Policy = "StudFarmOrStaff")]
+    public async Task<IActionResult> GetStudStatus()
+    {
+        var r = await _terms.GetStudStatusAsync();
+        return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
+    }
+
+    [HttpPost("stud/accept")]
+    [Authorize(Policy = "StudFarmAdminOnly")]
+    public async Task<IActionResult> AcceptStud([FromBody] AcceptTermsRequest request)
+    {
+        var r = await _terms.AcceptStudTermsAsync(request);
         return r.Succeeded ? Ok(r.Value) : StatusCode(r.HttpStatusCode, r.Error);
     }
 }

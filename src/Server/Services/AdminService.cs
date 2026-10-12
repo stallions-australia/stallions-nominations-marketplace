@@ -109,7 +109,9 @@ public class AdminService : IAdminService
             IsActive = f.IsActive,
             StudDirectoryId = f.StudDirectoryId,
             StudDirectoryName = f.StudDirectory?.Name,
-            CreatedAt = f.CreatedAt
+            CreatedAt = f.CreatedAt,
+            AcceptedStudTermsVersion = f.AcceptedStudTermsVersion,
+            AcceptedStudTermsAt = f.AcceptedStudTermsAt
         }).ToList();
         return ServiceResult<IReadOnlyList<StudFarmSummaryDto>>.Ok(dtos);
     }
@@ -141,7 +143,9 @@ public class AdminService : IAdminService
             IsActive = farm.IsActive,
             StudDirectoryId = farm.StudDirectoryId,
             StudDirectoryName = studDirectoryName,
-            CreatedAt = farm.CreatedAt
+            CreatedAt = farm.CreatedAt,
+            AcceptedStudTermsVersion = farm.AcceptedStudTermsVersion,
+            AcceptedStudTermsAt = farm.AcceptedStudTermsAt
         };
         return ServiceResult<StudFarmSummaryDto>.Ok(dto);
     }

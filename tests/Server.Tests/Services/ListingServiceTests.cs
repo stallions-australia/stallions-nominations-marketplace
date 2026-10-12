@@ -21,6 +21,7 @@ public class ListingServiceTests
     private readonly Mock<ISubscriptionService> _subscriptionsMock = new();
     private readonly Mock<IAuditLogRepository> _auditMock = new();
     private readonly Mock<IOfferExpirer> _offerExpirerMock = new();
+    private readonly Mock<ITermsRepository> _termsMock = new();
 
     public ListingServiceTests()
     {
@@ -40,7 +41,8 @@ public class ListingServiceTests
     private ListingService CreateSut() => new(
         _listingRepoMock.Object, _seasonRepoMock.Object,
         _stallionRepoMock.Object, _farmRepoMock.Object, _usersMock.Object,
-        _settingsRepoMock.Object, _subscriptionsMock.Object, _auditMock.Object, _offerExpirerMock.Object);
+        _settingsRepoMock.Object, _subscriptionsMock.Object, _auditMock.Object, _offerExpirerMock.Object,
+        _termsMock.Object);
 
     private void SetBuyerFeeSetting(decimal fee) =>
         _settingsRepoMock.Setup(r => r.GetAsync()).ReturnsAsync(new PlatformSettings
@@ -355,6 +357,58 @@ public class ListingServiceTests
 
         result.Succeeded.Should().BeTrue();
         listing.Status.Should().Be(ListingStatus.Active);
+    }
+
+    // ── Stud listing terms gate ─────────────────────────────────────────────
+
+    private void StudTermsPublished(int version) =>
+        _termsMock.Setup(t => t.GetCurrentAsync(TermsAudience.Stud))
+            .ReturnsAsync(new TermsDocument { Audience = TermsAudience.Stud, Version = version, Body = "Stud terms" });
+
+    [Fact]
+    public async Task PublishListing_WithoutAcceptingTheStudTerms_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var listing = DraftAuction(farm.Id);
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        StudTermsPublished(2);
+        farm.AcceptedStudTermsVersion = 1;
+
+        var result = await CreateSut().PublishListingAsync(listing.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("Accept the current stud listing terms first.");
+        listing.Status.Should().Be(ListingStatus.Draft);
+        _listingRepoMock.Verify(r => r.UpdateAsync(It.IsAny<Listing>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PublishListing_AfterAcceptingTheCurrentStudTerms_Publishes()
+    {
+        var (_, farm) = SignedInFarm();
+        var listing = DraftAuction(farm.Id);
+        _listingRepoMock.Setup(r => r.GetByIdAsync(listing.Id)).ReturnsAsync(listing);
+        StudTermsPublished(2);
+        farm.AcceptedStudTermsVersion = 2;
+
+        var result = await CreateSut().PublishListingAsync(listing.Id);
+
+        result.Succeeded.Should().BeTrue(result.Error);
+        listing.Status.Should().Be(ListingStatus.Active);
+    }
+
+    [Fact]
+    public async Task Convert_WithoutAcceptingTheStudTerms_IsRejected()
+    {
+        var (_, farm) = SignedInFarm();
+        var auction = ConvertibleAuction(farm.Id);
+        StudTermsPublished(1);
+
+        var result = await CreateSut().ConvertToMakeAnOfferAsync(auction.Id);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("Accept the current stud listing terms first.");
+        _listingRepoMock.Verify(r => r.AddAsync(It.IsAny<Listing>()), Times.Never);
     }
 
     // ── Auction rules: increment from settings, hidden reserve ─────────────
