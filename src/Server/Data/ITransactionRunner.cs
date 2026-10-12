@@ -22,10 +22,20 @@ public class EfTransactionRunner : ITransactionRunner
         return strategy.ExecuteAsync(async () =>
         {
             _db.ChangeTracker.Clear();
-            await using var tx = await _db.Database.BeginTransactionAsync();
-            var result = await work();
-            await tx.CommitAsync();
-            return result;
+            try
+            {
+                await using var tx = await _db.Database.BeginTransactionAsync();
+                var result = await work();
+                await tx.CommitAsync();
+                return result;
+            }
+            catch
+            {
+                // A failed unit of work must leave nothing tracked: otherwise the caller's next SaveChanges
+                // (e.g. the aggregate audit row after a failed "issue missing" item) would save what it added.
+                _db.ChangeTracker.Clear();
+                throw;
+            }
         });
     }
 }
