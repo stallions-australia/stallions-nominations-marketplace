@@ -148,6 +148,7 @@ builder.Services.AddScoped<ITaxDocumentQueryService, TaxDocumentQueryService>();
 builder.Services.AddScoped<IContentRepository, ContentRepository>();
 builder.Services.AddSingleton<ContentCache>();
 builder.Services.AddScoped<IContentService, ContentService>();
+builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>
