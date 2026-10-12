@@ -1,10 +1,9 @@
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Infrastructure;
-using Stallions.Server.Options;
+using Stallions.Server.Content;
 using Stallions.Server.Services;
 using Stallions.Shared;
 using Stallions.Shared.DTOs.TaxDocuments;
@@ -38,16 +37,16 @@ public class TaxDocumentQueryService : ITaxDocumentQueryService
     private readonly IAuditLogRepository _audit;
     private readonly IUserService _users;
     private readonly ITransactionRunner _transactions;
-    private readonly DisclosureOptions _disclosure;
+    private readonly IContentService _content;
     private readonly ILogger<TaxDocumentQueryService> _log;
 
     public TaxDocumentQueryService(ITaxDocumentRepository documents, ITaxDocumentService taxDocuments,
         ISubscriptionRepository subscriptions, IPurchaseRepository purchases, IStudFarmRepository farms,
         IAuditLogRepository audit, IUserService users, ITransactionRunner transactions,
-        IOptions<DisclosureOptions> disclosure, ILogger<TaxDocumentQueryService> log)
+        IContentService content, ILogger<TaxDocumentQueryService> log)
     {
         _documents = documents; _taxDocuments = taxDocuments; _subscriptions = subscriptions; _purchases = purchases;
-        _farms = farms; _audit = audit; _users = users; _transactions = transactions; _disclosure = disclosure.Value; _log = log;
+        _farms = farms; _audit = audit; _users = users; _transactions = transactions; _content = content; _log = log;
     }
 
     public async Task<ServiceResult<TaxDocumentDto>> GetAsync(Guid id)
@@ -61,7 +60,11 @@ public class TaxDocumentQueryService : ITaxDocumentQueryService
         var reversedBy = document.Kind == TaxDocumentKind.AdjustmentNote
             ? null
             : await _documents.GetAdjustmentNoteForAsync(document.Id);
-        return ServiceResult<TaxDocumentDto>.Ok(ToDto(document, reversedBy));
+        // The fee note is the current buyer fee explanation, read when shown (not stored on the document).
+        var feeNote = document.Kind == TaxDocumentKind.BuyerFeeInvoice
+            ? (await _content.GetAsync(ContentKeys.BuyerFeeExplanation)).Body
+            : null;
+        return ServiceResult<TaxDocumentDto>.Ok(ToDto(document, reversedBy, feeNote));
     }
 
     public async Task<ServiceResult<IReadOnlyList<TaxDocumentSummaryDto>>> GetMineAsync()
@@ -268,7 +271,7 @@ public class TaxDocumentQueryService : ITaxDocumentQueryService
 
     private static DateOnly? SydneyDate(DateTime? utc) => utc is { } value ? SydneyTime.Today(value) : null;
 
-    private TaxDocumentDto ToDto(TaxDocument d, TaxDocument? reversedBy) => new()
+    private static TaxDocumentDto ToDto(TaxDocument d, TaxDocument? reversedBy, string? feeNote) => new()
     {
         Id = d.Id,
         Number = d.Number,
@@ -300,7 +303,7 @@ public class TaxDocumentQueryService : ITaxDocumentQueryService
         OriginalNumber = d.OriginalDocument?.Number,
         OriginalIssuedOn = SydneyDate(d.OriginalDocument?.IssuedAt),
         Reason = d.Reason,
-        FeeNote = d.Kind == TaxDocumentKind.BuyerFeeInvoice ? _disclosure.BuyerFeeExplanation : null,
+        FeeNote = feeNote,
         ReversedById = reversedBy?.Id,
         ReversedByNumber = reversedBy?.Number
     };

@@ -5,7 +5,7 @@ using Moq;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
-using Stallions.Server.Options;
+using Stallions.Server.Content;
 using Stallions.Server.Services;
 using Stallions.Server.TaxDocuments;
 using Stallions.Server.Tests.Helpers;
@@ -37,6 +37,7 @@ public class TaxDocumentQueryServiceTests : IDisposable
         _farmB = new StudFarm { UserId = _studB.Id, Name = "Coolmore" };
         _db.AddRange(_staff, _buyerA, _buyerB, _studA, _studB, _farmA, _farmB);
         _db.SaveChanges();
+        ContentTestData.SetWording(_db, ContentKeys.BuyerFeeExplanation, null, "CONFIGURED fee wording.");
     }
 
     public void Dispose() => _db.Dispose();
@@ -53,7 +54,7 @@ public class TaxDocumentQueryServiceTests : IDisposable
     private TaxDocumentQueryService CreateSut(ITaxDocumentService? taxDocuments = null) => new(new TaxDocumentRepository(_db), taxDocuments ?? TaxDocuments(),
         new SubscriptionRepository(_db), new PurchaseRepository(_db), new StudFarmRepository(_db), new AuditLogRepository(_db),
         _users.Object, new InlineTransactionRunner(),
-        Microsoft.Extensions.Options.Options.Create(new DisclosureOptions { BuyerFeeExplanation = "CONFIGURED fee wording." }),
+        ContentTestData.Service(_db),
         NullLogger<TaxDocumentQueryService>.Instance);
 
     private TaxDocument AddDoc(string number, TaxDocumentKind kind, Guid? buyer = null, Guid? farm = null,

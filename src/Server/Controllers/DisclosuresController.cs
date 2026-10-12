@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using Stallions.Server.Options;
+using Stallions.Server.Content;
 using Stallions.Shared.DTOs.Checkout;
 
 namespace Stallions.Server.Controllers;
@@ -10,16 +9,16 @@ namespace Stallions.Server.Controllers;
 [Route("api/disclosures")]
 public class DisclosuresController : ControllerBase
 {
-    private readonly IOptions<DisclosureOptions> _options;
-    public DisclosuresController(IOptions<DisclosureOptions> options) => _options = options;
+    private readonly IContentService _content;
+    public DisclosuresController(IContentService content) => _content = content;
 
-    // Public — shown on listing pages before a buyer signs in. Wording comes from configuration.
+    // Public — shown on listing pages before a buyer signs in. Wording is Staff-managed (Staff → Wording).
     [HttpGet("buyer-fee")]
     [AllowAnonymous]
-    public IActionResult GetBuyerFee() => Ok(new BuyerFeeDisclosureDto
+    public async Task<IActionResult> GetBuyerFee() => Ok(new BuyerFeeDisclosureDto
     {
-        BuyerFeeExplanation = _options.Value.BuyerFeeExplanation,
-        BalanceArrangement = _options.Value.StudFarmBalanceArrangement,
-        SavedCardExplanation = _options.Value.SavedCardExplanation
+        BuyerFeeExplanation = (await _content.GetAsync(ContentKeys.BuyerFeeExplanation)).Body,
+        BalanceArrangement = (await _content.GetAsync(ContentKeys.StudFarmBalanceArrangement)).Body,
+        SavedCardExplanation = (await _content.GetAsync(ContentKeys.SavedCardExplanation)).Body
     });
 }
