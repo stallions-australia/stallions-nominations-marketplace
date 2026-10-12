@@ -1,0 +1,39 @@
+<Modal IsOpen="true" Title="Stud listing terms" CloseOnBackdrop="false" OnClose="Cancel">
+    <p class="text-sm">
+        Stallions Australia has published stud listing terms (version @Terms.Version). Please read and accept them to continue.
+    </p>
+    <div class="stud-terms-body">@((MarkupString)_html)</div>
+    <label class="stud-terms-agree">
+        <input type="checkbox" @bind="_checked" />
+        <span>I have read and accept the stud listing terms.</span>
+    </label>
+    <ErrorMessage Message="@_error" />
+    <div class="stud-terms-actions">
+        <button class="btn btn-outline" type="button" @onclick="Cancel" disabled="@_busy">Cancel</button>
+        <button class="btn btn-gold" type="button" @onclick="Accept" disabled="@(!_checked || _busy)">@(_busy ? "Saving…" : "I accept")</button>
+    </div>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public TermsDocumentDto Terms { get; set; } = default!;
+    /// <summary>Records the acceptance, then carries on with what the stud asked to do. An ApiException is shown here.</summary>
+    [Parameter] public EventCallback OnAccepted { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string _html = string.Empty;
+    private bool _checked;
+    private bool _busy;
+    private string? _error;
+
+    protected override void OnParametersSet() => _html = TermsMarkdown.ToHtml(Terms.Body);
+
+    private async Task Accept()
+    {
+        _busy = true; _error = null;
+        try { await OnAccepted.InvokeAsync(); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+}

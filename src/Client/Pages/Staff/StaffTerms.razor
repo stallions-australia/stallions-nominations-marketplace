@@ -11,22 +11,35 @@
     <h1 class="admin-page-title">Terms &amp; Conditions</h1>
 </div>
 
+<div class="terms-audience" role="tablist">
+    <button type="button" role="tab" aria-selected="@(_audience == "Buyer")"
+            class="btn btn-sm @(_audience == "Buyer" ? "btn-gold" : "btn-outline")" @onclick='() => SwitchAsync("Buyer")'>Buyer T&amp;C</button>
+    <button type="button" role="tab" aria-selected="@(_audience == "Stud")"
+            class="btn btn-sm @(_audience == "Stud" ? "btn-gold" : "btn-outline")" @onclick='() => SwitchAsync("Stud")'>Stud listing terms</button>
+</div>
+<p class="text-secondary text-sm">
+    @(_audience == "Buyer"
+        ? "Buyers accept these before they can bid or make an offer."
+        : "A stud accepts these before paying a listing fee, publishing a listing or opening a lot to offers.")
+</p>
+
 @if (_loading)
 {
     <p>Loading…</p>
 }
 else
 {
-    <p class="text-secondary text-sm">
-        Current version: <strong>@(_current?.Version.ToString() ?? "none published")</strong>
-        @if (_current is not null) { <text> · published @_current.CreatedAt.ToString("d MMM yyyy")</text> }
+    <p class="text-secondary text-sm terms-current">
+        Current version: <strong>@(Current?.Version.ToString() ?? "none published")</strong>
+        @if (Current is not null)
+        {
+            <text> · published @Current.CreatedAt.ToLocalTime().ToString("d MMM yyyy")@(Current.CreatedByName is null ? "" : $" by {Current.CreatedByName}")</text>
+        }
     </p>
 
     <div class="terms-editor">
-        <label class="form-label">Body (Markdown)</label>
-        <textarea class="form-control" rows="16"
-                  value="@_body"
-                  @oninput="OnBodyInput"></textarea>
+        <label class="form-label" for="terms-body">Body (Markdown)</label>
+        <textarea id="terms-body" class="form-control" rows="16" value="@_body" @oninput="OnBodyInput"></textarea>
     </div>
 
     <div class="terms-preview">
@@ -40,10 +53,45 @@ else
     <button class="btn btn-gold" @onclick="Publish" disabled="@_busy">
         @(_busy ? "Publishing…" : "Publish new version")
     </button>
+
+    <h2 class="terms-history-title">Version history</h2>
+    @if (_history.Count == 0)
+    {
+        <p class="text-muted text-sm">No versions published yet.</p>
+    }
+    else
+    {
+        <table class="admin-table terms-history">
+            <thead><tr><th>Version</th><th>Published</th><th>By</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var doc in _history)
+                {
+                    <tr>
+                        <td>v@(doc.Version)</td>
+                        <td>@doc.CreatedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")</td>
+                        <td>@(doc.CreatedByName ?? "—")</td>
+                        <td class="admin-table-actions"><button class="btn btn-sm btn-outline" @onclick="() => _viewing = doc">View</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 }
 
+<Modal IsOpen="@(_viewing is not null)" Title="@($"{AudienceLabel} — version {_viewing?.Version}")" OnClose="() => _viewing = null" CloseOnBackdrop="true">
+    @if (_viewing is not null)
+    {
+        <div class="terms-preview-box terms-version-view">@((MarkupString)TermsMarkdown.ToHtml(_viewing.Body))</div>
+    }
+</Modal>
+
 @code {
-    private TermsDocumentDto? _current;
+    [SupplyParameterFromQuery(Name = "audience")] public string? AudienceQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "version")] public int? VersionQuery { get; set; }
+
+    private string _audience = "Buyer";
+    private List<TermsDocumentDto> _history = [];
+    private TermsDocumentDto? _viewing;
     private string _body = string.Empty;
     private string _preview = string.Empty;
     private bool _loading = true;
@@ -51,24 +99,41 @@ else
     private bool _published;
     private string? _error;
 
+    private TermsDocumentDto? Current => _history.FirstOrDefault();
+    private string AudienceLabel => _audience == "Stud" ? "Stud listing terms" : "Buyer T&C";
+
     protected override async Task OnInitializedAsync()
     {
         await UserState.LoadAsync();
         if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        _audience = string.Equals(AudienceQuery, "Stud", StringComparison.OrdinalIgnoreCase) ? "Stud" : "Buyer";
         await Load();
+        if (VersionQuery is int version) _viewing = _history.FirstOrDefault(d => d.Version == version);
     }
 
     private async Task Load()
     {
-        _loading = true; _error = null;
+        _loading = true; _error = null; _published = false;
         try
         {
-            _current = await TermsApi.GetCurrentAsync();
-            _body = _current?.Body ?? string.Empty;
+            _history = await TermsApi.GetHistoryAsync(_audience);
+            _body = Current?.Body ?? string.Empty;
             UpdatePreview();
         }
-        catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load Terms."; }
+        catch (Exception ex)
+        {
+            _history = [];
+            _error = ex is ApiException ae ? ae.Message : "Failed to load the terms.";
+        }
         finally { _loading = false; }
+    }
+
+    private async Task SwitchAsync(string audience)
+    {
+        if (_audience == audience) return;
+        _audience = audience;
+        _viewing = null;
+        await Load();
     }
 
     private void OnBodyInput(ChangeEventArgs e)
@@ -77,14 +142,14 @@ else
         UpdatePreview();
     }
 
-    private void UpdatePreview() => _preview = Markdig.Markdown.ToHtml(_body ?? string.Empty);
+    private void UpdatePreview() => _preview = TermsMarkdown.ToHtml(_body);
 
     private async Task Publish()
     {
         _busy = true; _error = null; _published = false;
         try
         {
-            _current = await TermsApi.PublishAsync(_body);
+            _history.Insert(0, await TermsApi.PublishAsync(_body, _audience));
             _published = true;
         }
         catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to publish."; }

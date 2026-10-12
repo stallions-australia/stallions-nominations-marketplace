@@ -9,12 +9,16 @@ using Stallions.Client.Services;
 using Stallions.Shared.DTOs.Listings;
 using Stallions.Shared.DTOs.Offers;
 using Stallions.Shared.DTOs.Subscriptions;
+using Stallions.Shared.DTOs.Terms;
 using Stallions.Shared.DTOs.Users;
 
 namespace Stallions.Client.Tests.Pages;
 
 public class AdminListingDetailTests : TestContext
 {
+    private readonly Mock<TermsApiService> _terms = new(MockBehavior.Loose, new HttpClient { BaseAddress = new Uri("https://localhost/") });
+    private Mock<AdminApiService>? _admin;
+
     private readonly AuctionListingDto _draft = new()
     {
         Id = Guid.NewGuid(), StallionId = Guid.NewGuid(), SeasonId = Guid.NewGuid(),
@@ -31,7 +35,9 @@ public class AdminListingDetailTests : TestContext
 
         var adminMock = new Mock<AdminApiService>(MockBehavior.Loose, http);
         adminMock.Setup(s => s.GetListingAsync(_draft.Id)).ReturnsAsync(_draft);
+        _admin = adminMock;
         Services.AddSingleton(adminMock.Object);
+        Services.AddSingleton(_terms.Object);
 
         var subsMock = new Mock<SubscriptionApiService>(MockBehavior.Loose, http);
         subsMock.Setup(s => s.GetMineAsync()).ReturnsAsync(subscriptions);
@@ -118,7 +124,9 @@ public class AdminListingDetailTests : TestContext
 
         var adminMock = new Mock<AdminApiService>(MockBehavior.Loose, http);
         adminMock.Setup(s => s.GetListingAsync(listing.Id)).ReturnsAsync(listing);
+        _admin = adminMock;
         Services.AddSingleton(adminMock.Object);
+        Services.AddSingleton(_terms.Object);
 
         var subsMock = new Mock<SubscriptionApiService>(MockBehavior.Loose, http);
         subsMock.Setup(s => s.GetMineAsync()).ReturnsAsync(new List<SubscriptionDto>());
@@ -207,5 +215,60 @@ public class AdminListingDetailTests : TestContext
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("Offers close"));
         cut.FindAll("button").Any(b => b.TextContent.Contains("Offer as Make an Offer")).Should().BeFalse();
+    }
+
+    private static TermsDocumentDto StudTerms() => new() { Id = Guid.NewGuid(), Audience = "Stud", Version = 2, Body = "Stud listing **terms**" };
+
+    [Fact]
+    public void Publish_WhenTheStudTermsNeedAccepting_ShowsThem_ThenPublishesAfterAccepting()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), NeedsAcceptance = true });
+        _terms.Setup(t => t.AcceptStudTermsAsync(2)).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 });
+        Render([Subscription("Paid")], out var cut);
+        cut.WaitForAssertion(() => PublishButton(cut).HasAttribute("disabled").Should().BeFalse());
+
+        PublishButton(cut).Click();
+
+        cut.WaitForAssertion(() => cut.FindAll(".stud-terms-body").Should().ContainSingle());
+        _admin!.Verify(a => a.PublishListingAsync(It.IsAny<Guid>()), Times.Never);
+        cut.Find(".stud-terms-agree input").Change(true);
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "I accept").Click();
+        cut.WaitForAssertion(() => _admin.Verify(a => a.PublishListingAsync(_draft.Id), Times.Once));
+        _terms.Verify(t => t.AcceptStudTermsAsync(2), Times.Once);
+    }
+
+    [Fact]
+    public void Publish_WhenTheStudTermsAreAlreadyAccepted_PublishesStraightAway()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 });
+        Render([Subscription("Paid")], out var cut);
+        cut.WaitForAssertion(() => PublishButton(cut).HasAttribute("disabled").Should().BeFalse());
+
+        PublishButton(cut).Click();
+
+        cut.WaitForAssertion(() => _admin!.Verify(a => a.PublishListingAsync(_draft.Id), Times.Once));
+        cut.FindAll(".stud-terms-body").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Convert_WhenTheStudTermsNeedAccepting_ShowsThem_ThenConvertsAfterAccepting()
+    {
+        var auction = UnsoldAuction();
+        var newId = Guid.NewGuid();
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), NeedsAcceptance = true });
+        _terms.Setup(t => t.AcceptStudTermsAsync(2)).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 });
+        var admin = RenderWith(auction, out var cut);
+        admin.Setup(a => a.ConvertToMakeAnOfferAsync(auction.Id)).ReturnsAsync(new MakeAnOfferListingDto { Id = newId });
+        cut.WaitForAssertion(() => cut.FindAll("button").Single(b => b.TextContent.Contains("Offer as Make an Offer")));
+
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Offer as Make an Offer")).Click();
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Yes, open to offers")).Click();
+
+        cut.WaitForAssertion(() => cut.FindAll(".stud-terms-body").Should().ContainSingle());
+        admin.Verify(a => a.ConvertToMakeAnOfferAsync(It.IsAny<Guid>()), Times.Never);
+        cut.Find(".stud-terms-agree input").Change(true);
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "I accept").Click();
+
+        cut.WaitForAssertion(() => admin.Verify(a => a.ConvertToMakeAnOfferAsync(auction.Id), Times.Once));
     }
 }

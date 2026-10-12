@@ -32,7 +32,7 @@
     private string? _error;
 
     protected override void OnParametersSet() =>
-        _html = Markdig.Markdown.ToHtml(Terms.Body ?? string.Empty);
+        _html = TermsMarkdown.ToHtml(Terms.Body);
 
     private async Task OnScroll()
     {

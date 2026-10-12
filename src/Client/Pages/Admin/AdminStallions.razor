@@ -203,6 +203,8 @@ else if (_authorized != null)
     }
 }
 
+<StudTermsGate @ref="_termsGate" OnError="ShowTermsError" />
+
 @code {
     private List<StallionSummaryDto> _stallions = [];
     private AuthorizedStallionsDto? _authorized;
@@ -324,7 +326,18 @@ else if (_authorized != null)
         _subscriptions.FirstOrDefault(x => x.StallionId == stallionId && x.SeasonId == _openSeason?.Id)?.FeeIncGst
         ?? _standardFee;
 
-    private async Task ActivateAsync(Guid stallionId)
+    private StudTermsGate? _termsGate;
+
+    private void ShowTermsError(string message) => _activateError = message;
+
+    // A stud must accept the current stud listing terms before paying a listing fee; the server enforces it too.
+    private Task ActivateAsync(Guid stallionId)
+    {
+        _activateError = null; _paymentNotice = null;
+        return _termsGate!.RequireAsync(() => StartActivationAsync(stallionId));
+    }
+
+    private async Task StartActivationAsync(Guid stallionId)
     {
         _activating = stallionId; _activateError = null; _paymentNotice = null;
         try
