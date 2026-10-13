@@ -12,4 +12,7 @@ public class StudFarmSummaryDto
     public Guid? StudDirectoryId { get; set; }
     public string? StudDirectoryName { get; set; }
     public DateTime CreatedAt { get; set; }
+    /// <summary>The stud listing terms version this farm last accepted (null = never).</summary>
+    public int? AcceptedStudTermsVersion { get; set; }
+    public DateTime? AcceptedStudTermsAt { get; set; }
 }

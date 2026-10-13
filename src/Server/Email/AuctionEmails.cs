@@ -1,17 +1,17 @@
 using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Options;
+using Stallions.Server.Content;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Data.Repositories;
-using Stallions.Server.Options;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Email;
 
 /// <summary>
-/// The auction and Make an Offer emails. Plain, factual wording; amounts inc. GST; times in Sydney time. Buyer-fee
-/// policy wording comes from DisclosureOptions (configured), never from this file. Bidders are
-/// never told who else bid.
+/// The auction and Make an Offer emails. Staff edit each email's subject and message (Staff → Wording); the amounts
+/// table, the mandatory buyer-fee disclosure block, contact details and links are generated here and always added.
+/// Amounts inc. GST; times in Sydney time. Bidders are never told who else bid.
 /// </summary>
 public class AuctionEmails : IAuctionEmails
 {
@@ -21,18 +21,17 @@ public class AuctionEmails : IAuctionEmails
     private readonly IEmailOutbox _outbox;
     private readonly IUserRepository _users;
     private readonly ITaxDocumentRepository _taxDocuments;
-    private readonly DisclosureOptions _disclosure;
+    private readonly IContentService _content;
     private readonly string _baseUrl;
     private readonly ILogger<AuctionEmails> _log;
 
     public AuctionEmails(IEmailOutbox outbox, IUserRepository users, ITaxDocumentRepository taxDocuments,
-        IOptions<DisclosureOptions> disclosure,
-        IOptions<EmailOptions> email, ILogger<AuctionEmails> log)
+        IContentService content, IOptions<EmailOptions> email, ILogger<AuctionEmails> log)
     {
         _outbox = outbox;
         _users = users;
         _taxDocuments = taxDocuments;
-        _disclosure = disclosure.Value;
+        _content = content;
         _baseUrl = email.Value.PublicBaseUrl.TrimEnd('/');
         _log = log;
     }
@@ -41,21 +40,18 @@ public class AuctionEmails : IAuctionEmails
     {
         var bidder = await _users.GetByIdAsync(previousBidderUserId);
         if (bidder == null) return;
-        await QueueAsync(bidder.Email, "Outbid", $"You've been outbid on {Name(listing)}", listing,
-            Para($"Another buyer has bid {Money(newHighBidIncGst)} on the {Name(listing)} nomination, so you are no longer the highest bidder."),
-            Para($"The auction closes {When(listing.EndDateTime)}."),
+        var email = await RenderAsync(ContentKeys.Outbid, listing,
+            ("HighBid", Money(newHighBidIncGst)), ("ClosesAt", When(listing.EndDateTime)));
+        await QueueAsync(bidder.Email, "Outbid", email, listing,
             Link($"/listings/{listing.Id}", "Bid again"));
     }
 
-    public Task AuctionLostAsync(AuctionListing listing, User bidder) =>
-        QueueAsync(bidder.Email, "AuctionLost", $"Auction closed: {Name(listing)}", listing,
-            Para($"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed and another bid won."),
-            Para("Thank you for bidding."));
+    public async Task AuctionLostAsync(AuctionListing listing, User bidder) =>
+        await QueueAsync(bidder.Email, "AuctionLost", await RenderAsync(ContentKeys.AuctionLost, listing), listing);
 
-    public Task AuctionEndedWithoutSaleAsync(AuctionListing listing, User bidder) =>
-        QueueAsync(bidder.Email, "AuctionEndedWithoutSale", $"Auction closed: {Name(listing)}", listing,
-            Para($"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed without a sale."),
-            Para("Thank you for bidding."));
+    public async Task AuctionEndedWithoutSaleAsync(AuctionListing listing, User bidder) =>
+        await QueueAsync(bidder.Email, "AuctionEndedWithoutSale",
+            await RenderAsync(ContentKeys.AuctionEndedWithoutSale, listing), listing);
 
     private static bool FromOffer(Purchase p) => p.OfferId != null;
 
@@ -64,91 +60,117 @@ public class AuctionEmails : IAuctionEmails
         // The charger issues the buyer fee tax invoice just before this email, in the same transaction.
         var invoice = await _taxDocuments.GetBuyerFeeInvoiceAsync(purchase.Id);
         var fromOffer = FromOffer(purchase);
+        var email = await RenderAsync(fromOffer ? ContentKeys.OfferAcceptedAndCharged : ContentKeys.WonAndCharged, listing,
+            ("Amount", Money(purchase.TotalPriceIncGst)), ("BuyerFee", Money(purchase.BuyerFeeIncGst)));
+
         var blocks = new List<Block>
         {
             fromOffer
-                ? Para($"Your offer of {Money(purchase.TotalPriceIncGst)} for the {Name(listing)} nomination ({Season(listing)}) was accepted by {Farm(listing)}.")
-                : Para($"Your bid of {Money(purchase.TotalPriceIncGst)} won the auction for the {Name(listing)} nomination ({Season(listing)}), offered by {Farm(listing)}."),
-            fromOffer
                 ? Amounts(purchase, "Price (your accepted offer)", "Balance you pay the stud directly")
                 : Amounts(purchase, "Price (your winning bid)", "Balance you pay the stud directly"),
-            Para($"The buyer fee of {Money(purchase.BuyerFeeIncGst)} has been charged to your saved card."),
-            Para(_disclosure.BuyerFeeExplanation),
-            Para(_disclosure.StudFarmBalanceArrangement),
-            Para(StudContact(listing))
+            // The mandatory buyer-fee disclosure block: the fee charged, then the Staff-managed disclosure wording.
+            Para($"The buyer fee of {Money(purchase.BuyerFeeIncGst)} has been charged to your saved card.")
         };
+        blocks.AddRange(await DisclosureAsync(ContentKeys.BuyerFeeExplanation));
+        blocks.AddRange(await DisclosureAsync(ContentKeys.StudFarmBalanceArrangement));
+        blocks.Add(Para(StudContact(listing)));
         if (invoice != null)
             blocks.Add(Link($"/tax-documents/{invoice.Id}", $"Your tax invoice {invoice.Number} is available here"));
         blocks.Add(Link("/my-purchases", "View your sale record"));
 
-        await (fromOffer
-            ? QueueAsync(winner.Email, "OfferAcceptedAndCharged", $"Your offer for the {Name(listing)} nomination was accepted", listing, blocks.ToArray())
-            : QueueAsync(winner.Email, "WonAndCharged", $"You won the {Name(listing)} nomination", listing, blocks.ToArray()));
+        await QueueAsync(winner.Email, fromOffer ? "OfferAcceptedAndCharged" : "WonAndCharged", email, listing, blocks.ToArray());
     }
 
-    public Task PaymentFailedAsync(Listing listing, Purchase purchase, User winner) =>
-        QueueAsync(winner.Email, "PaymentFailed", $"Action needed: payment for {Name(listing)} failed", listing,
-            Para(FromOffer(purchase)
-                ? $"Your offer of {Money(purchase.TotalPriceIncGst)} for the {Name(listing)} nomination was accepted, but we couldn't charge the buyer fee of {Money(purchase.BuyerFeeIncGst)} to your saved card: {purchase.LastChargeFailure}"
-                : $"Your bid of {Money(purchase.TotalPriceIncGst)} won the auction for the {Name(listing)} nomination, but we couldn't charge the buyer fee of {Money(purchase.BuyerFeeIncGst)} to your saved card: {purchase.LastChargeFailure}"),
-            Para($"Please update your card by {When(purchase.ChargeDueBy ?? DateTime.UtcNow)}. Saving a new card retries the payment straight away. If the payment can't be completed by then, the sale won't go ahead."),
+    public async Task PaymentFailedAsync(Listing listing, Purchase purchase, User winner)
+    {
+        var email = await RenderAsync(FromOffer(purchase) ? ContentKeys.PaymentFailedOffer : ContentKeys.PaymentFailed, listing,
+            ("Amount", Money(purchase.TotalPriceIncGst)), ("BuyerFee", Money(purchase.BuyerFeeIncGst)),
+            ("Reason", purchase.LastChargeFailure), ("Deadline", When(purchase.ChargeDueBy ?? DateTime.UtcNow)));
+        await QueueAsync(winner.Email, "PaymentFailed", email, listing,
             Link("/account/card", "Update your card"));
+    }
 
-    public Task PaymentAbandonedAsync(Listing listing, Purchase purchase, User winner) =>
-        QueueAsync(winner.Email, "PaymentAbandoned", $"No sale: {Name(listing)}", listing,
-            Para(FromOffer(purchase)
-                ? $"We couldn't charge the buyer fee for your accepted offer on the {Name(listing)} nomination by the deadline, so the sale has not gone ahead."
-                : $"We couldn't charge the buyer fee for the {Name(listing)} nomination by the deadline, so the sale has not gone ahead and the nomination is no longer yours."));
+    public async Task PaymentAbandonedAsync(Listing listing, Purchase purchase, User winner)
+    {
+        var email = await RenderAsync(FromOffer(purchase) ? ContentKeys.PaymentAbandonedOffer : ContentKeys.PaymentAbandoned, listing,
+            ("Amount", Money(purchase.TotalPriceIncGst)), ("BuyerFee", Money(purchase.BuyerFeeIncGst)));
+        await QueueAsync(winner.Email, "PaymentAbandoned", email, listing);
+    }
 
-    public async Task StudSaleConfirmationAsync(Listing listing, Purchase purchase, User winner) =>
-        await QueueAsync(await StudAddressAsync(listing), "StudSaleConfirmation", $"Sale confirmed: {Name(listing)} nomination", listing,
-            Para(FromOffer(purchase)
-                ? $"You accepted an offer for the {Name(listing)} nomination ({Season(listing)}), and the buyer fee has been paid."
-                : $"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed with a sale, and the buyer fee has been paid."),
-            Para($"Buyer: {winner.DisplayName}, {winner.Email}"),
+    public async Task StudSaleConfirmationAsync(Listing listing, Purchase purchase, User winner)
+    {
+        var email = await RenderAsync(FromOffer(purchase) ? ContentKeys.StudSaleConfirmationOffer : ContentKeys.StudSaleConfirmation, listing,
+            ("BuyerName", winner.DisplayName), ("BuyerEmail", winner.Email),
+            ("Amount", Money(purchase.TotalPriceIncGst)), ("BuyerFee", Money(purchase.BuyerFeeIncGst)));
+        await QueueAsync(await StudAddressAsync(listing), "StudSaleConfirmation", email, listing,
             Amounts(purchase, "Price", "Balance the buyer pays you directly"),
             Para("Please arrange the balance with the buyer under your own terms."),
             Link($"/admin/listings/{listing.Id}", "View the listing"));
+    }
 
-    public async Task StudNoSaleAsync(Listing listing, ListingCloseReason reason) => await (listing is MakeAnOfferListing
-        ? QueueAsync(await StudAddressAsync(listing), "StudNoSale", $"No sale: {Name(listing)} nomination", listing,
-            Para($"The sale from the offer you accepted for the {Name(listing)} nomination ({Season(listing)}) has not gone ahead: the buyer's payment couldn't be completed."),
-            Para("Your Make an Offer listing stays open for other offers."),
-            Link($"/admin/listings/{listing.Id}", "View the listing"))
-        : QueueAsync(await StudAddressAsync(listing), "StudNoSale", $"No sale: {Name(listing)} nomination", listing,
-            Para($"The auction for the {Name(listing)} nomination ({Season(listing)}) has closed without a sale: {ReasonText(reason)}"),
-            Para("The lot is marked Unsold in My Listings."),
-            Link($"/admin/listings/{listing.Id}", "Offer it as Make an Offer")));
+    public async Task StudNoSaleAsync(Listing listing, ListingCloseReason reason)
+    {
+        var to = await StudAddressAsync(listing);
+        if (listing is MakeAnOfferListing)
+            await QueueAsync(to, "StudNoSale", await RenderAsync(ContentKeys.StudNoSaleMakeAnOffer, listing), listing,
+                Link($"/admin/listings/{listing.Id}", "View the listing"));
+        else
+            await QueueAsync(to, "StudNoSale",
+                await RenderAsync(ContentKeys.StudNoSaleAuction, listing, ("Reason", ReasonText(reason))), listing,
+                Link($"/admin/listings/{listing.Id}", "Offer it as Make an Offer"));
+    }
 
-    public async Task OfferReceivedAsync(MakeAnOfferListing listing, Offer offer, User buyer) =>
-        await QueueAsync(await StudAddressAsync(listing), "OfferReceived", $"New offer: {Name(listing)} nomination", listing,
-            Para($"{buyer.DisplayName} ({buyer.Email}) has offered {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)})."),
-            Para($"The offer is open until {When(offer.ExpiresAt)}. Accepting it charges the buyer the buyer fee straight away."),
+    public async Task OfferReceivedAsync(MakeAnOfferListing listing, Offer offer, User buyer)
+    {
+        var email = await RenderAsync(ContentKeys.OfferReceived, listing,
+            ("BuyerName", buyer.DisplayName), ("BuyerEmail", buyer.Email),
+            ("Amount", Money(offer.AmountIncGst)), ("Deadline", When(offer.ExpiresAt)));
+        await QueueAsync(await StudAddressAsync(listing), "OfferReceived", email, listing,
             Link($"/admin/listings/{listing.Id}", "Review the offer"));
+    }
 
-    public Task OfferDeclinedAsync(MakeAnOfferListing listing, Offer offer, User buyer) =>
-        QueueAsync(buyer.Email, "OfferDeclined", $"Offer declined: {Name(listing)}", listing,
-            Para($"The stud has declined your offer of {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)})."),
+    public async Task OfferDeclinedAsync(MakeAnOfferListing listing, Offer offer, User buyer) =>
+        await QueueAsync(buyer.Email, "OfferDeclined",
+            await RenderAsync(ContentKeys.OfferDeclined, listing, ("Amount", Money(offer.AmountIncGst))), listing,
             Link($"/listings/{listing.Id}", "View the listing"));
 
-    public Task OfferExpiredAsync(MakeAnOfferListing listing, Offer offer, User buyer, bool listingClosed) =>
-        QueueAsync(buyer.Email, "OfferExpired", $"Offer closed: {Name(listing)}", listing,
-            Para(listingClosed
-                ? $"The {Name(listing)} nomination ({Season(listing)}) is no longer taking offers, so your offer of {Money(offer.AmountIncGst)} has closed without a response."
-                : $"Your offer of {Money(offer.AmountIncGst)} for the {Name(listing)} nomination ({Season(listing)}) has expired without a response from the stud."),
+    public async Task OfferExpiredAsync(MakeAnOfferListing listing, Offer offer, User buyer, bool listingClosed) =>
+        await QueueAsync(buyer.Email, "OfferExpired",
+            await RenderAsync(listingClosed ? ContentKeys.OfferExpiredListingClosed : ContentKeys.OfferExpired, listing,
+                ("Amount", Money(offer.AmountIncGst))), listing,
             Link($"/listings/{listing.Id}", "View the listing"));
 
     // ── Building blocks ────────────────────────────────────────────────────────
 
     private sealed record Block(string Html, string Text);
 
-    private async Task QueueAsync(string? to, string template, string subject, Listing listing, params Block[] blocks)
+    /// <summary>The Staff wording for this email, with the listing's names plus these values.</summary>
+    private async Task<RenderedEmail> RenderAsync(string key, Listing listing, params (string Name, string? Value)[] values)
     {
+        var all = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["StallionName"] = Name(listing),
+            ["Season"] = Season(listing),
+            ["StudName"] = Farm(listing)
+        };
+        foreach (var (name, value) in values) all[name] = value;
+        return (await _content.RenderEmailAsync(key, all)).WithSingleLineSubject();
+    }
+
+    private async Task<IEnumerable<Block>> DisclosureAsync(string key) =>
+        (await _content.RenderTextAsync(key)).Select(ToBlock);
+
+    private static Block ToBlock(RenderedParagraph p) => new($"<p>{p.Html}</p>", p.Text);
+
+    /// <summary>The Staff message paragraphs first, then the generated blocks.</summary>
+    private async Task QueueAsync(string? to, string template, RenderedEmail email, Listing listing, params Block[] blocks)
+    {
+        var all = email.Paragraphs.Select(ToBlock).Concat(blocks).ToList();
         var html = "<div style=\"font-family:Georgia,'Times New Roman',serif;max-width:560px;color:#1f2a24\">"
-                   + string.Concat(blocks.Select(b => b.Html))
+                   + string.Concat(all.Select(b => b.Html))
                    + "<p style=\"color:#6b7280;font-size:13px\">Stallions Australia</p></div>";
-        var text = string.Join("\n\n", blocks.Select(b => b.Text)) + "\n\nStallions Australia";
-        await _outbox.EnqueueAsync(new OutgoingEmail(to ?? string.Empty, subject, html, text, template), "Listing", listing.Id);
+        var text = string.Join("\n\n", all.Select(b => b.Text)) + "\n\nStallions Australia";
+        await _outbox.EnqueueAsync(new OutgoingEmail(to ?? string.Empty, email.Subject, html, text, template), "Listing", listing.Id);
     }
 
     private static Block Para(string text) => new($"<p>{Enc(text)}</p>", text);

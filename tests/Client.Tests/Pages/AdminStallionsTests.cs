@@ -13,6 +13,7 @@ using Stallions.Shared.DTOs.Settings;
 using Stallions.Shared.DTOs.Stallions;
 using Stallions.Shared.DTOs.Subscriptions;
 using Stallions.Shared.DTOs.TaxDocuments;
+using Stallions.Shared.DTOs.Terms;
 using Stallions.Shared.DTOs.Users;
 
 namespace Stallions.Client.Tests.Pages;
@@ -22,6 +23,7 @@ public class AdminStallionsTests : TestContext
     private static HttpClient Http() => new() { BaseAddress = new Uri("https://localhost/") };
     private readonly Mock<SubscriptionApiService> _subs = new(MockBehavior.Loose, Http());
     private readonly Mock<TaxDocumentApiService> _taxDocs = new(MockBehavior.Loose, Http());
+    private readonly Mock<TermsApiService> _terms = new(MockBehavior.Loose, Http());
     private readonly List<TaxDocumentSummaryDto> _studDocuments = [];
     private readonly StallionSummaryDto _snitzel = new() { Id = Guid.NewGuid(), Name = "Snitzel", IsActive = true };
     private readonly StallionSummaryDto _zoustar = new() { Id = Guid.NewGuid(), Name = "Zoustar", IsActive = true };
@@ -48,6 +50,7 @@ public class AdminStallionsTests : TestContext
         Services.AddSingleton(_subs.Object);
         _taxDocs.Setup(t => t.GetForStudAsync()).ReturnsAsync(_studDocuments);
         Services.AddSingleton(_taxDocs.Object);
+        Services.AddSingleton(_terms.Object);
 
         var settings = new Mock<PlatformSettingsApiService>(MockBehavior.Loose, Http());
         settings.Setup(s => s.GetAsync()).ReturnsAsync(new PlatformSettingsDto { StandardListingFeeIncGst = 990m });
@@ -223,5 +226,91 @@ public class AdminStallionsTests : TestContext
 
         Renderer.UnhandledException.IsCompleted.Should().BeFalse();
         calls.Should().Be(2, "polling stops once the page is gone");
+    }
+
+    private static TermsDocumentDto StudTerms() => new() { Id = Guid.NewGuid(), Audience = "Stud", Version = 2, Body = "Stud listing **terms**" };
+
+    [Fact]
+    public void Activate_WhenTheStudTermsNeedAccepting_ShowsThem_ThenGoesToPaymentAfterAccepting()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), NeedsAcceptance = true });
+        _terms.Setup(t => t.AcceptStudTermsAsync(2)).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 });
+        _subs.Setup(s => s.ActivateAsync(_snitzel.Id)).ReturnsAsync(new PaymentRedirectDto { Url = "https://checkout.example/pay" });
+        var cut = Render();
+
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Activate for")).Click();
+
+        cut.WaitForAssertion(() => cut.Find(".stud-terms-body").InnerHtml.Should().Contain("<strong>terms</strong>"));
+        _subs.Verify(s => s.ActivateAsync(It.IsAny<Guid>()), Times.Never);
+        cut.Find(".stud-terms-agree input").Change(true);
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "I accept").Click();
+
+        cut.WaitForAssertion(() =>
+            Services.GetRequiredService<NavigationManager>().Uri.Should().Be("https://checkout.example/pay"));
+        _terms.Verify(t => t.AcceptStudTermsAsync(2), Times.Once);
+    }
+
+    [Fact]
+    public void Activate_CancellingTheStudTerms_DoesNotActivate()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), NeedsAcceptance = true });
+        var cut = Render();
+
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Activate for")).Click();
+        cut.WaitForAssertion(() => cut.FindAll(".stud-terms-body").Should().ContainSingle());
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Cancel").Click();
+
+        cut.FindAll(".stud-terms-body").Should().BeEmpty();
+        _subs.Verify(s => s.ActivateAsync(It.IsAny<Guid>()), Times.Never);
+        _terms.Verify(t => t.AcceptStudTermsAsync(It.IsAny<int>()), Times.Never);
+    }
+
+    private static AngleSharp.Dom.IElement ActivateButton(IRenderedComponent<AdminStallions> cut) =>
+        cut.FindAll("button").Single(b => b.TextContent.Contains("Activate for") || b.TextContent.Contains("Opening"));
+
+    [Fact]
+    public void Activate_ClickedTwiceWhileTheTermsStatusIsLoading_StartsOneCheckout()
+    {
+        var status = new TaskCompletionSource<StudTermsStatusDto>();
+        _terms.Setup(t => t.GetStudStatusAsync()).Returns(status.Task);
+        _subs.Setup(s => s.ActivateAsync(_snitzel.Id)).ReturnsAsync(new PaymentRedirectDto { Url = "https://checkout.example/pay" });
+        var cut = Render();
+
+        ActivateButton(cut).Click();
+        ActivateButton(cut).HasAttribute("disabled").Should().BeTrue();
+        ActivateButton(cut).Click();
+        cut.InvokeAsync(() => status.SetResult(new StudTermsStatusDto { Current = StudTerms(), AcceptedVersion = 2 }));
+
+        cut.WaitForAssertion(() =>
+            Services.GetRequiredService<NavigationManager>().Uri.Should().Be("https://checkout.example/pay"));
+        _terms.Verify(t => t.GetStudStatusAsync(), Times.Once);
+        _subs.Verify(s => s.ActivateAsync(It.IsAny<Guid>()), Times.Once);
+    }
+
+    [Fact]
+    public void Activate_AfterCancellingTheStudTerms_CanBeClickedAgain()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ReturnsAsync(new StudTermsStatusDto { Current = StudTerms(), NeedsAcceptance = true });
+        var cut = Render();
+
+        ActivateButton(cut).Click();
+        cut.WaitForAssertion(() => cut.FindAll(".stud-terms-body").Should().ContainSingle());
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Cancel").Click();
+
+        ActivateButton(cut).HasAttribute("disabled").Should().BeFalse();
+        ActivateButton(cut).TextContent.Should().Contain("Activate for");
+    }
+
+    [Fact]
+    public void Activate_WhenTheTermsStatusFails_ShowsTheError_AndCanBeClickedAgain()
+    {
+        _terms.Setup(t => t.GetStudStatusAsync()).ThrowsAsync(new ApiException(500, "Couldn't load the terms."));
+        var cut = Render();
+
+        ActivateButton(cut).Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Couldn't load the terms."));
+        ActivateButton(cut).HasAttribute("disabled").Should().BeFalse();
+        _subs.Verify(s => s.ActivateAsync(It.IsAny<Guid>()), Times.Never);
     }
 }

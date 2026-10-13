@@ -1,17 +1,27 @@
-// tests/Server.Tests/TaxDocuments/TaxDocumentEmailsTests.cs
 using FluentAssertions;
 using Moq;
+using Stallions.Server.Content;
+using Stallions.Server.Data;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Email;
-using Stallions.Server.Options;
 using Stallions.Server.TaxDocuments;
+using Stallions.Server.Tests.Helpers;
 using Stallions.Shared.Enums;
 
 namespace Stallions.Server.Tests.TaxDocuments;
 
-public class TaxDocumentEmailsTests
+public class TaxDocumentEmailsTests : IDisposable
 {
+    private readonly AppDbContext _db = DbContextFactory.Create(Guid.NewGuid().ToString());
     private readonly List<(OutgoingEmail Email, string? EntityType, Guid? EntityId)> _queued = new();
+
+    public TaxDocumentEmailsTests()
+    {
+        _db.Database.EnsureCreated();
+        ContentTestData.SetWording(_db, ContentKeys.BuyerFeeExplanation, null, "CONFIGURED fee wording.");
+    }
+
+    public void Dispose() => _db.Dispose();
 
     private TaxDocumentEmails CreateSut()
     {
@@ -19,8 +29,7 @@ public class TaxDocumentEmailsTests
         outbox.Setup(o => o.EnqueueAsync(It.IsAny<OutgoingEmail>(), It.IsAny<string?>(), It.IsAny<Guid?>()))
             .Callback<OutgoingEmail, string?, Guid?>((e, t, id) => _queued.Add((e, t, id)))
             .Returns(Task.CompletedTask);
-        return new TaxDocumentEmails(outbox.Object,
-            Microsoft.Extensions.Options.Options.Create(new DisclosureOptions { BuyerFeeExplanation = "CONFIGURED fee wording." }),
+        return new TaxDocumentEmails(outbox.Object, ContentTestData.Service(_db),
             Microsoft.Extensions.Options.Options.Create(new EmailOptions { PublicBaseUrl = "https://app.example/" }));
     }
 

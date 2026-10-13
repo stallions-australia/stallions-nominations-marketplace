@@ -73,6 +73,7 @@ public class SubscriptionServiceTests : IDisposable
         TaxDocuments(),
         new TaxDocumentRepository(_db),
         new InlineTransactionRunner(),
+        new TermsRepository(_db),
         _clock,
         NullLogger<SubscriptionService>.Instance);
 
@@ -883,5 +884,70 @@ public class SubscriptionServiceTests : IDisposable
 
         all.Single(s => s.Id == invoiced.Id).TaxInvoiceNumber.Should().Be("SA-000001");
         all.Single(s => s.StallionId == _stallionB.Id).TaxInvoiceNumber.Should().BeNull();
+    }
+
+    // ── Stud listing terms gate ─────────────────────────────────────────────
+
+    private void PublishStudTerms(int version)
+    {
+        _db.TermsDocuments.Add(new TermsDocument { Audience = TermsAudience.Stud, Version = version, Body = "Stud terms", CreatedByUserId = _staff.Id });
+        _db.SaveChanges();
+    }
+
+    private void Accept(StudFarm farm, int version)
+    {
+        farm.AcceptedStudTermsVersion = version;
+        farm.AcceptedStudTermsAt = _clock.UtcNow;
+        _db.SaveChanges();
+    }
+
+    [Fact]
+    public async Task Activate_WithoutAcceptingTheStudTerms_IsRejected_AndCreatesNothing()
+    {
+        PublishStudTerms(1);
+        PaymentPageReturns("https://pay/fee");
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.HttpStatusCode.Should().Be(400);
+        result.Error.Should().Be("Accept the current stud listing terms first.");
+        _db.StallionSeasonSubscriptions.Should().BeEmpty();
+        _provider.Verify(p => p.CreateListingFeeSessionAsync(It.IsAny<Guid>(), It.IsAny<decimal>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Activate_AfterAcceptingTheCurrentStudTerms_StartsThePayment()
+    {
+        PublishStudTerms(1);
+        Accept(_farmA, 1);
+        PaymentPageReturns("https://pay/fee");
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.Value!.Url.Should().Be("https://pay/fee");
+    }
+
+    [Fact]
+    public async Task Activate_WhenNewerStudTermsArePublished_NeedsThemAccepted()
+    {
+        PublishStudTerms(1);
+        Accept(_farmA, 1);
+        PublishStudTerms(2);
+        PaymentPageReturns("https://pay/fee");
+
+        var result = await ActivateAs(_studUserA, _stallionA);
+
+        result.Error.Should().Be("Accept the current stud listing terms first.");
+    }
+
+    [Fact]
+    public async Task StaffCreate_ForAFarmThatHasNotAcceptedTheStudTerms_IsNotGated()
+    {
+        PublishStudTerms(1);
+
+        var dto = await CreatePendingAsync(_stallionA);
+
+        dto.Status.Should().Be("Pending");
     }
 }

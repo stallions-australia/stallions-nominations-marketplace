@@ -11,6 +11,10 @@ public class StudFarm
     public string? Address { get; set; }
     public bool IsActive { get; set; } = true;
     public Guid? StudDirectoryId { get; set; }
+    /// <summary>The stud listing terms version this farm last accepted (null = never).</summary>
+    public int? AcceptedStudTermsVersion { get; set; }
+    public DateTime? AcceptedStudTermsAt { get; set; }
+    public Guid? AcceptedStudTermsByUserId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties

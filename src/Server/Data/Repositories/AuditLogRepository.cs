@@ -34,4 +34,20 @@ public class AuditLogRepository : IAuditLogRepository
             .Select(a => a.EntityId)
             .Distinct()
             .ToListAsync();
+
+    public async Task<(IReadOnlyList<AuditLog> Rows, int Total)> GetPageAsync(IReadOnlyCollection<string> actions,
+        DateTime? fromUtc, DateTime? toUtcExclusive, int skip, int take)
+    {
+        var query = _db.AuditLogs.AsNoTracking().Where(a => actions.Contains(a.Action));
+        if (fromUtc is { } start) query = query.Where(a => a.OccurredAt >= start);
+        if (toUtcExclusive is { } end) query = query.Where(a => a.OccurredAt < end);
+
+        var total = await query.CountAsync();
+        var rows = await query
+            .Include(a => a.User)
+            .OrderByDescending(a => a.OccurredAt).ThenByDescending(a => a.Id)
+            .Skip(skip).Take(take)
+            .ToListAsync();
+        return (rows, total);
+    }
 }

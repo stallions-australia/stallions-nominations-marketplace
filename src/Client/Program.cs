@@ -67,6 +67,10 @@ builder.Services.AddHttpClient<TaxDocumentApiService>(c => c.BaseAddress = apiBa
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 builder.Services.AddHttpClient<IntroOfferApiService>(c => c.BaseAddress = apiBase)
     .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
+builder.Services.AddHttpClient<ContentApiService>(c => c.BaseAddress = apiBase)
+    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
+builder.Services.AddHttpClient<ChangeLogApiService>(c => c.BaseAddress = apiBase)
+    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>();
 
 builder.Services.AddScoped<UserStateService>();
 

@@ -203,6 +203,8 @@ else if (_authorized != null)
     }
 }
 
+<StudTermsGate @ref="_termsGate" OnError="ShowTermsError" />
+
 @code {
     private List<StallionSummaryDto> _stallions = [];
     private AuthorizedStallionsDto? _authorized;
@@ -324,7 +326,29 @@ else if (_authorized != null)
         _subscriptions.FirstOrDefault(x => x.StallionId == stallionId && x.SeasonId == _openSeason?.Id)?.FeeIncGst
         ?? _standardFee;
 
+    private StudTermsGate? _termsGate;
+
+    private void ShowTermsError(string message) => _activateError = message;
+
+    // A stud must accept the current stud listing terms before paying a listing fee; the server enforces it too.
+    // Disabled from the click, so a second click while the terms status loads can't start a second checkout. If the
+    // activation never starts (error, or the terms modal opened) the buttons are re-enabled; once it starts it owns the flag.
     private async Task ActivateAsync(Guid stallionId)
+    {
+        if (_activating is not null) return;
+        _activating = stallionId; _activateError = null; _paymentNotice = null;
+        var started = false;
+        try
+        {
+            await _termsGate!.RequireAsync(() => { started = true; return StartActivationAsync(stallionId); });
+        }
+        finally
+        {
+            if (!started) _activating = null;
+        }
+    }
+
+    private async Task StartActivationAsync(Guid stallionId)
     {
         _activating = stallionId; _activateError = null; _paymentNotice = null;
         try

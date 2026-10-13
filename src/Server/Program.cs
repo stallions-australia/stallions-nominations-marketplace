@@ -6,10 +6,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using Stallions.Server.Auctions;
 using Stallions.Server.Auth;
+using Stallions.Server.Content;
 using Stallions.Server.Data;
 using Stallions.Server.Data.Repositories;
 using Stallions.Server.Email;
-using Stallions.Server.Options;
 using Stallions.Server.Payments;
 using Stallions.Server.Services;
 using Stallions.Server.TaxDocuments;
@@ -75,9 +75,6 @@ builder.Services.AddAuthorization(options =>
 
 // Register the handler that evaluates DbRoleRequirement
 builder.Services.AddScoped<IAuthorizationHandler, DbRoleHandler>();
-
-// Config options
-builder.Services.Configure<DisclosureOptions>(builder.Configuration.GetSection(DisclosureOptions.Section));
 
 // Payments — Stripe or the dev-only fake (refused in Production)
 builder.Services.AddPayments(builder.Configuration, builder.Environment);
@@ -148,6 +145,10 @@ builder.Services.AddScoped<IIntroOfferService, IntroOfferService>();
 builder.Services.AddScoped<ITaxDocumentEmails, TaxDocumentEmails>();
 builder.Services.AddScoped<ITaxDocumentService, TaxDocumentService>();
 builder.Services.AddScoped<ITaxDocumentQueryService, TaxDocumentQueryService>();
+builder.Services.AddScoped<IContentRepository, ContentRepository>();
+builder.Services.AddSingleton<ContentCache>();
+builder.Services.AddScoped<IContentService, ContentService>();
+builder.Services.AddScoped<IChangeLogService, ChangeLogService>();
 
 // Rate limiting
 builder.Services.AddRateLimiter(options =>

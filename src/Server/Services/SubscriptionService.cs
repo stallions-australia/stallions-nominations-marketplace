@@ -29,6 +29,7 @@ public class SubscriptionService : ISubscriptionService
     private readonly ITaxDocumentService _taxDocuments;
     private readonly ITaxDocumentRepository _taxDocumentRepo;
     private readonly ITransactionRunner _transactions;
+    private readonly StudTermsGate _studTerms;
     private readonly TimeProvider _clock;
     private readonly ILogger<SubscriptionService> _log;
 
@@ -45,6 +46,7 @@ public class SubscriptionService : ISubscriptionService
         ITaxDocumentService taxDocuments,
         ITaxDocumentRepository taxDocumentRepo,
         ITransactionRunner transactions,
+        ITermsRepository terms,
         TimeProvider clock,
         ILogger<SubscriptionService> log)
     {
@@ -60,6 +62,7 @@ public class SubscriptionService : ISubscriptionService
         _taxDocuments = taxDocuments;
         _taxDocumentRepo = taxDocumentRepo;
         _transactions = transactions;
+        _studTerms = new StudTermsGate(terms);
         _clock = clock;
         _log = log;
     }
@@ -316,6 +319,11 @@ public class SubscriptionService : ISubscriptionService
         var farm = await _farmRepo.GetByUserIdAsync(caller.Id);
         if (farm == null)
             return ServiceResult<PaymentRedirectDto>.Forbidden("No stud farm found for the current user.");
+
+        // Self-serve listing-fee payment needs the current stud listing terms accepted (none published = no gate).
+        // Staff create / mark paid / waive never pass through here.
+        if (!await _studTerms.IsSatisfiedAsync(farm))
+            return ServiceResult<PaymentRedirectDto>.BadRequest(StudTermsGate.NotAcceptedMessage);
 
         var stallion = await _stallionRepo.GetByIdAsync(request.StallionId);
         if (stallion == null || stallion.StudFarmId != farm.Id)

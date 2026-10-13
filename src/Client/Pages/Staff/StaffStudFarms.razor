@@ -2,6 +2,7 @@
 @layout StaffLayout
 @attribute [Authorize]
 @inject StaffApiService StaffApi
+@inject TermsApiService TermsApi
 @inject NavigationManager Nav
 @inject UserStateService UserState
 
@@ -38,6 +39,7 @@ else
                 <th>Linked User</th>
                 <th>Directory</th>
                 <th>Active</th>
+                <th>Stud terms</th>
                 <th>Created</th>
                 <th></th>
             </tr>
@@ -68,6 +70,7 @@ else
                             @(f.IsActive ? "Active" : "Inactive")
                         </span>
                     </td>
+                    <td class="text-sm">@StudTermsText(f)</td>
                     <td>@f.CreatedAt.ToString("d MMM yyyy")</td>
                     <td class="admin-table-actions">
                         <a href="/staff/studfarms/@f.Id" class="btn btn-sm btn-outline">Detail</a>
@@ -90,11 +93,21 @@ else
         await Load();
     }
 
+    private int? _currentStudVersion;
+
     private async Task Load()
     {
         _loading = true; _error = null;
         try { _farms = await StaffApi.GetStudFarmsAsync(); }
         catch (Exception ex) { _error = ex is ApiException ae ? ae.Message : "Failed to load stud farms."; }
         finally { _loading = false; }
+
+        // Only used to flag acceptances of an older version; the list still shows without it.
+        try { _currentStudVersion = (await TermsApi.GetStudStatusAsync())?.Current?.Version; }
+        catch (ApiException) { _currentStudVersion = null; }
     }
+
+    private string StudTermsText(StudFarmSummaryDto f) => f.AcceptedStudTermsVersion is int v
+        ? $"v{v} · {f.AcceptedStudTermsAt?.ToLocalTime().ToString("d MMM yyyy")}{(_currentStudVersion is int c && c != v ? " (not current)" : "")}"
+        : _currentStudVersion is null ? "—" : "Not accepted";
 }

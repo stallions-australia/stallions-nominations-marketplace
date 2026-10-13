@@ -9,4 +9,8 @@ public interface IAuditLogRepository
 
     /// <summary>Distinct ids of the entities of this type that have an audit row with this action.</summary>
     Task<IReadOnlyList<Guid>> GetEntityIdsWithActionAsync(string entityType, string action);
+
+    /// <summary>Rows with any of these actions in [fromUtc, toUtcExclusive), newest first, with the user; and the total count.</summary>
+    Task<(IReadOnlyList<AuditLog> Rows, int Total)> GetPageAsync(IReadOnlyCollection<string> actions,
+        DateTime? fromUtc, DateTime? toUtcExclusive, int skip, int take);
 }

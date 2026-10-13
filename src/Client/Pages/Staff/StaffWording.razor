@@ -1,0 +1,463 @@
+@page "/staff/wording"
+@layout StaffLayout
+@attribute [Authorize]
+@implements IDisposable
+@inject ContentApiService ContentApi
+@inject UserStateService UserState
+@inject NavigationManager Nav
+
+<PageTitle>Wording — Staff Admin</PageTitle>
+
+@if (Key is null)
+{
+    <div class="admin-page-header">
+        <h1 class="admin-page-title">Wording</h1>
+    </div>
+    <p class="text-secondary text-sm">
+        The buyer disclosures and the subject and message of every system email. Each save is a new version; older
+        versions can be viewed and restored. Amounts tables, buttons and links, the buyer fee disclosure block and
+        invoice details are added by the system and can't be changed here.
+    </p>
+
+    @if (_loading)
+    {
+        <p>Loading…</p>
+    }
+    else if (_error is not null)
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+    else
+    {
+        @foreach (var group in _items.GroupBy(i => i.Group))
+        {
+            <h2 class="wording-group">@group.Key</h2>
+            <table class="admin-table">
+                <thead>
+                    <tr><th>Item</th><th>When it's used</th><th>Version</th><th>Last changed</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in group)
+                    {
+                        <tr>
+                            <td><strong>@item.Label</strong></td>
+                            <td class="text-sm">@item.Description</td>
+                            <td>@VersionText(item.CurrentVersion)</td>
+                            <td class="text-sm">@Changed(item.ChangedAt, item.ChangedByName)</td>
+                            <td class="admin-table-actions"><a class="btn btn-sm btn-outline" href="@EditorUrl(item.Key)">Edit</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+}
+else
+{
+    <div class="admin-page-header">
+        <h1 class="admin-page-title">@(_detail?.Label ?? "Wording")</h1>
+        <a href="/staff/wording" class="btn btn-secondary btn-sm">← All wording</a>
+    </div>
+
+    @if (_loading)
+    {
+        <p>Loading…</p>
+    }
+    else if (_detail is null)
+    {
+        <div class="alert alert-danger">@(_error ?? "That wording item doesn't exist.")</div>
+    }
+    else
+    {
+        <p class="text-secondary text-sm">@_detail.Description</p>
+        <p class="text-sm">Current version: <strong>@VersionText(_detail.Version)</strong> · @Changed(_detail.ChangedAt, _detail.ChangedByName)</p>
+
+        <div class="wording-editor">
+            <div class="wording-form">
+                @if (_detail.HasSubject)
+                {
+                    <label class="form-label" for="wording-subject">Subject</label>
+                    <input id="wording-subject" class="form-input" maxlength="@_detail.MaxSubjectLength"
+                           value="@_subject" @oninput="OnSubjectInput" />
+                }
+                <label class="form-label" for="wording-body">@(_detail.HasSubject ? "Message" : "Wording")</label>
+                <textarea id="wording-body" class="form-control" rows="10" maxlength="@_detail.MaxBodyLength"
+                          value="@_body" @oninput="OnBodyInput"></textarea>
+                <p class="text-muted text-sm">
+                    @(_detail.SingleParagraph ? "One paragraph of plain text." : "Plain text. Leave a blank line between paragraphs.")
+                    @_body.Length / @_detail.MaxBodyLength characters.
+                </p>
+
+                @if (_errors.Count > 0)
+                {
+                    <ul class="wording-errors" role="alert">
+                        @foreach (var e in _errors)
+                        {
+                            <li>@e</li>
+                        }
+                    </ul>
+                }
+                @if (_notice is not null)
+                {
+                    <div class="alert alert-success" role="status">@_notice</div>
+                }
+
+                <div class="wording-actions">
+                    <button class="btn btn-gold" @onclick="SaveAsync" disabled="@_busy">@(_busy ? "Saving…" : "Save as new version")</button>
+                    <button class="btn btn-outline" @onclick="() => _confirmReset = true" disabled="@(_busy || _detail.IsDefault)">Reset to default</button>
+                </div>
+
+                @if (_detail.Placeholders.Count > 0)
+                {
+                    <h3 class="wording-subhead">Placeholders</h3>
+                    <table class="admin-table wording-placeholders">
+                        <thead><tr><th>Placeholder</th><th>What it shows</th><th>Example</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in _detail.Placeholders)
+                            {
+                                <tr>
+                                    <td>
+                                        <code>{@p.Name}</code>
+                                        @if (p.Required)
+                                        {
+                                            <span class="badge badge-sub-pending">Required</span>
+                                        }
+                                    </td>
+                                    <td class="text-sm">@p.Description</td>
+                                    <td class="text-sm">@p.Sample</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="wording-preview">
+                <h3 class="wording-subhead">Preview (example values)</h3>
+                @if (_preview is null || _preview.Errors.Count > 0)
+                {
+                    <p class="text-muted text-sm">Fix the errors to see the preview.</p>
+                }
+                else
+                {
+                    @if (_preview.Subject is not null)
+                    {
+                        <p class="wording-preview-subject"><strong>Subject:</strong> @_preview.Subject</p>
+                    }
+                    <div class="wording-preview-body">
+                        @foreach (var paragraph in _preview.Paragraphs)
+                        {
+                            var lines = paragraph.Split('\n');
+                            <p>
+                                @for (var i = 0; i < lines.Length; i++)
+                                {
+                                    <span>@lines[i]</span>
+                                    if (i < lines.Length - 1)
+                                    {
+                                        <br />
+                                    }
+                                }
+                            </p>
+                        }
+                    </div>
+                    @if (_detail.HasSubject)
+                    {
+                        <p class="text-muted text-sm">
+                            The system adds the rest of the email after this text — for example the amounts table, buttons
+                            and links, the buyer fee disclosure or the invoice details.
+                        </p>
+                    }
+                }
+            </div>
+        </div>
+
+        <h3 class="wording-subhead">Previous versions</h3>
+        <table class="admin-table wording-versions">
+            <thead><tr><th>Version</th><th>Saved</th><th>By</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var v in _versions)
+                {
+                    <tr>
+                        <td>
+                            v@(v.Version)
+                            @if (v.IsCurrent)
+                            {
+                                <span class="badge badge-sub-paid">Current</span>
+                            }
+                        </td>
+                        <td class="text-sm">@v.CreatedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")</td>
+                        <td>@(v.CreatedByName ?? "System default")</td>
+                        <td class="admin-table-actions">
+                            <button class="btn btn-sm btn-outline" @onclick="() => _viewing = v">View</button>
+                            @if (!v.IsCurrent)
+                            {
+                                <button class="btn btn-sm btn-outline" @onclick="() => _restoring = v" disabled="@_busy">Restore</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+<Modal IsOpen="@(_viewing is not null)" Title="@($"Version {_viewing?.Version}")" OnClose="() => _viewing = null" CloseOnBackdrop="true">
+    @if (_viewing is not null)
+    {
+        <div class="wording-version-text">
+            @if (_viewing.Subject is not null)
+            {
+                <p><strong>Subject:</strong> @_viewing.Subject</p>
+            }
+            <pre>@_viewing.Body</pre>
+        </div>
+    }
+</Modal>
+
+<Modal IsOpen="@(_restoring is not null)" Title="@($"Restore version {_restoring?.Version}?")" OnClose="() => _restoring = null">
+    <p>The text of version @_restoring?.Version becomes the current wording, saved as a new version. Nothing is deleted.</p>
+    <div class="wording-actions">
+        <button class="btn btn-gold" @onclick="RestoreAsync" disabled="@_busy">Yes, restore</button>
+        <button class="btn btn-outline" @onclick="() => _restoring = null" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+<Modal IsOpen="@_confirmReset" Title="Reset to default?" OnClose="() => _confirmReset = false">
+    <p>Replace the current wording with the default? It's saved as a new version, so the current wording stays in Previous versions.</p>
+    <div class="wording-actions">
+        <button class="btn btn-gold" @onclick="ResetAsync" disabled="@_busy">Yes, reset</button>
+        <button class="btn btn-outline" @onclick="() => _confirmReset = false" disabled="@_busy">Cancel</button>
+    </div>
+</Modal>
+
+@code {
+    /// <summary>The item being edited; null shows the list.</summary>
+    [SupplyParameterFromQuery] public string? Key { get; set; }
+    /// <summary>Opens this version's text (links from the change log).</summary>
+    [SupplyParameterFromQuery] public int? Version { get; set; }
+    /// <summary>How long typing must pause before the preview refreshes (tests use zero).</summary>
+    [Parameter] public TimeSpan PreviewDelay { get; set; } = TimeSpan.FromMilliseconds(400);
+
+    private List<ContentItemSummaryDto> _items = [];
+    private ContentItemDetailDto? _detail;
+    private List<ContentVersionDto> _versions = [];
+    private ContentPreviewDto? _preview;
+    private List<string> _errors = [];
+    private string _subject = string.Empty;
+    private string _body = string.Empty;
+    private string? _error;
+    private string? _notice;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _authorised;
+    private bool _confirmReset;
+    private ContentVersionDto? _viewing;
+    private ContentVersionDto? _restoring;
+    private string? _loadedKey;
+    private int? _loadedVersion;
+    private CancellationTokenSource? _previewCts;
+    // Bumped whenever a newer preview, save or page load supersedes older in-flight work.
+    private int _previewSeq;
+    private int _loadSeq;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UserState.LoadAsync();
+        if (!UserState.IsStaff) { Nav.NavigateTo("/", replace: true); return; }
+        _authorised = true;
+    }
+
+    // Moving between the list and an item only changes the query, so reload when it changes.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_authorised) return;
+        var key = Key ?? string.Empty;
+        if (_loadedKey == key)
+        {
+            // Same item, different ?version= : just open that version.
+            if (_loadedVersion != Version && _detail is not null)
+            {
+                _loadedVersion = Version;
+                _viewing = Version is int v ? _versions.FirstOrDefault(x => x.Version == v) : null;
+            }
+            return;
+        }
+        _loadedKey = key;
+        _loadedVersion = Version;
+        CancelPreview();
+        _loadSeq++;
+        _error = null; _notice = null; _errors = []; _detail = null; _preview = null; _versions = [];
+        _viewing = null; _restoring = null; _confirmReset = false;
+        if (Key is null) await LoadListAsync();
+        else await LoadItemAsync(Key);
+    }
+
+    private static string ErrorText(Exception ex, string fallback) => ex is ApiException ae ? ae.Message : fallback;
+
+    private async Task LoadListAsync()
+    {
+        var load = _loadSeq;
+        _loading = true;
+        try
+        {
+            var items = await ContentApi.GetAllAsync();
+            if (load != _loadSeq) return;
+            _items = items;
+        }
+        catch (Exception ex)
+        {
+            if (load != _loadSeq) return;
+            _error = ErrorText(ex, "Failed to load the wording.");
+        }
+        _loading = false;
+    }
+
+    private async Task LoadItemAsync(string key)
+    {
+        var load = _loadSeq;
+        _loading = true;
+        try
+        {
+            var detail = await ContentApi.GetAsync(key);
+            var versions = await ContentApi.GetHistoryAsync(key);
+            if (load != _loadSeq) return; // the page moved to another item while this loaded
+            _detail = detail;
+            _subject = detail.Subject ?? string.Empty;
+            _body = detail.Body;
+            _versions = versions;
+            if (Version is int version) _viewing = _versions.FirstOrDefault(v => v.Version == version);
+        }
+        catch (Exception ex)
+        {
+            if (load != _loadSeq) return;
+            _detail = null;
+            _error = ErrorText(ex, "Failed to load this wording item.");
+        }
+        _loading = false;
+        if (_detail is not null) await RefreshPreviewAsync(++_previewSeq);
+    }
+
+    private Task OnSubjectInput(ChangeEventArgs e)
+    {
+        _subject = e.Value?.ToString() ?? string.Empty;
+        return SchedulePreviewAsync();
+    }
+
+    private Task OnBodyInput(ChangeEventArgs e)
+    {
+        _body = e.Value?.ToString() ?? string.Empty;
+        return SchedulePreviewAsync();
+    }
+
+    /// <summary>Drops the pending debounce and makes any in-flight preview stale.</summary>
+    private void CancelPreview()
+    {
+        _previewSeq++;
+        var cts = _previewCts;
+        _previewCts = null;
+        if (cts is null) return;
+        cts.Cancel();
+        cts.Dispose();
+    }
+
+    // Debounced: only the last keystroke in a pause asks the server for a preview.
+    private async Task SchedulePreviewAsync()
+    {
+        _notice = null;
+        CancelPreview();
+        var seq = _previewSeq;
+        var cts = _previewCts = new CancellationTokenSource();
+        if (PreviewDelay > TimeSpan.Zero)
+        {
+            try { await Task.Delay(PreviewDelay, cts.Token); }
+            catch (TaskCanceledException) { return; }
+        }
+        if (seq != _previewSeq) return;
+        await RefreshPreviewAsync(seq);
+    }
+
+    // Only the latest request may update the screen; older responses are dropped.
+    private async Task RefreshPreviewAsync(int seq)
+    {
+        if (_detail is null) return;
+        ContentPreviewDto? preview = null;
+        List<string> errors;
+        try
+        {
+            preview = await ContentApi.PreviewAsync(_detail.Key, Request());
+            errors = preview.Errors;
+        }
+        catch (Exception ex)
+        {
+            errors = [ErrorText(ex, "Couldn't refresh the preview. Check your connection and try again.")];
+        }
+        if (seq != _previewSeq) return;
+        _preview = preview;
+        _errors = errors;
+        StateHasChanged();
+    }
+
+    private SaveContentRequest Request() => new() { Subject = _detail!.HasSubject ? _subject : null, Body = _body };
+
+    private async Task SaveAsync()
+    {
+        if (_detail is null) return;
+        await RunAsync(() => ContentApi.SaveAsync(_detail.Key, Request()), "Saved as version", "Couldn't save. Check your connection and try again.");
+    }
+
+    private async Task ResetAsync()
+    {
+        _confirmReset = false;
+        if (_detail is null) return;
+        await RunAsync(() => ContentApi.ResetAsync(_detail.Key), "Reset to the default wording as version", "Couldn't reset. Check your connection and try again.");
+    }
+
+    private async Task RestoreAsync()
+    {
+        var version = _restoring;
+        _restoring = null;
+        if (_detail is null || version is null) return;
+        await RunAsync(() => ContentApi.RestoreAsync(_detail.Key, version.Version), $"Version {version.Version} restored as version",
+            "Couldn't restore. Check your connection and try again.");
+    }
+
+    private async Task RunAsync(Func<Task<ContentItemDetailDto>> action, string message, string failure)
+    {
+        _busy = true; _notice = null;
+        CancelPreview(); // a late preview must not overwrite the outcome
+        try { await ApplySavedAsync(await action(), message); }
+        catch (Exception ex) { _errors = ex is ApiException ae ? SplitErrors(ae.Message) : [failure]; }
+        finally { _busy = false; }
+    }
+
+    private async Task ApplySavedAsync(ContentItemDetailDto detail, string message)
+    {
+        _detail = detail;
+        _subject = detail.Subject ?? string.Empty;
+        _body = detail.Body;
+        _errors = [];
+        try { _versions = await ContentApi.GetHistoryAsync(detail.Key); }
+        catch (Exception) { /* keep the list we have; the save itself succeeded */ }
+        await RefreshPreviewAsync(++_previewSeq);
+        _notice = $"{message} {detail.Version}.";
+    }
+
+    private static List<string> SplitErrors(string message) =>
+        message.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private static string EditorUrl(string key) => $"/staff/wording?key={Uri.EscapeDataString(key)}";
+
+    private static string VersionText(int version) => version == 0 ? "Default" : $"v{version}";
+
+    private static string Changed(DateTime? at, string? by) =>
+        at is null ? "Default wording" : $"{at.Value.ToLocalTime():d MMM yyyy} by {by ?? "System default"}";
+
+    public void Dispose()
+    {
+        _previewSeq++;
+        _loadSeq++;
+        _previewCts?.Cancel();
+        _previewCts?.Dispose();
+        _previewCts = null;
+    }
+}

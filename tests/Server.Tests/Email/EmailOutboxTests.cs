@@ -38,4 +38,29 @@ public class EmailOutboxTests
 
         (await db.OutboundEmails.CountAsync()).Should().Be(0);
     }
+
+    [Fact]
+    public async Task Enqueue_AnOverLongSubject_IsCappedAt300Characters()
+    {
+        using var db = DbContextFactory.Create(Guid.NewGuid().ToString());
+        var outbox = new EmailOutbox(new OutboundEmailRepository(db), new TestClock(), NullLogger<EmailOutbox>.Instance);
+
+        await outbox.EnqueueAsync(new OutgoingEmail("buyer@example.com", new string('s', 700), "<p>Hi</p>", "Hi", "Outbid"));
+
+        var subject = (await db.OutboundEmails.SingleAsync()).Subject;
+        subject.Length.Should().BeLessThanOrEqualTo(300);
+        subject.Should().StartWith(new string('s', 299)).And.EndWith("…");
+    }
+
+    [Fact]
+    public async Task Enqueue_ASubjectOfExactly300Characters_IsKeptWhole()
+    {
+        using var db = DbContextFactory.Create(Guid.NewGuid().ToString());
+        var outbox = new EmailOutbox(new OutboundEmailRepository(db), new TestClock(), NullLogger<EmailOutbox>.Instance);
+        var subject = new string('s', 300);
+
+        await outbox.EnqueueAsync(new OutgoingEmail("buyer@example.com", subject, "<p>Hi</p>", "Hi", "Outbid"));
+
+        (await db.OutboundEmails.SingleAsync()).Subject.Should().Be(subject);
+    }
 }

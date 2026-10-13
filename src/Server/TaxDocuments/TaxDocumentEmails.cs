@@ -2,10 +2,10 @@
 using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Options;
+using Stallions.Server.Content;
 using Stallions.Server.Data.Entities;
 using Stallions.Server.Email;
 using Stallions.Server.Infrastructure;
-using Stallions.Server.Options;
 using Stallions.Shared;
 using Stallions.Shared.Enums;
 
@@ -27,34 +27,35 @@ public interface ITaxDocumentEmails
 }
 
 /// <summary>
-/// Plain, factual wording (Staff-editable wording comes in 5b); amounts inc. GST with the ex-GST and GST split;
-/// dates as Sydney dates. Buyer-fee policy wording comes from DisclosureOptions.
+/// Staff edit each email's subject and message (Staff → Wording); the document details, bank details, payment
+/// reference, buyer fee explanation and links are generated here. Amounts inc. GST with the ex-GST and GST split;
+/// dates as Sydney dates.
 /// </summary>
 public class TaxDocumentEmails : ITaxDocumentEmails
 {
     private static readonly CultureInfo Au = CultureInfo.GetCultureInfo("en-AU");
 
     private readonly IEmailOutbox _outbox;
-    private readonly DisclosureOptions _disclosure;
+    private readonly IContentService _content;
     private readonly string _baseUrl;
 
-    public TaxDocumentEmails(IEmailOutbox outbox, IOptions<DisclosureOptions> disclosure, IOptions<EmailOptions> email)
+    public TaxDocumentEmails(IEmailOutbox outbox, IContentService content, IOptions<EmailOptions> email)
     {
         _outbox = outbox;
-        _disclosure = disclosure.Value;
+        _content = content;
         _baseUrl = email.Value.PublicBaseUrl.TrimEnd('/');
     }
 
-    public Task ListingFeeTaxInvoiceAsync(TaxDocument d) =>
-        QueueAsync(d, "ListingFeeTaxInvoice", $"Tax invoice {d.Number}: {d.Description}",
-            Para("Thank you — your listing fee has been paid. Your tax invoice is below."),
+    public async Task ListingFeeTaxInvoiceAsync(TaxDocument d) =>
+        await QueueAsync(d, "ListingFeeTaxInvoice",
+            await RenderAsync(ContentKeys.ListingFeeTaxInvoice, d, ("StudName", d.RecipientName)),
             Details(d),
             Para("Status: Paid"),
             DocumentLink(d, "View or print your tax invoice"));
 
-    public Task ListingFeeInvoiceDueAsync(TaxDocument d) =>
-        QueueAsync(d, "ListingFeeInvoiceDue", $"Tax invoice {d.Number} — amount due {Money(d.AmountIncGst)} by {Date(d.DueAt)}",
-            Para($"Here is your tax invoice for the listing fee. Please pay {Money(d.AmountIncGst)} by {Date(d.DueAt)}."),
+    public async Task ListingFeeInvoiceDueAsync(TaxDocument d) =>
+        await QueueAsync(d, "ListingFeeInvoiceDue",
+            await RenderAsync(ContentKeys.ListingFeeInvoiceDue, d, ("StudName", d.RecipientName), ("DueDate", Date(d.DueAt))),
             Details(d),
             Rows(("Account name", d.BankAccountName ?? string.Empty),
                  ("BSB", BusinessNumbers.FormatBsb(d.BankBsb)),
@@ -62,24 +63,26 @@ public class TaxDocumentEmails : ITaxDocumentEmails
             Para($"Please use {d.Number} as your payment reference."),
             DocumentLink(d, "View or print your tax invoice"));
 
-    public Task ListingFeeReceiptAsync(TaxDocument d) =>
-        QueueAsync(d, "ListingFeeReceipt", $"Receipt: tax invoice {d.Number} paid",
-            Para($"We've received your payment of {Money(d.AmountIncGst)} for tax invoice {d.Number}. Thank you."),
+    public async Task ListingFeeReceiptAsync(TaxDocument d) =>
+        await QueueAsync(d, "ListingFeeReceipt",
+            await RenderAsync(ContentKeys.ListingFeeReceipt, d, ("StudName", d.RecipientName)),
             Details(d),
             Para($"Paid: {Date(d.PaidAt)}"),
             DocumentLink(d, "View or print your tax invoice"));
 
-    public Task BuyerFeeTaxInvoiceAsync(TaxDocument d) =>
-        QueueAsync(d, "BuyerFeeTaxInvoice", $"Tax invoice {d.Number}: buyer fee",
-            Para("The buyer fee has been charged to your saved card. Your tax invoice is below."),
-            Details(d),
-            Para(_disclosure.BuyerFeeExplanation),
-            DocumentLink(d, "View or print your tax invoice"));
+    public async Task BuyerFeeTaxInvoiceAsync(TaxDocument d)
+    {
+        var email = await RenderAsync(ContentKeys.BuyerFeeTaxInvoice, d, ("BuyerName", d.RecipientName));
+        var blocks = new List<Block> { Details(d) };
+        blocks.AddRange((await _content.RenderTextAsync(ContentKeys.BuyerFeeExplanation)).Select(ToBlock));
+        blocks.Add(DocumentLink(d, "View or print your tax invoice"));
+        await QueueAsync(d, "BuyerFeeTaxInvoice", email, blocks.ToArray());
+    }
 
-    public Task AdjustmentNoteAsync(TaxDocument note, TaxDocument original) =>
-        QueueAsync(note, "AdjustmentNote", $"Adjustment note {note.Number} for tax invoice {original.Number}",
-            Para($"This adjustment note reverses tax invoice {original.Number} dated {Date(original.IssuedAt)} in full."),
-            Para($"Reason: {note.Reason}"),
+    public async Task AdjustmentNoteAsync(TaxDocument note, TaxDocument original) =>
+        await QueueAsync(note, "AdjustmentNote",
+            await RenderAsync(ContentKeys.AdjustmentNote, note,
+                ("OriginalNumber", original.Number), ("OriginalDate", Date(original.IssuedAt)), ("Reason", note.Reason)),
             Details(note),
             DocumentLink(note, "View or print your adjustment note"));
 
@@ -87,14 +90,33 @@ public class TaxDocumentEmails : ITaxDocumentEmails
 
     private sealed record Block(string Html, string Text);
 
-    private async Task QueueAsync(TaxDocument d, string template, string subject, params Block[] blocks)
+    private Task<RenderedEmail> RenderAsync(string key, TaxDocument d, params (string Name, string? Value)[] values)
     {
+        var all = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["InvoiceNumber"] = d.Number,
+            ["Description"] = d.Description,
+            ["Amount"] = Money(d.AmountIncGst)
+        };
+        foreach (var (name, value) in values) all[name] = value;
+        return RenderSingleLineSubjectAsync(key, all);
+    }
+
+    private async Task<RenderedEmail> RenderSingleLineSubjectAsync(string key, Dictionary<string, string?> values) =>
+        (await _content.RenderEmailAsync(key, values)).WithSingleLineSubject();
+
+    private static Block ToBlock(RenderedParagraph p) => new($"<p>{p.Html}</p>", p.Text);
+
+    /// <summary>The Staff message paragraphs first, then the generated blocks.</summary>
+    private async Task QueueAsync(TaxDocument d, string template, RenderedEmail email, params Block[] blocks)
+    {
+        var all = email.Paragraphs.Select(ToBlock).Concat(blocks).ToList();
         var html = "<div style=\"font-family:Georgia,'Times New Roman',serif;max-width:560px;color:#1f2a24\">"
-                   + string.Concat(blocks.Select(b => b.Html))
+                   + string.Concat(all.Select(b => b.Html))
                    + "<p style=\"color:#6b7280;font-size:13px\">Stallions Australia</p></div>";
-        var text = string.Join("\n\n", blocks.Select(b => b.Text)) + "\n\nStallions Australia";
-        var trimmedSubject = subject.Length > 300 ? subject[..300] : subject;
-        await _outbox.EnqueueAsync(new OutgoingEmail(d.RecipientEmail, trimmedSubject, html, text, template), "TaxDocument", d.Id);
+        var text = string.Join("\n\n", all.Select(b => b.Text)) + "\n\nStallions Australia";
+        // The outbox caps the subject to fit the OutboundEmails column.
+        await _outbox.EnqueueAsync(new OutgoingEmail(d.RecipientEmail, email.Subject, html, text, template), "TaxDocument", d.Id);
     }
 
     private static Block Para(string text) => new($"<p>{Enc(text)}</p>", text);

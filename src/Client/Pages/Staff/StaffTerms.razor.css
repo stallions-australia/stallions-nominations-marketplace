@@ -1,0 +1,10 @@
+.terms-audience {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.terms-history-title {
+    margin-top: var(--space-6);
+}

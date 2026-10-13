@@ -1,0 +1,50 @@
+@inject TermsApiService TermsApi
+
+@if (_terms is not null)
+{
+    <StudTermsModal Terms="_terms" OnAccepted="AcceptAsync" OnCancel="Cancel" />
+}
+
+@code {
+    /// <summary>Raised with a message when the current terms can't be loaded; the action is then not run.</summary>
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    private TermsDocumentDto? _terms;
+    private Func<Task>? _then;
+
+    /// <summary>
+    /// Runs <paramref name="then"/> once the stud has accepted the current stud listing terms: straight away when nothing
+    /// needs accepting, otherwise after the stud reads and accepts them in a modal (and never if they cancel). The server
+    /// enforces the same rule; this only lets the stud get past it.
+    /// </summary>
+    public async Task RequireAsync(Func<Task> then)
+    {
+        StudTermsStatusDto? status;
+        try { status = await TermsApi.GetStudStatusAsync(); }
+        catch (ApiException ex) { await OnError.InvokeAsync(ex.Message); return; }
+
+        if (status is { NeedsAcceptance: true, Current: not null })
+        {
+            _terms = status.Current;
+            _then = then;
+            StateHasChanged();
+            return;
+        }
+        await then();
+    }
+
+    private async Task AcceptAsync()
+    {
+        if (_terms is null) return;
+        await TermsApi.AcceptStudTermsAsync(_terms.Version); // an ApiException is shown in the modal
+        var next = _then;
+        Cancel();
+        if (next is not null) await next();
+    }
+
+    private void Cancel()
+    {
+        _terms = null;
+        _then = null;
+    }
+}
